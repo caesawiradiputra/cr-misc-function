@@ -4,8 +4,17 @@ from typing import Dict, Any
 
 import pytz
 from dotenv import load_dotenv
+from app.configs.log_config import logger
 
 load_dotenv()
+
+# * Check for Vault secrets (used in Docker/Kubernetes deployments)
+VAULT_ENV_FILE = "/vault/secrets/.env"
+if os.path.exists(VAULT_ENV_FILE):
+    load_dotenv(dotenv_path=VAULT_ENV_FILE, override=True)
+    logger.info(f"Loaded Vault secrets from {VAULT_ENV_FILE}")
+else:
+    logger.warning(f"Vault .env file not found at {VAULT_ENV_FILE}")
 
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
