@@ -47,21 +47,44 @@ cd cr-misc-function
 ---
 
 ### clean-branches.ps1
-Removes local branches that have been deleted from remote and updates protected branches (`master`, `dev`, `sit`) to match their remote counterparts.
+Removes local branches that have been deleted from remote and updates protected branches (`master`, `dev`, `sit`) to match their remote counterparts. Optionally removes backup tags created by the `reset-branches.ps1` process.
 
-**Purpose:** Clean up stale local branches after PRs are merged or branches are deleted remotely.
+**Purpose:** Clean up stale local branches after PRs are merged or branches are deleted remotely. Also optionally removes backup tags created during reset operations.
 
 **Behavior:**
 1. Fetches latest remote info with `--prune` to remove stale remote-tracking refs
 2. Updates protected branches (`master`, `dev`, `sit`) by checking out and pulling each
 3. Scans all local branches and deletes those not present on remote
 4. Protected branches (`main`, `master`, `dev`, `sit`) are never deleted
+5. (Optional) Removes all backup tags matching `backup-*-*` pattern created by reset-branches
+
+**Parameters:**
+- `-DryRun`: Preview what will be deleted without making changes
+- `-NoUpdate`: Skip updating protected branches, only delete orphaned branches
+- `-Force`: Skip user confirmation prompt
+- `-PurgeOnly`: Only delete orphaned branches, skip protected branch updates
+- `-CleanupBackupTags`: Remove backup tags created by reset-branches (pattern: `backup-<branch>-<timestamp>`)
+- `-ProtectedBranches <string[]>`: Custom list of protected branches (default: main, master, dev, sit)
 
 **Usage:**
 
 ```powershell
 cd cr-misc-function
+
+# Basic cleanup
 ./scripts/powershell/clean-branches.ps1
+
+# Cleanup with backup tag removal
+./scripts/powershell/clean-branches.ps1 -CleanupBackupTags
+
+# Preview changes without executing
+./scripts/powershell/clean-branches.ps1 -DryRun
+
+# Force cleanup without confirmation
+./scripts/powershell/clean-branches.ps1 -Force
+
+# Cleanup backup tags only
+./scripts/powershell/clean-branches.ps1 -PurgeOnly -CleanupBackupTags -Force
 ```
 
 **Output:**
@@ -73,18 +96,28 @@ cd cr-misc-function
 ---
 
 ### reset-branches.ps1
-Hard resets protected branches (`master`, `dev`, `sit`) to match their remote counterparts and force-pushes to origin. **Use with caution—this discards local commits.**
+Hard resets protected branches (`master`, `dev`, `sit`) to match their remote counterparts and force-pushes to origin. **Use with caution—this discards local commits.** Creates backup tags for recovery containing the commit ID for easy identification.
 
-**Purpose:** Synchronize protected branches with remote when local history has diverged or needs to be discarded.
+**Purpose:** Synchronize protected branches with remote when local history has diverged or needs to be discarded. Backup tags help identify the exact commit being saved.
+
+**Backup Tag Naming:**
+- Format: `backup-<branch>-<commit-id>-<timestamp>`
+- Example: `backup-master-a1b2c3d4-20250103-140530`
+- Branches already synchronized with remote are **skipped** (not backed up)
 
 **Behavior:**
 1. Fetches latest remote changes with `--prune`
-2. Verifies all protected branches exist locally
+2. Gets commit IDs for each protected branch from remote
 3. For each protected branch (`master`, `dev`, `sit`):
+   - Compares local and remote commit IDs
+   - **Skips backup if already synchronized** (IDs match)
+   - Creates backup tag including commit ID if different
+4. Verifies all protected branches exist locally
+5. For each protected branch:
    - Checks out the branch
    - Hard resets to `origin/<branch>`
    - Force-pushes to origin (overwrites remote if diverged)
-4. Returns to `master` branch when complete
+6. Returns to `master` branch when complete
 
 **⚠️ Warning:**
 - **Discards all local commits** not present on remote
@@ -92,11 +125,36 @@ Hard resets protected branches (`master`, `dev`, `sit`) to match their remote co
 - Use only when you're certain local changes should be discarded
 - Not recommended for shared branches with active collaborators
 
+**Parameters:**
+- `-DryRun`: Preview operations without making changes
+- `-NoBackup`: Skip backup tag creation (not recommended)
+- `-Force`: Skip user confirmation prompt
+
 **Usage:**
 
 ```powershell
 cd cr-misc-function
+
+# Standard reset with backup tags
 ./scripts/powershell/reset-branches.ps1
+
+# Preview changes without executing
+./scripts/powershell/reset-branches.ps1 -DryRun
+
+# Force reset without confirmation
+./scripts/powershell/reset-branches.ps1 -Force
+
+# Reset without creating backups (not recommended)
+./scripts/powershell/reset-branches.ps1 -NoBackup -Force
+```
+
+**Output Example:**
+```
+Creating backup tags...
+  [OK] Created tag: backup-master-a1b2c3d4-20250103-140530
+  [SKIP] Branch 'dev' (ID: b2c3d4e5) - already synchronized
+  [OK] Created tag: backup-sit-c3d4e5f6-20250103-140530
+  Summary: 2 created, 1 skipped
 ```
 
 **Exit Codes:**

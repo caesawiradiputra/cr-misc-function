@@ -151,7 +151,19 @@ try {
     else { Write-Warn "'$Remote/$Sit' is NOT in sync with '$Remote/$Master'" }
 
     if ($devSynced -and $sitSynced) {
-        Write-Info "Both '$Dev' and '$Sit' are in sync. Activating local '$Dev'..."
+        Write-Info "Both '$Dev' and '$Sit' are in sync."
+        Write-Host ""
+        Write-Host "About to:" -ForegroundColor Cyan
+        Write-Host "  1. Create/ensure local '$Dev' tracking '$Remote/$Dev'" -ForegroundColor DarkGray
+        Write-Host "  2. Checkout local '$Dev'" -ForegroundColor DarkGray
+        Write-Host "  3. Fast-forward '$Dev' with latest changes" -ForegroundColor DarkGray
+        Write-Host ""
+        $confirm = Read-Host "Proceed with syncing and activating '$Dev'? (y/n)"
+        if ($confirm -ne 'y' -and $confirm -ne 'Y') {
+            Write-Warn "Sync cancelled by user"
+            exit 0
+        }
+        Write-Info "Activating local '$Dev'..."
         Ensure-LocalBranch -Branch $Dev -Remote $Remote | Out-Null
         Checkout-And-FF-Only -Branch $Dev
         Write-Okay "Active branch is now '$Dev'. You can create new branches from here."
