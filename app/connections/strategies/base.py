@@ -102,6 +102,17 @@ class DatabaseStrategy(ABC):
     def _mask_password(self, text: str) -> str:
         return re.sub(r"(?i)(password\s*=\s*)'[^']+'", r"\1'***'", text)
 
+    # * Context manager support so concrete strategies can be used with `with`.
+    # * Not abstract: generic implementation delegates to connect()/disconnect().
+    def __enter__(self):  # noqa: D401 - simple context manager pattern
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):  # noqa: D401
+        if exc_type:
+            logger.error(f"[{self.db_type}] Operation failed: {exc_val}", exc_info=True)
+        self.disconnect()
+
 
 class RDBMSBaseStrategy(DatabaseStrategy, ABC):
     """Base strategy for relational databases with shared functionality."""

@@ -112,6 +112,23 @@ function Checkout-And-FF-Only([string]$Branch) {
     if ($LASTEXITCODE -ne 0) { throw "Failed to fast-forward '$Branch'" }
 }
 
+function Display-BranchDiffs([string]$Remote, [string]$Master, [string]$Dev, [string]$Sit) {
+    Write-Host ""
+    Write-Host "=== BRANCH DIFF SUMMARY ===" -ForegroundColor Cyan
+    
+    Write-Host ""
+    Write-Host "$Remote/$Master → $Remote/$Dev (Features in development)" -ForegroundColor Cyan
+    git diff "$Remote/$Master" "$Remote/$Dev" --stat 2>$null
+    
+    Write-Host ""
+    Write-Host "$Remote/$Master → $Remote/$Sit (Features staged)" -ForegroundColor Cyan
+    git diff "$Remote/$Master" "$Remote/$Sit" --stat 2>$null
+    
+    Write-Host ""
+    Write-Host "$Remote/$Dev → $Remote/$Sit (Ready to stage)" -ForegroundColor Cyan
+    git diff "$Remote/$Dev" "$Remote/$Sit" --stat 2>$null
+}
+
 try {
     Write-Info "Validating environment"
     Assert-GitAvailable
@@ -152,6 +169,10 @@ try {
 
     if ($devSynced -and $sitSynced) {
         Write-Info "Both '$Dev' and '$Sit' are in sync."
+        
+        # Display diff summary for context
+        Display-BranchDiffs -Remote $Remote -Master $Master -Dev $Dev -Sit $Sit
+        
         Write-Host ""
         Write-Host "About to:" -ForegroundColor Cyan
         Write-Host "  1. Create/ensure local '$Dev' tracking '$Remote/$Dev'" -ForegroundColor DarkGray
