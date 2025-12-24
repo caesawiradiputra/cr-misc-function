@@ -129,6 +129,25 @@ function Display-BranchDiffs([string]$Remote, [string]$Master, [string]$Dev, [st
     git diff "$Remote/$Dev" "$Remote/$Sit" --stat 2>$null
 }
 
+function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev, [string]$Sit) {
+    Write-Info "Updating local protected branches from remote..."
+    
+    foreach ($Branch in @($Master, $Dev, $Sit)) {
+        # Check if local branch exists
+        git show-ref --verify --quiet "refs/heads/$Branch"
+        if ($LASTEXITCODE -eq 0) {
+            Write-Info "Pulling '$Branch' from '$Remote/$Branch'"
+            git checkout $Branch 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                git pull $Remote 2>$null | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warn "Failed to pull '$Branch', but continuing..."
+                }
+            }
+        }
+    }
+}
+
 try {
     Write-Info "Validating environment"
     Assert-GitAvailable
@@ -141,6 +160,9 @@ try {
     } else {
         Write-Warn "Skipping fetch due to -NoFetch"
     }
+
+    # Update local protected branches
+    Update-LocalBranches -Remote $Remote -Master $Master -Dev $Dev -Sit $Sit
 
     # ! Validate remote branches exist
     foreach ($b in @($Master, $Dev, $Sit)) {

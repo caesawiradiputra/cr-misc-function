@@ -206,3 +206,73 @@ Creating backup tags...
 ./scripts/powershell/reset-branches.ps1
 ```
 
+
+
+---
+
+### sync-github-instructions.ps1
+Synchronizes .github\instructions\* and .github\prompts\* folders with a reference template. Uses a hardcoded reference template located at C:\Users\203715\Documents\Repo\cr-misc-function\.github.template\*.
+
+**Purpose:** Maintain consistency between project-specific .github settings and centralized reference settings. Enables syncing from any workspace to a single source-of-truth template. Automates three workflows:
+1. Add missing instructions/prompts from template to .github (new files)
+2. Update files in .github when they differ from template (changed files)
+3. Leave unchanged files untouched (skip when content matches)
+
+**Usage from Any Workspace:**
+The script can be called from any workspace to sync with the centralized reference template:
+
+\\\powershell
+# From any workspace - syncs .github folder to reference template
+cd C:\Users\203715\Documents\Repo\da-ndf4w-1p5c-monitoring-streamlit\da-ndf4w-1p5c-monitoring-streamlit
+C:\Users\203715\Documents\Repo\cr-misc-function\cr-misc-function\scripts\powershell\sync-github-instructions.ps1 -Verbose
+
+# Preview changes without applying
+C:\Users\203715\Documents\Repo\cr-misc-function\cr-misc-function\scripts\powershell\sync-github-instructions.ps1 -DryRun -Verbose
+
+# Specify target workspace explicitly (optional - defaults to current directory parent)
+C:\Users\203715\Documents\Repo\cr-misc-function\cr-misc-function\scripts\powershell\sync-github-instructions.ps1 -TargetGitHubRoot "C:\path\to\another\workspace" -Verbose
+\\\
+
+**Behavior:**
+1. Reads target workspace from current directory (or \-TargetGitHubRoot\ parameter)
+2. Looks for \.github\ folder in target workspace
+3. Compares files with hardcoded reference template at \C:\Users\203715\Documents\Repo\cr-misc-function\.github.template\
+4. Uses SHA256 hash for fast, reliable file comparison
+5. Categorizes each file:
+   - **Added**: Exists in template but missing from \.github\
+   - **Updated**: Exists in both but content differs (template version wins)
+   - **Skipped**: Exists in both with identical content
+6. Applies changes based on DryRun flag
+7. Returns summary statistics and exit code
+
+**Parameters:**
+- \-TargetGitHubRoot <string>\: Workspace root where \.github\ folder should be synced (defaults to parent of current working directory)
+- \-DryRun\: Preview changes without applying (shows what would be added/updated/skipped)
+- \-Verbose\: Print detailed output with color-coded results
+
+**Exit Codes:**
+- \ \: Success  all operations completed without errors
+- \1\: Partial  operations completed but with errors encountered
+- \2\: Skipped  template folder doesn't exist (no action taken)
+
+**Common Use Cases:**
+- Sync multiple projects to centralized \.github\ reference
+- Onboard new projects (sync their \.github\ with reference template)
+- Distribute \.github\ updates across all projects
+- Verify \.github\ consistency across organization
+- Automated sync in CI/CD pipeline or scheduled tasks
+
+**Workflow Integration:**
+
+Check what reference template differs:
+\\\powershell
+# From any workspace
+cd C:\Users\203715\Documents\Repo\some-project\some-project
+C:\Users\203715\Documents\Repo\cr-misc-function\cr-misc-function\scripts\powershell\sync-github-instructions.ps1 -DryRun -Verbose
+\\\
+
+Apply reference template updates:
+\\\powershell
+C:\Users\203715\Documents\Repo\cr-misc-function\cr-misc-function\scripts\powershell\sync-github-instructions.ps1 -Verbose
+\\\
+
