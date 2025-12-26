@@ -1,18 +1,18 @@
 from .base import (
-    DBConfig,
-    ODPSConfig,
     DatabaseConfig,
     DatabaseStrategy,
+    DBConfig,
+    ODPSConfig,
     RDBMSBaseStrategy,
     timed_operation,
 )
-from .postgres_strategy import PostgreSQLStrategy
-from .mysql_strategy import MySQLStrategy
-from .mssql_strategy import MSSQLStrategy
-from .trino_strategy import TrinoStrategy
-from .hive_strategy import HiveStrategy
-from .odps_strategy import ODPSStrategy
 from .factory import create_strategy
+from .hive_strategy import HiveStrategy
+from .mssql_strategy import MSSQLStrategy
+from .mysql_strategy import MySQLStrategy
+from .odps_strategy import ODPSStrategy
+from .postgres_strategy import PostgreSQLStrategy
+from .trino_strategy import TrinoStrategy
 
 __all__ = [
     "DBConfig",

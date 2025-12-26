@@ -30,11 +30,11 @@ from pyhive.hive import Cursor as Hive_Cursor
 from pyodbc import Connection as Pyodbc_Connection
 from pyodbc import Cursor as Pyodbc_Cursor
 from sqlalchemy import create_engine
+from sqlalchemy.engine.base import Engine
 from sqlalchemy.pool import QueuePool
 from trino.auth import BasicAuthentication
 from trino.dbapi import Connection as Trino_Connection
 from trino.dbapi import Cursor as Trino_Cursor
-from sqlalchemy.engine.base import Engine
 
 
 # * Configuration Models
@@ -69,17 +69,13 @@ DatabaseConfig = Union[DBConfig, ODPSConfig]
 # * Strategy Protocol for database operations
 class DatabaseStrategy(Protocol):
     """Protocol for database-specific operations."""
-    
+
     def connect(self) -> Any: ...
     def disconnect(self) -> None: ...
     def execute_query(self, query: str, params: Optional[Any]) -> pd.DataFrame: ...
     def execute_non_query(self, query: str, params: Optional[Any]) -> int: ...
     def create_table(
-        self, 
-        schema: Optional[str], 
-        table_name: str, 
-        df: pd.DataFrame, 
-        **kwargs
+        self, schema: Optional[str], table_name: str, df: pd.DataFrame, **kwargs
     ) -> str: ...
 
 
@@ -103,7 +99,7 @@ def timed_operation(name: str):
         def wrapper(*args, **kwargs):
             start = time.monotonic()
             result = func(*args, **kwargs)
-            logger.info(f"{name} took {time.monotonic()-start:.2f}s")
+            logger.info(f"{name} took {time.monotonic() - start:.2f}s")
             return result
 
         return wrapper
@@ -167,7 +163,7 @@ class DBConnector:
         ] = None
         self.engine: Optional[Engine] = None
         self._odps_lock = threading.Lock()
-        
+
         # * Get pool size from unified config object
         self._thread_pool = ThreadPoolExecutor(max_workers=self.config.pool_size)
 
@@ -189,13 +185,17 @@ class DBConnector:
                 "endpoint",
             ]:
                 if not odps_config.get(field):
-                    raise ValueError(f"[{self.db_type}] Missing ODPS config field: {field}")
+                    raise ValueError(
+                        f"[{self.db_type}] Missing ODPS config field: {field}"
+                    )
             return ODPSConfig(db_type="odps", **odps_config)
         else:
             db_config = database_config[self.db_type]
             for field in ["host", "port", "user", "password", "database"]:
                 if not db_config.get(field):
-                    raise ValueError(f"[{self.db_type}] Missing DB config field: {field}")
+                    raise ValueError(
+                        f"[{self.db_type}] Missing DB config field: {field}"
+                    )
             return DBConfig(
                 db_type=self.db_type,
                 host=db_config["host"],
@@ -251,7 +251,7 @@ class DBConnector:
 
         try:
             config = self._get_db_config()  # * Type-safe config access
-            
+
             if self.db_type == "trino":
                 self.connection = trino.dbapi.connect(
                     host=config.host,
@@ -314,7 +314,7 @@ class DBConnector:
             odps_cfg = self._get_odps_config()
             encoded_password = quote_plus(odps_cfg.secret_access_key)
             return f"odps://{odps_cfg.access_id}:{encoded_password}@{odps_cfg.endpoint}/{odps_cfg.default_project}"
-        
+
         config = self._get_db_config()
         encoded_password = quote_plus(config.password)
         base_url = ""
@@ -345,7 +345,9 @@ class DBConnector:
                 self.connect()
             yield self.connection
         except Exception as e:
-            logger.error(f"[{self.db_type}] Connection context error: {e}", exc_info=True)
+            logger.error(
+                f"[{self.db_type}] Connection context error: {e}", exc_info=True
+            )
             self.disconnect()
             raise
         finally:
@@ -386,7 +388,9 @@ class DBConnector:
 
         if self.db_type == "hive":
             if not oss_path:
-                raise ValueError(f"[{self.db_type}] OSS path required for Hive external table creation")
+                raise ValueError(
+                    f"[{self.db_type}] OSS path required for Hive external table creation"
+                )
             return self._create_hive_table(full_table_name, df, oss_path)
 
         elif self.db_type == "odps":
@@ -398,7 +402,9 @@ class DBConnector:
     def _validate_schema(self, schema: Optional[str]):
         """Validate schema/table naming conventions."""
         if schema and not schema.isidentifier():
-            raise ValueError(f"[{self.db_type}] Invalid schema name '{schema}': must be a valid Python identifier")
+            raise ValueError(
+                f"[{self.db_type}] Invalid schema name '{schema}': must be a valid Python identifier"
+            )
 
     def _create_hive_table(
         self, full_name: str, df: pd.DataFrame, oss_path: str
@@ -431,7 +437,9 @@ class DBConnector:
                 self.cursor.execute(f"MSCK REPAIR TABLE {full_name}")
                 return f"External table `{full_name}` created successfully in Hive."
             else:
-                raise RuntimeError(f"[{self.db_type}] Cursor is not available for Hive table creation")
+                raise RuntimeError(
+                    f"[{self.db_type}] Cursor is not available for Hive table creation"
+                )
 
     def _create_odps_table(
         self, schema: Optional[str], table_name: str, df: pd.DataFrame, if_exists: str
@@ -443,7 +451,9 @@ class DBConnector:
             if if_exists == "fail" and self.connection_odps.exist_table(
                 odps_table_name
             ):
-                raise ValueError(f"[{self.db_type}] Table '{odps_table_name}' already exists")
+                raise ValueError(
+                    f"[{self.db_type}] Table '{odps_table_name}' already exists"
+                )
 
         odps_df = OdpsDataFrame(df)
         odps_df.persist(odps_table_name, rewrite=(if_exists == "replace"))
@@ -472,7 +482,9 @@ class DBConnector:
                 )
                 return f"Table `{schema}.{table_name}` created in {self.db_type}."
         else:
-            raise RuntimeError(f"[{self.db_type}] Engine is not available for RDBMS table creation")
+            raise RuntimeError(
+                f"[{self.db_type}] Engine is not available for RDBMS table creation"
+            )
 
     def __enter__(self):
         """Context manager entry with SQLAlchemy engine creation."""
@@ -584,7 +596,9 @@ class DBConnector:
                     else:
                         df = pd.read_sql(query, self.engine)
                 else:
-                    raise RuntimeError(f"[{self.db_type}] Engine is not available for query execution")
+                    raise RuntimeError(
+                        f"[{self.db_type}] Engine is not available for query execution"
+                    )
             logger.info(
                 f"[{self.db_type}] Query executed successfully. Fetched {len(df)} records."
             )
@@ -653,7 +667,9 @@ class DBConnector:
                     if self.connection:
                         self.connection.commit()
                     else:
-                        raise RuntimeError(f"[{self.db_type}] Connection is not available for commit")
+                        raise RuntimeError(
+                            f"[{self.db_type}] Connection is not available for commit"
+                        )
 
             logger.info(
                 f"[{self.db_type}] Non-query executed successfully. Affected rows: {affected_rows}."

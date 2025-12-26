@@ -1,15 +1,19 @@
 from typing import Union
 from urllib.parse import quote_plus
+
 import mysql.connector
 from mysql.connector.abstracts import MySQLConnectionAbstract
 from mysql.connector.pooling import PooledMySQLConnection
 
 from .base import RDBMSBaseStrategy
 
+
 class MySQLStrategy(RDBMSBaseStrategy):
     """Strategy for MySQL databases."""
 
-    def _create_connection(self) -> Union[MySQLConnectionAbstract, PooledMySQLConnection]:
+    def _create_connection(
+        self,
+    ) -> Union[MySQLConnectionAbstract, PooledMySQLConnection]:
         return mysql.connector.connect(
             host=self.config.host,
             port=self.config.port,

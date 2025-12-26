@@ -1,8 +1,10 @@
 from urllib.parse import quote_plus
+
 import pyodbc
 from pyodbc import Connection as PyodbcConnection
 
 from .base import RDBMSBaseStrategy
+
 
 class MSSQLStrategy(RDBMSBaseStrategy):
     """Strategy for Microsoft SQL Server."""

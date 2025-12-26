@@ -1,14 +1,16 @@
 import re
 import threading
-from typing import Any, Optional, Union, Dict, Tuple, Literal
+from typing import Any, Dict, Literal, Optional, Tuple, Union
 from urllib.parse import quote_plus
+
 import pandas as pd
+from app.configs.log_config import logger
 from odps import ODPS
 from odps import errors as odps_errors
 from odps.df import DataFrame as OdpsDataFrame
 
 from .base import DatabaseStrategy, ODPSConfig, timed_operation
-from app.configs.log_config import logger
+
 
 class ODPSStrategy(DatabaseStrategy):
     """Strategy for Alibaba MaxCompute (ODPS)."""
@@ -45,10 +47,14 @@ class ODPSStrategy(DatabaseStrategy):
         return self.connection is not None
 
     def execute_query(
-        self, query: str, params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None
+        self,
+        query: str,
+        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
     ) -> pd.DataFrame:
         if not self.is_connected():
-            raise ConnectionError(f"[{self.db_type}] No active connection. Call connect() first.")
+            raise ConnectionError(
+                f"[{self.db_type}] No active connection. Call connect() first."
+            )
         try:
             log_query = re.sub(r"(?i)(password\s*=\s*)'[^']+'", r"\1'***'", query)
             logger.info(
@@ -60,21 +66,31 @@ class ODPSStrategy(DatabaseStrategy):
                         records = [dict(record) for record in reader]
                         df = pd.DataFrame(records)
                 else:
-                    raise ConnectionError(f"[{self.db_type}] No active connection. Call connect() first.")
-            logger.info(f"[{self.db_type}] Query executed successfully. Fetched {len(df)} records.")
+                    raise ConnectionError(
+                        f"[{self.db_type}] No active connection. Call connect() first."
+                    )
+            logger.info(
+                f"[{self.db_type}] Query executed successfully. Fetched {len(df)} records."
+            )
             return df
         except odps_errors.ODPSError as e:
             logger.error(f"[{self.db_type}] ODPS error: {e}", exc_info=True)
             raise RuntimeError(f"[{self.db_type}] ODPS query failed: {str(e)}")
         except Exception as e:
-            logger.error(f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True)
+            logger.error(
+                f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True
+            )
             raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}")
 
     def execute_non_query(
-        self, query: str, params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None
+        self,
+        query: str,
+        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
     ) -> int:
         if not self.is_connected():
-            raise ConnectionError(f"[{self.db_type}] No active connection. Call connect() first.")
+            raise ConnectionError(
+                f"[{self.db_type}] No active connection. Call connect() first."
+            )
         try:
             log_query = re.sub(r"(?i)(password\s*=\s*)'[^']+'", r"\1'***'", query)
             logger.info(
@@ -85,7 +101,9 @@ class ODPSStrategy(DatabaseStrategy):
                     instance = self.connection.execute_sql(query)
                     instance.wait_for_success()
                 else:
-                    raise ConnectionError(f"[{self.db_type}] No active connection. Call connect() first.")
+                    raise ConnectionError(
+                        f"[{self.db_type}] No active connection. Call connect() first."
+                    )
             logger.info(
                 f"[{self.db_type}] Non-query executed successfully. Instance ID: {instance.id}"
             )
@@ -94,7 +112,9 @@ class ODPSStrategy(DatabaseStrategy):
             logger.error(f"[{self.db_type}] ODPS error: {e}", exc_info=True)
             raise RuntimeError(f"[{self.db_type}] ODPS non-query failed: {str(e)}")
         except Exception as e:
-            logger.error(f"[{self.db_type}] Error executing non-query: {str(e)}", exc_info=True)
+            logger.error(
+                f"[{self.db_type}] Error executing non-query: {str(e)}", exc_info=True
+            )
             raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}")
 
     @timed_operation("Table creation")
@@ -108,14 +128,22 @@ class ODPSStrategy(DatabaseStrategy):
         **kwargs,
     ) -> str:
         if not self.is_connected():
-            raise ConnectionError(f"[{self.db_type}] No active connection. Call connect() first.")
+            raise ConnectionError(
+                f"[{self.db_type}] No active connection. Call connect() first."
+            )
         if schema and not schema.isidentifier():
             raise ValueError(
                 f"[{self.db_type}] Invalid schema name '{schema}': must be a valid Python identifier"
             )
         odps_table_name = f"{schema}.{table_name}" if schema else table_name
-        if if_exists == "fail" and self.connection and self.connection.exist_table(odps_table_name):
-            raise ValueError(f"[{self.db_type}] Table '{odps_table_name}' already exists")
+        if (
+            if_exists == "fail"
+            and self.connection
+            and self.connection.exist_table(odps_table_name)
+        ):
+            raise ValueError(
+                f"[{self.db_type}] Table '{odps_table_name}' already exists"
+            )
         odps_df = OdpsDataFrame(df)
         odps_df.persist(odps_table_name, rewrite=(if_exists == "replace"))
         return f"Table `{odps_table_name}` created in ODPS."

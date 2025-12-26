@@ -1,16 +1,16 @@
 import functools
-import time
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Optional, Union, Dict, Tuple, Literal
+from typing import Any, Dict, Literal, Optional, Tuple, Union
 
 import pandas as pd
+from app.configs.log_config import logger
 from sqlalchemy import create_engine
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.pool import QueuePool
 
-from app.configs.log_config import logger
 
 # * Configuration Models
 @dataclass
@@ -41,15 +41,18 @@ DatabaseConfig = Union[DBConfig, ODPSConfig]
 
 # * Decorators
 
+
 def timed_operation(name: str):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             start = time.monotonic()
             result = func(*args, **kwargs)
-            logger.info(f"{name} took {time.monotonic()-start:.2f}s")
+            logger.info(f"{name} took {time.monotonic() - start:.2f}s")
             return result
+
         return wrapper
+
     return decorator
 
 
@@ -71,12 +74,16 @@ class DatabaseStrategy(ABC):
 
     @abstractmethod
     def execute_query(
-        self, query: str, params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None
+        self,
+        query: str,
+        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
     ) -> pd.DataFrame: ...
 
     @abstractmethod
     def execute_non_query(
-        self, query: str, params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None
+        self,
+        query: str,
+        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
     ) -> int: ...
 
     @abstractmethod
@@ -179,7 +186,9 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
         return self.connection is not None and self.cursor is not None
 
     def execute_query(
-        self, query: str, params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None
+        self,
+        query: str,
+        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
     ) -> pd.DataFrame:
         if not self.is_connected():
             raise ConnectionError(
@@ -199,14 +208,20 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
                 raise RuntimeError(
                     f"[{self.db_type}] Engine is not available for query execution"
                 )
-            logger.info(f"[{self.db_type}] Query executed successfully. Fetched {len(df)} records.")
+            logger.info(
+                f"[{self.db_type}] Query executed successfully. Fetched {len(df)} records."
+            )
             return df
         except Exception as e:
-            logger.error(f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True)
+            logger.error(
+                f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True
+            )
             raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}")
 
     def execute_non_query(
-        self, query: str, params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None
+        self,
+        query: str,
+        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
     ) -> int:
         if not self.is_connected():
             raise ConnectionError(

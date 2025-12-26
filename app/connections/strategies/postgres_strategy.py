@@ -1,8 +1,10 @@
 from urllib.parse import quote_plus
+
 import psycopg2
 from psycopg2.extensions import connection as Psycopg2Connection
 
 from .base import RDBMSBaseStrategy
+
 
 class PostgreSQLStrategy(RDBMSBaseStrategy):
     """Strategy for PostgreSQL and Hologres databases."""

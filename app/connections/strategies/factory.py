@@ -1,13 +1,14 @@
-from typing import Dict, overload, Literal
+from typing import Dict, Literal, overload
 
 from app.configs.config import database_config, odps_config
-from .base import DBConfig, ODPSConfig, DatabaseStrategy
-from .postgres_strategy import PostgreSQLStrategy
-from .mysql_strategy import MySQLStrategy
-from .mssql_strategy import MSSQLStrategy
-from .trino_strategy import TrinoStrategy
+
+from .base import DatabaseStrategy, DBConfig, ODPSConfig
 from .hive_strategy import HiveStrategy
+from .mssql_strategy import MSSQLStrategy
+from .mysql_strategy import MySQLStrategy
 from .odps_strategy import ODPSStrategy
+from .postgres_strategy import PostgreSQLStrategy
+from .trino_strategy import TrinoStrategy
 
 # Map db_type to strategy class
 _STRATEGY_MAP = {
@@ -24,23 +25,30 @@ _STRATEGY_MAP = {
 @overload
 def create_strategy(db_type: Literal["postgres"]) -> PostgreSQLStrategy: ...
 
+
 @overload
 def create_strategy(db_type: Literal["hologres"]) -> PostgreSQLStrategy: ...
+
 
 @overload
 def create_strategy(db_type: Literal["mysql"]) -> MySQLStrategy: ...
 
+
 @overload
 def create_strategy(db_type: Literal["mssql"]) -> MSSQLStrategy: ...
+
 
 @overload
 def create_strategy(db_type: Literal["trino"]) -> TrinoStrategy: ...
 
+
 @overload
 def create_strategy(db_type: Literal["hive"]) -> HiveStrategy: ...
 
+
 @overload
 def create_strategy(db_type: Literal["odps"]) -> ODPSStrategy: ...
+
 
 @overload
 def create_strategy(db_type: str) -> DatabaseStrategy: ...

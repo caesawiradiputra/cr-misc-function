@@ -1,9 +1,11 @@
 from urllib.parse import quote_plus
+
 import trino.dbapi
 from trino.auth import BasicAuthentication
 from trino.dbapi import Connection as TrinoConnection
 
 from .base import RDBMSBaseStrategy
+
 
 class TrinoStrategy(RDBMSBaseStrategy):
     """Strategy for Trino distributed query engine."""

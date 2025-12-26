@@ -1,10 +1,12 @@
 from typing import Literal, Optional
 from urllib.parse import quote_plus
+
 import pandas as pd
 from pyhive import hive
 from pyhive.hive import Connection as HiveConnection
 
 from .base import RDBMSBaseStrategy, timed_operation
+
 
 class HiveStrategy(RDBMSBaseStrategy):
     """Strategy for Apache Hive with external table support."""
@@ -53,7 +55,8 @@ class HiveStrategy(RDBMSBaseStrategy):
             "datetime64[ns]": "TIMESTAMP",
         }
         columns_ddl = ",\n    ".join(
-            f"`{col}` {type_mapping.get(str(df[col].dtype), 'STRING')}" for col in df.columns
+            f"`{col}` {type_mapping.get(str(df[col].dtype), 'STRING')}"
+            for col in df.columns
         )
         hive_ddl = f"""
         CREATE EXTERNAL TABLE IF NOT EXISTS {full_name} (
