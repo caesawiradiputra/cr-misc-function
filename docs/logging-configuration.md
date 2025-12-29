@@ -157,11 +157,18 @@ Initialize logging for your application. **Call this exactly once** at the start
 1. Loads configuration from `app/configs/config.py` (or environment variables if standalone)
 2. Cleans up old log files (if `cleanup=True`)
 3. Removes any default loguru handlers
-4. Adds console handler with JSON serialization (for Grafana)
-5. Adds file handler with structured text format
-6. Enables thread-safe queue-based logging
+4. Adds console handler with custom minimal JSON sink (no sensitive paths)
+5. Adds file handler with structured text format, full diagnostics, and backtrace
+6. Enables thread-safe queue-based logging via `enqueue=True`
 
 **Returns:** None (logger is ready to use globally)
+
+**Key Features:**
+
+- **Minimal console output**: Custom JSON sink outputs only essential fields (timestamp, level, logger, function, line, message)
+- **No sensitive data in console**: File paths and system info excluded from JSON output
+- **Full diagnostics in files**: File logs include complete backtraces and diagnostic information
+- **Context support**: Use `logger.bind()` to add context fields that appear in JSON console output
 
 **Example:**
 
@@ -233,24 +240,26 @@ if __name__ == "__main__":
     logger.info("Started without cleanup")
 ```
 
----
-
-## Core Functions
-
-Initialize logging for a script execution.
+### Pattern 4: Adding Context to Logs
 
 ```python
-from app.configs.log_config import init_script_logging
+# Add context fields that appear in all subsequent logs
+from app.configs.log_config import logger
 
-def main():
-    logger = init_script_logging("my_script")
-    logger.info("Script started")
-    # ... script logic ...
+# Bind context (appears in JSON console output under "context")
+logger_with_context = logger.bind(user_id=123, request_id="abc-123")
+logger_with_context.info("User action")
+# JSON: {"timestamp": "...", "level": "INFO", ..., "message": "User action", "context": {"user_id": 123, "request_id": "abc-123"}}
+
+# Or use temporary context
+with logger.contextualize(transaction_id="tx-456"):
+    logger.info("Transaction started")
+    # Context only applies within this block
 ```
 
-**Parameters:**
+---
 
-### Log Output Formats
+## Log Output Formats
 
 #### File Format (Structured Text)
 
@@ -267,17 +276,25 @@ def main():
 - `module:function:line` - File/module, function name, line number
 - `message` - Your log message
 
-#### Console Format (JSON for Grafana)
+#### Console Format (Minimal JSON for Grafana)
 
 ```json
-{"text": "Processing started", "record": {"elapsed": {...}, "exception": null, "extra": {}, "file": {...}, "function": "process", "level": {"icon": "ℹ️", "name": "INFO", "no": 20}, "line": 42, "message": "Processing started", ...}}
+{"timestamp": "2025-12-29T14:30:45.123456+08:00", "level": "INFO", "logger": "module", "function": "process", "line": 42, "message": "Processing started"}
 ```
 
-**Why JSON on console?**
+With optional context:
 
-- Grafana dashboards can parse structured JSON directly
-- No color codes or formatting that breaks parsing
-- Full loguru record context available for filtering
+```json
+{"timestamp": "2025-12-29T14:30:45.456789+08:00", "level": "ERROR", "logger": "module", "function": "process", "line": 55, "message": "Processing failed", "exception": "Timeout", "context": {"user_id": 123}}
+```
+
+**Why minimal JSON on console?**
+
+- Clean, parseable output for Grafana dashboards
+- No sensitive file paths or system information
+- Includes only essential fields: timestamp, level, logger, function, line, message
+- Optional fields added only when present: exception, context (from `logger.bind()`)
+- Thread-safe and efficient for high-throughput applications
 
 ---
 
@@ -359,11 +376,13 @@ export LOG_DIR=/path/to/logs
 
 **Check:** JSON format is enabled on console (default behavior). Verify your log aggregation tool is parsing JSON from stdout.
 
-Example log line:
+Example log line format:
 
 ```json
-{"text": "Processing started", "record": {...}}
+{"timestamp": "2025-12-29T14:30:45.123456+08:00", "level": "INFO", "logger": "module", "function": "process", "line": 42, "message": "Processing started"}
 ```
+
+The custom JSON sink outputs minimal, clean JSON suitable for log aggregation and dashboards.
 
 ### Disk space growing too fast
 
@@ -435,4 +454,32 @@ MAX_LOG_FILES=50             # Keep maximum 50 log files
 
 ---
 
-**Last updated:** December 26, 2025
+---
+
+## Advanced Features
+
+### Custom JSON Console Output
+
+The logging system uses a custom JSON sink (`_console_json_sink`) for console output that:
+
+- Outputs minimal JSON with only essential fields
+- Excludes sensitive file paths and system information
+- Automatically includes exception details when present
+- Supports context fields via `logger.bind()` or `logger.contextualize()`
+
+This provides clean, secure JSON suitable for log aggregation tools like Grafana Loki while keeping file logs detailed with full diagnostics.
+
+### Thread-Safe Logging
+
+File logging uses `enqueue=True` to ensure thread-safe operations in concurrent environments. This is essential for:
+
+- FastAPI/async applications
+- Multi-threaded data processing
+- Background task workers
+- Parallel batch jobs
+
+No additional configuration needed—it's enabled by default.
+
+---
+
+**Last updated:** December 29, 2025
