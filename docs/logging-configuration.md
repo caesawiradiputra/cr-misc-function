@@ -261,7 +261,7 @@ with logger.contextualize(transaction_id="tx-456"):
 
 ## Log Output Formats
 
-#### File Format (Structured Text)
+### File Format (Structured Text)
 
 ```text
 2025-12-26 14:30:45.123 | INFO     | module:function:42 | Processing started

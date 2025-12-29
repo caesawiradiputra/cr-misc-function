@@ -165,7 +165,7 @@ CREATE INDEX idx_users_email ON app_schema.users(email);
 
 **Organization**: By environment
 
-```
+```text
 db/seeds/
 ├── development/
 │   ├── users_seed.sql
@@ -213,7 +213,7 @@ ON CONFLICT (role_id) DO NOTHING;
 
 **Organization**: By version
 
-```
+```text
 db/migrations/
 ├── v1.0/
 │   ├── 001_initial_schema.sql
@@ -272,7 +272,7 @@ CREATE INDEX idx_audit_table ON audit_log(table_name);
 
 **Contents**:
 
-```
+```text
 db/backups/
 ├── backup_strategy.md          # Overall backup plan
 ├── backup_schedule.sh          # Linux/Mac backup automation
@@ -322,7 +322,7 @@ db/backups/
 
 **Contents**:
 
-```
+```text
 scripts/deployment/
 ├── deploy.sh                   # Main deployment script (Unix)
 ├── deploy.ps1                  # Main deployment script (Windows)
@@ -384,7 +384,7 @@ echo "Deployment of $VERSION to $ENVIRONMENT completed!"
 
 **Contents**:
 
-```
+```text
 config/cron/
 ├── crontab.txt                 # Cron schedule definitions
 ├── cron_jobs.yaml              # Structured job definitions
@@ -438,7 +438,7 @@ jobs:
 
 **Contents**:
 
-```
+```text
 config/environment/
 ├── development.env             # Development environment
 ├── staging.env                 # Staging/QA environment
@@ -484,7 +484,7 @@ DEBUG_MODE=true
 
 **Structure**: Each version gets its own folder
 
-```
+```text
 releases/
 ├── v1.0.0/
 │   ├── ddl/
@@ -551,7 +551,7 @@ None - initial release
    ./pre-deploy-checks.sh production
    ```
 
-2. **Database Preparation**
+1. **Database Preparation**
 
    ```bash
    psql -f releases/v1.0.0/ddl/postgres/schema_initial.sql
@@ -559,14 +559,14 @@ None - initial release
    psql -f releases/v1.0.0/seeds/production/reference_data_seed.sql
    ```
 
-3. **Application Deployment**
+2. **Application Deployment**
 
    ```bash
    pip install -r requirements.txt
    systemctl restart app-service
    ```
 
-4. **Post-Deployment Validation**
+3. **Post-Deployment Validation**
 
    ```bash
    ./post-deploy-validation.sh production
@@ -580,7 +580,7 @@ If deployment fails, run:
 ./rollback.sh v1.0.0
 ```
 
-```
+```text
 
 **CHECKSUMS.txt**:
 ```
@@ -592,7 +592,7 @@ ddl/mssql/tables.sql: f6e5d4c3b2a1...
 ddl/postgres/schema_initial.sql: 1a2b3c4d5e6f...
 seeds/production/reference_data_seed.sql: 6f5e4d3c2b1a...
 
-```
+```text
 
 ---
 
