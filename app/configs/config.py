@@ -17,8 +17,14 @@ else:
     logger.warning(f"Vault .env file not found at {VAULT_ENV_FILE}")
 
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
-LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 DATETIME_NOW = os.environ.get("DATETIME_NOW", "").upper()
+
+# Log configuration
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+LOG_DIR = os.environ.get("LOG_DIR", "./logs")
+LOG_FILE_PREFIX = os.environ.get("LOG_FILE_PREFIX", "misc_function")
+LOG_RETENTION_DAYS = int(os.environ.get("LOG_RETENTION_DAYS", "7"))
+MAX_LOG_FILES = int(os.environ.get("MAX_LOG_FILES", "50"))
 
 try:
     now: datetime = (
