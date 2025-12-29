@@ -80,13 +80,17 @@ function Get-RemoteSha([string]$Remote, [string]$Branch) {
     return $sha
 }
 
-function Test-MasterInBranch([string]$MasterSha, [string]$Remote, [string]$Branch, [switch]$StrictEqual) {
+function Test-MasterInBranch([string]$MasterSha, [string]$Remote, [string]$Master, [string]$Branch, [switch]$StrictEqual) {
     if ($StrictEqual) {
         $branchSha = Get-RemoteSha -Remote $Remote -Branch $Branch
         return ($branchSha -eq $MasterSha)
     } else {
-        git merge-base --is-ancestor $MasterSha "$Remote/$Branch" 2>$null | Out-Null
-        return ($LASTEXITCODE -eq 0)
+        # Use git diff to check if branches are in sync
+        $diffRef = "$Remote/$Master...$Remote/$Branch"
+        Write-Verbose "Checking sync: git diff --stat $diffRef"
+        $diff = git diff --stat $diffRef 2>$null
+        # If diff is empty/null, branches are in sync (master is an ancestor of branch)
+        return -not $diff
     }
 }
 
@@ -134,15 +138,47 @@ function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev, [s
     
     foreach ($Branch in @($Master, $Dev, $Sit)) {
         # Check if local branch exists
-        git show-ref --verify --quiet "refs/heads/$Branch"
+        git show-ref --verify --quiet "refs/heads/$Branch" 2>$null
         if ($LASTEXITCODE -eq 0) {
-            Write-Info "Pulling '$Branch' from '$Remote/$Branch'"
-            git checkout $Branch 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-                git pull $Remote 2>$null | Out-Null
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Warn "Failed to pull '$Branch', but continuing..."
+            # Get current branch to avoid checkout if already on it
+            $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+            Write-Verbose "Current branch: $currentBranch, Target: $Branch"
+            
+            # Only checkout if not already on this branch
+            if ($currentBranch -ne $Branch) {
+                Write-Verbose "Running: git checkout $Branch"
+                # Temporarily allow non-terminating errors for git commands
+                $prevErrorAction = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
+                
+                git checkout $Branch 2>$null | Out-Null
+                $checkoutCode = $LASTEXITCODE
+                
+                $ErrorActionPreference = $prevErrorAction
+                
+                Write-Verbose "Checkout exit code: $checkoutCode"
+                
+                if ($checkoutCode -ne 0) {
+                    Write-Warn "Failed to checkout '$Branch', skipping pull..."
+                    continue
                 }
+            }
+            
+            Write-Verbose "Running: git pull $Remote"
+            Write-Info "Pulling '$Branch' from '$Remote/$Branch'"
+            
+            $prevErrorAction = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            
+            git pull $Remote 2>$null | Out-Null
+            $pullCode = $LASTEXITCODE
+            
+            $ErrorActionPreference = $prevErrorAction
+            
+            Write-Verbose "Pull exit code: $pullCode"
+            
+            if ($pullCode -ne 0) {
+                Write-Warn "Failed to pull '$Branch', but continuing..."
             }
         }
     }
@@ -174,8 +210,8 @@ try {
     $masterSha = Get-RemoteSha -Remote $Remote -Branch $Master
 
     # * Check sync status
-    $devSynced = Test-MasterInBranch -MasterSha $masterSha -Remote $Remote -Branch $Dev -StrictEqual:$StrictEqual
-    $sitSynced = Test-MasterInBranch -MasterSha $masterSha -Remote $Remote -Branch $Sit -StrictEqual:$StrictEqual
+    $devSynced = Test-MasterInBranch -MasterSha $masterSha -Remote $Remote -Master $Master -Branch $Dev -StrictEqual:$StrictEqual
+    $sitSynced = Test-MasterInBranch -MasterSha $masterSha -Remote $Remote -Master $Master -Branch $Sit -StrictEqual:$StrictEqual
 
     if ($StrictEqual) {
         Write-Info "Strict equality mode: branches must equal '$Remote/$Master' tip"
