@@ -1,0 +1,183 @@
+{
+    // =====================================================
+    // Core Editor & UX
+    // =====================================================
+    "workbench.iconTheme": "material-icon-theme",
+    "git.autofetch": false,
+    "extensions.ignoreRecommendations": true,
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "editor.rulers": [
+        88
+    ],
+    "editor.renderWhitespace": "boundary",
+    // Language-specific tweaks
+    "[python]": {
+        "diffEditor.ignoreTrimWhitespace": true
+    },
+    // =====================================================
+    // Python Core
+    // =====================================================
+    "python.languageServer": "Pylance",
+    "python.useEnvironmentsExtension": true,
+    "python.terminal.activateEnvironment": true,
+    // NOTE:
+    // For Conda, prefer interpreter selection via VS Code UI.
+    // Do NOT point this to the Miniconda root.
+    // Uncomment only if you want to hard-pin an env.
+    //
+    // "python.defaultInterpreterPath": "C:\\Users\\203715\\miniconda3\\envs\\af-data\\python.exe",
+    // =====================================================
+    // Formatting & Code Actions (Ruff as single source of truth)
+    // =====================================================
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit",
+        "source.fixAll.ruff": "explicit",
+        "source.organizeImports": "explicit"
+    },
+    "python.formatting.provider": "none",
+    // =====================================================
+    // Ruff
+    // =====================================================
+    "ruff.enable": true,
+    "ruff.fixAll": true,
+    "ruff.organizeImports": true,
+    // =====================================================
+    // Typing & Static Analysis
+    // =====================================================
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.completeFunctionParens": true,
+    "python.analysis.useLibraryCodeForTypes": true,
+    "mypy-type-checker.args": [
+        "--ignore-missing-imports"
+    ],
+    // =====================================================
+    // Jupyter
+    // =====================================================
+    "jupyter.askForKernelRestart": false,
+    "jupyter.interactiveWindow.creationMode": "perFile",
+    // =====================================================
+    // GitHub Copilot & Chat
+    // =====================================================
+    "github.copilot.nextEditSuggestions.enabled": true,
+    "github.copilot.chat.githubMcpServer.enabled": true,
+    "github.copilot.chat.githubMcpServer.lockdown": true,
+    "github.copilot.chat.githubMcpServer.readonly": true,
+    "github.copilot.chat.newWorkspace.useContext7": true,
+    "chat.mcp.gallery.enabled": true,
+    "chat.agent.thinking.collapsedTools": "withThinking",
+    "chat.promptFilesRecommendations": {},
+    // =====================================================
+    // Terminal Tool Safety (Very good setup 👍)
+    // =====================================================
+    "chat.tools.terminal.autoApprove": {
+        "cd": true,
+        "echo": true,
+        "ls": true,
+        "pwd": true,
+        "cat": true,
+        "head": true,
+        "tail": true,
+        "findstr": true,
+        "wc": true,
+        "tr": true,
+        "cut": true,
+        "cmp": true,
+        "which": true,
+        "basename": true,
+        "dirname": true,
+        "realpath": true,
+        "readlink": true,
+        "stat": true,
+        "file": true,
+        "du": true,
+        "df": true,
+        "sleep": true,
+        "nl": true,
+        "grep": true,
+        "/^git (status\\b.*)$/": true,
+        "/^git (log\\b.*)$/": true,
+        "/^git (show\\b.*)$/": true,
+        "/^git (diff\\b.*)$/": true,
+        "/^git (ls-files\\b.*)$/": true,
+        "/^git (grep\\b.*)$/": true,
+        "/^git (branch\\b.*)$/": true,
+        "/^git (branch\\b.*-(d|D|m|M|-delete|-force)\\b.*)$/": false,
+        "/^Get-ChildItem\\b/i": true,
+        "/^Get-Content\\b/i": true,
+        "/^Get-Date\\b/i": true,
+        "/^Get-Random\\b/i": true,
+        "/^Get-Location\\b/i": true,
+        "/^Write-Host\\b/i": true,
+        "/^Write-Output\\b/i": true,
+        "/^Out-String\\b/i": true,
+        "/^Split-Path\\b/i": true,
+        "/^Join-Path\\b/i": true,
+        "/^Start-Sleep\\b/i": true,
+        "/^Where-Object\\b/i": true,
+        "/^Select-[a-z0-9]/i": true,
+        "/^Measure-[a-z0-9]/i": true,
+        "/^Compare-[a-z0-9]/i": true,
+        "/^Format-[a-z0-9]/i": true,
+        "/^Sort-[a-z0-9]/i": true,
+        "column": true,
+        "/^column\\b.*-c\\s+[0-9]{4,}/": false,
+        "date": true,
+        "/^date\\b.*(-s|--set)\\b/": false,
+        "find": true,
+        "/^find\\b.*-(delete|exec|execdir|fprint|fprintf|fls|ok|okdir)\\b/": false,
+        "rg": true,
+        "/^rg\\b.*(--pre|--hostname-bin)\\b/": false,
+        "sed": true,
+        "/^sed\\b.*(-[a-zA-Z]*(e|i|I|f)[a-zA-Z]*|--expression|--file|--in-place)\\b/": false,
+        "/^sed\\b.*(/e|/w|;W)/": false,
+        "sort": true,
+        "/^sort\\b.*-(o|S)\\b/": false,
+        "tree": true,
+        "/^tree\\b.*-o\\b/": false,
+        "rm": false,
+        "rmdir": false,
+        "del": false,
+        "Remove-Item": false,
+        "rd": false,
+        "erase": false,
+        "dd": false,
+        "kill": false,
+        "ps": false,
+        "top": false,
+        "Stop-Process": false,
+        "spps": false,
+        "taskkill": false,
+        "taskkill.exe": false,
+        "curl": false,
+        "wget": false,
+        "Invoke-RestMethod": false,
+        "Invoke-WebRequest": false,
+        "irm": false,
+        "iwr": false,
+        "chmod": false,
+        "chown": false,
+        "Set-ItemProperty": false,
+        "sp": false,
+        "Set-Acl": false,
+        "jq": false,
+        "xargs": false,
+        "eval": false,
+        "Invoke-Expression": false,
+        "iex": false
+    },
+    // =====================================================
+    // Markdown
+    // =====================================================
+    "markdownlint.config": {
+        "MD024": false
+    },
+    // =====================================================
+    // Project Management
+    // =====================================================
+    "projectManager.git.baseFolders": [
+        "C:\\Users\\203715\\Documents\\Repo"
+    ]
+}

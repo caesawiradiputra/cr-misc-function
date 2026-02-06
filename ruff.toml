@@ -1,0 +1,54 @@
+# ============================
+# Core Ruff Configuration
+# ============================
+
+line-length = 88
+target-version = "py311"
+
+# Rule sets:
+# E, F  -> basic correctness
+# I     -> import sorting
+# B     -> bugbear (real bugs)
+# UP    -> modern Python
+# C90   -> complexity guard (light)
+select = ["E", "F", "I", "B", "UP", "C90"]
+
+# Pandas / SQL / Data-engineering friendly ignores
+ignore = [
+  "E501",   # line length handled by formatter
+  "B008",   # function calls in defaults (common in SQLAlchemy)
+  "B905",   # zip(strict=) – noisy, low value
+  "C901"    # complexity handled manually
+]
+
+# Allow common data-engineering patterns
+extend-allowed-imports = [
+  "pandas",
+  "sqlalchemy",
+  "psycopg2",
+  "kafka",
+  "confluent_kafka"
+]
+
+# ============================
+# Formatting
+# ============================
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+# ============================
+# Per-file ignores
+# ============================
+
+[per-file-ignores]
+# Pandas scripts often have long chains & temp vars
+"app/**/etl*.py" = ["F841"]
+
+# SQLAlchemy models are declarative & verbose
+"app/**/models/*.py" = ["F401", "B008"]
+
+# Tests can be looser
+"tests/**/*.py" = ["S101", "D"]

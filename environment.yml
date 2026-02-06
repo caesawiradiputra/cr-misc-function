@@ -1,0 +1,10 @@
+name: ci
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - ruff
+  - mypy
+  - pip
+  - pip:
+      - types-requests
