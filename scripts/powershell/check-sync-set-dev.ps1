@@ -1,11 +1,12 @@
 <#!
 .SYNOPSIS
-    Checks if remote dev and sit are in sync with remote master and, if yes, activates local dev for new branch creation.
+    Checks if dev branch has the same code changes as master branch (diff-based sync check).
 
 .DESCRIPTION
     - Fetches refs (unless -NoFetch) and validates existence of remote branches.
-    - "In sync with master" means: master is an ancestor of the target branch (or exactly equal with -StrictEqual).
-    - If BOTH dev and sit are in sync with master, checks out local dev (creating/tracking it if missing) and fast-forwards.
+    - "In sync" means: no code differences between branches (git diff is empty).
+    - Compares actual code changes, not commit history.
+    - If dev is in sync with master, checks out local dev (creating/tracking it if missing) and fast-forwards.
     - Exits with code 0 on success (dev set active), non-zero otherwise.
 
 .PARAMETER Remote
@@ -17,12 +18,6 @@
 .PARAMETER Dev
     Dev branch name. Default: dev.
 
-.PARAMETER Sit
-    SIT branch name. Default: sit.
-
-.PARAMETER StrictEqual
-    Require branch tip to equal master tip (instead of master being an ancestor).
-
 .PARAMETER NoFetch
     Skip fetching remote refs.
 
@@ -30,10 +25,11 @@
     .\scripts\powershell\check-sync-set-dev.ps1
 
 .EXAMPLE
-    .\scripts\powershell\check-sync-set-dev.ps1 -Remote origin -Master master -Dev dev -Sit sit -StrictEqual
+    .\scripts\powershell\check-sync-set-dev.ps1 -Remote origin -Master master -Dev dev
 
 .NOTES
     Requires Git to be installed and the script to be run inside a Git repository.
+    Checks sync by comparing code diffs, not commit history.
 #>
 
 [CmdletBinding()]
@@ -41,8 +37,6 @@ param(
     [string]$Remote = "origin",
     [string]$Master = "master",
     [string]$Dev    = "dev",
-    [string]$Sit    = "sit",
-    [switch]$StrictEqual,
     [switch]$NoFetch
 )
 
@@ -80,18 +74,10 @@ function Get-RemoteSha([string]$Remote, [string]$Branch) {
     return $sha
 }
 
-function Test-MasterInBranch([string]$MasterSha, [string]$Remote, [string]$Master, [string]$Branch, [switch]$StrictEqual) {
-    if ($StrictEqual) {
-        $branchSha = Get-RemoteSha -Remote $Remote -Branch $Branch
-        return ($branchSha -eq $MasterSha)
-    } else {
-        # Use git diff to check if branches are in sync
-        $diffRef = "$Remote/$Master...$Remote/$Branch"
-        Write-Verbose "Checking sync: git diff --stat $diffRef"
-        $diff = git diff --stat $diffRef 2>$null
-        # If diff is empty/null, branches are in sync (master is an ancestor of branch)
-        return -not $diff
-    }
+function Test-MasterInBranch([string]$Remote, [string]$Master, [string]$Branch) {
+    # Check if branches have the same code changes (no diff means sync)
+    $diff = git diff "$Remote/$Master" "$Remote/$Branch" 2>$null
+    return -not $diff
 }
 
 function Ensure-LocalBranch([string]$Branch, [string]$Remote) {
@@ -116,38 +102,24 @@ function Checkout-And-FF-Only([string]$Branch) {
     if ($LASTEXITCODE -ne 0) { throw "Failed to fast-forward '$Branch'" }
 }
 
-function Display-BranchDiffs([string]$Remote, [string]$Master, [string]$Dev, [string]$Sit) {
+function Display-BranchDiffs([string]$Remote, [string]$Master, [string]$Dev) {
     Write-Host ""
     Write-Host "=== BRANCH DIFF SUMMARY ===" -ForegroundColor Cyan
     
     Write-Host ""
-    Write-Host "$Remote/$Master → $Remote/$Dev (Features in development)" -ForegroundColor Cyan
+    Write-Host "$Remote/$Master <-> $Remote/$Dev" -ForegroundColor Cyan
     git diff "$Remote/$Master" "$Remote/$Dev" --stat 2>$null
-    
-    Write-Host ""
-    Write-Host "$Remote/$Master → $Remote/$Sit (Features staged)" -ForegroundColor Cyan
-    git diff "$Remote/$Master" "$Remote/$Sit" --stat 2>$null
-    
-    Write-Host ""
-    Write-Host "$Remote/$Dev → $Remote/$Sit (Ready to stage)" -ForegroundColor Cyan
-    git diff "$Remote/$Dev" "$Remote/$Sit" --stat 2>$null
 }
 
-function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev, [string]$Sit) {
+function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev) {
     Write-Info "Updating local protected branches from remote..."
     
-    foreach ($Branch in @($Master, $Dev, $Sit)) {
-        # Check if local branch exists
+    foreach ($Branch in @($Master, $Dev)) {
         git show-ref --verify --quiet "refs/heads/$Branch" 2>$null
         if ($LASTEXITCODE -eq 0) {
-            # Get current branch to avoid checkout if already on it
             $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
-            Write-Verbose "Current branch: $currentBranch, Target: $Branch"
             
-            # Only checkout if not already on this branch
             if ($currentBranch -ne $Branch) {
-                Write-Verbose "Running: git checkout $Branch"
-                # Temporarily allow non-terminating errors for git commands
                 $prevErrorAction = $ErrorActionPreference
                 $ErrorActionPreference = 'Continue'
                 
@@ -156,15 +128,12 @@ function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev, [s
                 
                 $ErrorActionPreference = $prevErrorAction
                 
-                Write-Verbose "Checkout exit code: $checkoutCode"
-                
                 if ($checkoutCode -ne 0) {
                     Write-Warn "Failed to checkout '$Branch', skipping pull..."
                     continue
                 }
             }
             
-            Write-Verbose "Running: git pull $Remote"
             Write-Info "Pulling '$Branch' from '$Remote/$Branch'"
             
             $prevErrorAction = $ErrorActionPreference
@@ -174,8 +143,6 @@ function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev, [s
             $pullCode = $LASTEXITCODE
             
             $ErrorActionPreference = $prevErrorAction
-            
-            Write-Verbose "Pull exit code: $pullCode"
             
             if ($pullCode -ne 0) {
                 Write-Warn "Failed to pull '$Branch', but continuing..."
@@ -197,39 +164,28 @@ try {
         Write-Warn "Skipping fetch due to -NoFetch"
     }
 
-    # Update local protected branches
-    Update-LocalBranches -Remote $Remote -Master $Master -Dev $Dev -Sit $Sit
+    Update-LocalBranches -Remote $Remote -Master $Master -Dev $Dev
 
-    # ! Validate remote branches exist
-    foreach ($b in @($Master, $Dev, $Sit)) {
+    foreach ($b in @($Master, $Dev)) {
         if (-not (Test-RemoteBranchExists -Remote $Remote -Branch $b)) {
             throw "Remote branch '$Remote/$b' does not exist"
         }
     }
 
-    $masterSha = Get-RemoteSha -Remote $Remote -Branch $Master
+    $devSynced = Test-MasterInBranch -Remote $Remote -Master $Master -Branch $Dev
 
-    # * Check sync status
-    $devSynced = Test-MasterInBranch -MasterSha $masterSha -Remote $Remote -Master $Master -Branch $Dev -StrictEqual:$StrictEqual
-    $sitSynced = Test-MasterInBranch -MasterSha $masterSha -Remote $Remote -Master $Master -Branch $Sit -StrictEqual:$StrictEqual
+    Write-Info "Comparing code changes between branches..."
 
-    if ($StrictEqual) {
-        Write-Info "Strict equality mode: branches must equal '$Remote/$Master' tip"
+    if ($devSynced) {
+        Write-Okay "'$Remote/$Dev' has NO code differences from '$Remote/$Master'"
     } else {
-        Write-Info "Ancestor mode: '$Remote/$Master' must be contained in branch history"
+        Write-Warn "'$Remote/$Dev' HAS code differences from '$Remote/$Master'"
     }
 
-    if ($devSynced) { Write-Okay "'$Remote/$Dev' is in sync with '$Remote/$Master'" }
-    else { Write-Warn "'$Remote/$Dev' is NOT in sync with '$Remote/$Master'" }
-
-    if ($sitSynced) { Write-Okay "'$Remote/$Sit' is in sync with '$Remote/$Master'" }
-    else { Write-Warn "'$Remote/$Sit' is NOT in sync with '$Remote/$Master'" }
-
-    if ($devSynced -and $sitSynced) {
-        Write-Info "Both '$Dev' and '$Sit' are in sync."
+    if ($devSynced) {
+        Write-Info "'$Dev' is in sync with '$Master' (same code)."
         
-        # Display diff summary for context
-        Display-BranchDiffs -Remote $Remote -Master $Master -Dev $Dev -Sit $Sit
+        Display-BranchDiffs -Remote $Remote -Master $Master -Dev $Dev
         
         Write-Host ""
         Write-Host "About to:" -ForegroundColor Cyan
@@ -248,10 +204,10 @@ try {
         Write-Okay "Active branch is now '$Dev'. You can create new branches from here."
         exit 0
     } else {
-        Write-Err "Conditions not met: dev and sit must be in sync with master. Aborting."
+        Write-Err "Conditions not met: '$Dev' must have no code differences from '$Master'. Aborting."
         Write-Host "Suggested next steps:" -ForegroundColor DarkGray
-        if (-not $devSynced) { Write-Host "  - Update '$Dev' with '$Master': git checkout $Dev; git pull --ff-only; git merge $Remote/$Master" -ForegroundColor DarkGray }
-        if (-not $sitSynced) { Write-Host "  - Update '$Sit' with '$Master': git checkout $Sit; git pull --ff-only; git merge $Remote/$Master" -ForegroundColor DarkGray }
+        Write-Host "  - View differences: git diff $Remote/$Master $Remote/$Dev" -ForegroundColor DarkGray
+        Write-Host "  - Sync dev with master: git checkout $Dev; git merge $Remote/$Master" -ForegroundColor DarkGray
         exit 2
     }
 }

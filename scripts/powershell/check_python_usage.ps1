@@ -1,0 +1,1 @@
+Get-Process python | Where-Object { $_.CPU -gt 0 } | Select-Object Id, CPU, WorkingSet, @{Name='Runtime';Expression={(Get-Date) - $_.StartTime}} -First 5
