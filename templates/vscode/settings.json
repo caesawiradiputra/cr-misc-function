@@ -28,9 +28,12 @@
     //
     // "python.defaultInterpreterPath": "C:\\Users\\203715\\miniconda3\\envs\\af-data\\python.exe",
     // =====================================================
-    // Formatting & Code Actions (Ruff as single source of truth)
+    // Formatting & Code Actions (Manual trigger only)
     // =====================================================
-    "editor.formatOnSave": true,
+    // DISABLED: Prevents unwanted auto-formatting on file open/view
+    // Use Shift+Alt+F to manually format when ready
+    "editor.formatOnSave": false,
+    "editor.formatOnPaste": false,
     "editor.codeActionsOnSave": {
         "source.fixAll": "explicit",
         "source.fixAll.ruff": "explicit",
@@ -179,5 +182,6 @@
     // =====================================================
     "projectManager.git.baseFolders": [
         "C:\\Users\\203715\\Documents\\Repo"
-    ]
+    ],
+    "python.defaultInterpreterPath": "c:\\Users\\203715\\AppData\\Local\\miniconda3"
 }

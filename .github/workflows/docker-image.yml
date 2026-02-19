@@ -1,0 +1,110 @@
+name: Docker Image CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker Image Tag (e.g., 0.1.0, 0.2.0)"
+        required: true
+        default: "latest"
+      environment:
+        description: "Target Environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - sit
+          - prod
+
+run-name: "Docker Build & Push - Tag: ${{ github.event.inputs.image_tag || github.ref_name }} - Branch: ${{ github.ref_name }}"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: "cr-misc-function"
+      REGISTRY: "registry-intl.ap-southeast-5.aliyuncs.com"
+      REGISTRY_NAMESPACE: "bfi-registry"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract branch name
+        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
+
+      - name: Determine branch-based tag
+        run: |
+          if [[ "${{ env.BRANCH_NAME }}" == "master" ]]; then
+            echo "BRANCH_TAG=latest" >> $GITHUB_ENV
+            echo "ENV_TARGET=prod" >> $GITHUB_ENV
+          elif [[ "${{ env.BRANCH_NAME }}" == "sit" ]]; then
+            echo "BRANCH_TAG=sit" >> $GITHUB_ENV
+            echo "ENV_TARGET=sit" >> $GITHUB_ENV
+          else
+            echo "BRANCH_TAG=dev" >> $GITHUB_ENV
+            echo "ENV_TARGET=dev" >> $GITHUB_ENV
+          fi
+
+      - name: Set environment from workflow input
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "ENV_TARGET=${{ github.event.inputs.environment }}" >> $GITHUB_ENV
+
+      - name: Set IMAGE_TAG
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "IMAGE_TAG=${{ github.event.inputs.image_tag }}" >> $GITHUB_ENV
+          else
+            echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+          fi
+
+      - name: Log in to Alibaba Cloud Container Registry
+        run: |
+          echo "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}" | docker login \
+            --username="${{ secrets.ALIYUN_REGISTRY_USERNAME }}" \
+            --password-stdin ${{ env.REGISTRY }}
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            -f Dockerfile \
+            .
+
+      - name: Tag image with branch tag
+        run: |
+          docker tag \
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.BRANCH_TAG }}
+
+      - name: Push image tag to registry
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: Push branch tag to registry
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.BRANCH_TAG }}
+
+      - name: Image build summary
+        run: |
+          echo "✅ Docker Image Build & Push Successful"
+          echo ""
+          echo "📦 Image Details:"
+          echo "  Repository: ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}"
+          echo "  Version Tag: ${{ env.IMAGE_TAG }}"
+          echo "  Branch Tag: ${{ env.BRANCH_TAG }}"
+          echo "  Target Environment: ${{ env.ENV_TARGET }}"
+          echo "  Commit: ${{ github.sha }}"
+          echo "  Branch: ${{ env.BRANCH_NAME }}"
+          echo ""
+          echo "🚀 Deployment:"
+          echo "  Note: Application secrets are managed in ACK Secrets, not GitHub Secrets"
+          echo "  - ConfigMap: cr-misc-function-config (non-sensitive config)"
+          echo "  - Secret: cr-misc-function-secrets (sensitive data)"
+          echo "  - Refer to docs/ACK-SECRETS.md for deployment details"
+          echo ""
+          echo "🔗 Full Image Path:"
+          echo "  ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          echo "  ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.BRANCH_TAG }}"

@@ -1,7 +1,7 @@
 [project]
 name = "app"
 version = "0.1.0"
-description = ""
+description = "cr-misc-function"
 authors = [
     {name = "caesaramBFI",email = "caesa.ram@bfi.co.id"}
 ]
@@ -20,7 +20,9 @@ dependencies = [
     "mysql-connector-python (>=9.3.0,<10.0.0)",
     "pandas (>=2.3.1,<3.0.0)",
     "asyncio (>=3.4.3,<4.0.0)",
-    "thrift (>=0.22.0,<0.23.0)"
+    "thrift (>=0.22.0,<0.23.0)",
+    "ruamel.yaml (>=0.18.0,<0.19.0)",
+    "pyyaml (>=6.0.3,<7.0.0)"
 ]
 
 

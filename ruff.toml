@@ -11,6 +11,8 @@ target-version = "py311"
 # B     -> bugbear (real bugs)
 # UP    -> modern Python
 # C90   -> complexity guard (light)
+
+[lint]
 select = ["E", "F", "I", "B", "UP", "C90"]
 
 # Pandas / SQL / Data-engineering friendly ignores
@@ -21,8 +23,9 @@ ignore = [
   "C901"    # complexity handled manually
 ]
 
-# Allow common data-engineering patterns
-extend-allowed-imports = [
+# Allow common data-engineering packages for import sorting
+[lint.isort]
+known-third-party = [
   "pandas",
   "sqlalchemy",
   "psycopg2",
@@ -43,7 +46,7 @@ line-ending = "auto"
 # Per-file ignores
 # ============================
 
-[per-file-ignores]
+[lint.per-file-ignores]
 # Pandas scripts often have long chains & temp vars
 "app/**/etl*.py" = ["F841"]
 
