@@ -115,16 +115,16 @@ def remove_duplicates(
     """Remove pip packages that are already managed by conda."""
     conda_set = {pkg.lower() for pkg in conda_packages}
     return {
-        name: version
-        for name, version in pip_packages.items()
-        if name not in conda_set
+        name: version for name, version in pip_packages.items() if name not in conda_set
     }
 
 
 def has_poetry_files() -> bool:
     """Check if pyproject.toml and poetry.lock exist in current directory."""
     current_dir = Path.cwd()
-    return (current_dir / "pyproject.toml").exists() and (current_dir / "poetry.lock").exists()
+    return (current_dir / "pyproject.toml").exists() and (
+        current_dir / "poetry.lock"
+    ).exists()
 
 
 def build_environment_yaml(
@@ -180,6 +180,22 @@ def validate_yaml_file(path: Path) -> None:
     """Validate YAML syntax."""
     with path.open("r", encoding="utf-8") as f:
         yaml.safe_load(f)
+
+
+def print_rebuild_commands(
+    env_name: str,
+    output_path: Path,
+    python_version: str,
+    use_poetry: bool,
+) -> None:
+    print("\nClean rebuild commands:")
+    print("  conda deactivate")
+    print(f"  conda remove -n {env_name} --all")
+    print(f"  conda env create -f {output_path}")
+    print(f"  conda activate {env_name}")
+    if use_poetry:
+        print("  poetry config virtualenvs.in-project true")
+        print("  poetry install")
 
 
 def parse_args() -> argparse.Namespace:
@@ -240,6 +256,7 @@ def main() -> None:
     validate_yaml_file(output_path)
 
     print(f"✓ Generated {output_path}")
+    print_rebuild_commands(env_name, output_path, python_version, use_poetry)
     if use_poetry:
         print("Note: Python packages are managed by Poetry")
         print("Run: poetry install")

@@ -4,7 +4,7 @@ This folder contains helper Python scripts for environment management, dependenc
 
 ## Scripts
 
-### generate_env.py
+### dev_generate_env.py
 
 Generates a clean, portable `environment.yml` file from the active conda environment with intelligent dependency detection.
 
@@ -24,16 +24,16 @@ Generates a clean, portable `environment.yml` file from the active conda environ
 cd cr-misc-function
 
 # Generate environment.yml from active conda environment
-python scripts/python/generate_env.py
+python scripts/python/dev_generate_env.py
 
 # Preview the YAML without writing file (dry-run)
-python scripts/python/generate_env.py --dry-run
+python scripts/python/dev_generate_env.py --dry-run
 
 # Specify custom output file
-python scripts/python/generate_env.py --output custom-env.yml
+python scripts/python/dev_generate_env.py --output custom-env.yml
 
 # Generate from base environment (normally prevented)
-python scripts/python/generate_env.py --allow-base
+python scripts/python/dev_generate_env.py --allow-base
 ```
 
 **Parameters:**
@@ -118,10 +118,10 @@ conda activate cr-misc-function-env
 conda install numpy pandas
 
 # 3. Generate clean environment.yml
-python scripts/python/generate_env.py
+python scripts/python/dev_generate_env.py
 
 # 4. Verify dry-run before updating
-python scripts/python/generate_env.py --dry-run
+python scripts/python/dev_generate_env.py --dry-run
 
 # 5. Commit to version control
 git add environment.yml
@@ -130,7 +130,7 @@ git commit -m "chore: update environment dependencies"
 
 ---
 
-### detect_undeclared_packages.py
+### dev_detect_undeclared_packages.py
 
 Detects Python packages imported in your code but not explicitly declared in your project dependencies.
 
@@ -150,19 +150,19 @@ Detects Python packages imported in your code but not explicitly declared in you
 cd cr-misc-function
 
 # Scan current project directory for undeclared packages
-python scripts/python/detect_undeclared_packages.py
+python scripts/python/dev_detect_undeclared_packages.py
 
 # Scan specific directory
-python scripts/python/detect_undeclared_packages.py --path ./app
+python scripts/python/dev_detect_undeclared_packages.py --path ./app
 
 # Ignore specific packages
-python scripts/python/detect_undeclared_packages.py --ignore tests,docs
+python scripts/python/dev_detect_undeclared_packages.py --ignore tests,docs
 
 # Show detailed import locations
-python scripts/python/detect_undeclared_packages.py --verbose
+python scripts/python/dev_detect_undeclared_packages.py --verbose
 
 # Generate report file
-python scripts/python/detect_undeclared_packages.py --output report.txt
+python scripts/python/dev_detect_undeclared_packages.py --output report.txt
 ```
 
 **Parameters:**
@@ -212,7 +212,7 @@ Declared packages (15):
 RECOMMENDATIONS:
   - Run: pip install requests numpy pandas sqlalchemy python-dateutil
   - Or: poetry add requests numpy pandas sqlalchemy python-dateutil
-  - Then: python scripts/python/generate_env.py
+  - Then: python scripts/python/dev_generate_env.py
 ```
 
 **Exit Codes:**
@@ -234,7 +234,7 @@ RECOMMENDATIONS:
 
 ```powershell
 # Run detection
-python scripts/python/detect_undeclared_packages.py
+python scripts/python/dev_detect_undeclared_packages.py
 
 # Install missing packages
 pip install requests numpy
@@ -242,17 +242,17 @@ pip install requests numpy
 poetry add requests numpy
 
 # Update environment files
-python scripts/python/generate_env.py
+python scripts/python/dev_generate_env.py
 ```
 
 #### **Scenario 2: Check before environment export**
 
 ```powershell
 # Verify all imports are declared
-python scripts/python/detect_undeclared_packages.py
+python scripts/python/dev_detect_undeclared_packages.py
 
 # If clean (no undeclared), generate environment
-python scripts/python/generate_env.py
+python scripts/python/dev_generate_env.py
 
 # Commit
 git add environment.yml pyproject.toml
@@ -266,7 +266,7 @@ git commit -m "chore: update dependencies"
 git clone <repo>
 
 # Check for undeclared packages (will fail if any exist)
-python scripts/python/detect_undeclared_packages.py
+python scripts/python/dev_detect_undeclared_packages.py
 
 # If clean, set up environment
 conda env create -f environment.yml
@@ -276,11 +276,113 @@ poetry install  # (if using Poetry)
 
 ---
 
+### dev-remove-base-only-packages.py
+
+Displays the command to remove utility packages that clutter conda project environments.
+
+**Purpose:** Identify and display the conda remove command for packages that belong in the base environment, not project-specific environments. You decide when to run the command.
+
+**Base-Only Packages Identified:**
+
+- `poetry`, `poetry-core` — Dependency and package management
+- `pipdeptree` — Dependency tree visualization
+- `pip-audit` — Pip package security auditing
+- `jupyter`, `jupyterlab` — Notebook environments (optional, use `--include-jupyter`)
+- `ipython` — Interactive Python shell (optional, use `--include-ipython`)
+
+**Usage:**
+
+```powershell
+cd cr-misc-function
+
+# Display removal command for base-only packages
+python scripts/python/dev-remove-base-only-packages.py
+
+# Include Jupyter packages in removal list
+python scripts/python/dev-remove-base-only-packages.py --include-jupyter
+
+# Include both Jupyter and IPython
+python scripts/python/dev-remove-base-only-packages.py --include-jupyter --include-ipython
+```
+
+**Parameters:**
+
+- `--include-jupyter` - Also identify `jupyter` and `jupyterlab` packages
+- `--include-ipython` - Also identify `ipython` package
+
+**Behavior:**
+
+1. Detects the active conda environment name
+2. Defines list of base-only packages to check (with optional additions)
+3. Scans the environment to find which packages are installed
+4. Displays packages that will be removed
+5. Shows the exact conda command to run
+6. **You decide when to run it** — just copy and paste the command
+
+**Example Output:**
+
+```text
+=================================================
+     Remove Base-Only Packages
+=================================================
+
+[*] Checking conda environment
+[OK] Active environment: cr-misc-function-env
+
+[*] Identifying packages to remove
+[INFO] Target packages: poetry, poetry-core, pipdeptree, pip-audit
+
+[*] Checking installed packages
+[OK] Found 3 package(s) to remove:
+  - poetry
+  - poetry-core
+  - pipdeptree
+
+[*] Command to execute
+
+conda remove --yes --quiet poetry poetry-core pipdeptree
+
+=================================================
+     Ready to Run
+=================================================
+
+[OK] Copy and run the command above when ready
+[INFO] This will remove 3 package(s) from your environment
+```
+
+**Exit Codes:**
+
+- `0`: Success — command displayed (packages found or not)
+- `1`: Error — conda not accessible or other error
+
+**When to Use:**
+
+- After setting up new project environment
+- Before creating environment backups or sharing environments
+- To reduce `environment.yml` bloat in project-specific environments
+- To keep base environment utilities separate from project dependencies
+
+**Best Practice:**
+
+Base-only packages should be installed in the **base conda environment**, not in project environments:
+
+```powershell
+# Correct way (one time)
+conda activate base
+pip install poetry pipdeptree pip-audit
+
+# Then use in any project environment
+conda activate my-project
+python scripts/python/dev_generate_env.py
+```
+
+---
+
 ## Prerequisites
 
 - Python 3.11+
 - conda (for environment.yml generation and detection)
-- pipdeptree (optional, for `generate_env.py` — installs fallback to pip freeze if missing)
+- pipdeptree (optional, for `dev_generate_env.py` — installs fallback to pip freeze if missing)
 
 ## Installation
 
@@ -314,7 +416,7 @@ conda activate cr-misc-function-env
 conda install numpy
 
 # 3. Check for undeclared imports
-python scripts/python/detect_undeclared_packages.py
+python scripts/python/dev_detect_undeclared_packages.py
 
 # 4. Install any Python packages not in conda
 pip install requests
@@ -322,10 +424,10 @@ pip install requests
 poetry add requests
 
 # 5. Update environment files
-python scripts/python/generate_env.py
+python scripts/python/dev_generate_env.py
 
 # 6. Verify output (dry-run)
-python scripts/python/generate_env.py --dry-run
+python scripts/python/dev_generate_env.py --dry-run
 
 # 7. Commit changes
 git add environment.yml pyproject.toml poetry.lock
@@ -337,7 +439,7 @@ git commit -m "chore: update project dependencies"
 ```powershell
 # In your CI/CD workflow:
 # 1. Check that all imports are declared (fail if not)
-python scripts/python/detect_undeclared_packages.py
+python scripts/python/dev_detect_undeclared_packages.py
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Undeclared package imports found!"
     exit 1
@@ -353,8 +455,8 @@ if ($LASTEXITCODE -ne 0) {
 
 ## Best Practices
 
-- **Regular Updates:** Run `generate_env.py` after each `conda install` session
-- **Dependency Review:** Use `detect_undeclared_packages.py` before commits
+- **Regular Updates:** Run `dev_generate_env.py` after each `conda install` session
+- **Dependency Review:** Use `dev_detect_undeclared_packages.py` before commits
 - **Version Control:** Always commit updated `environment.yml` and `pyproject.toml`
 - **Team Sharing:** Ensure everyone runs `conda env create -f environment.yml` to match dependencies
 - **Poetry Priority:** If using Poetry, let it manage Python dependencies; conda manages system packages (java, etc.)
