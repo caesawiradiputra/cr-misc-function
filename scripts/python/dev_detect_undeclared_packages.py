@@ -1,70 +1,95 @@
 #!/usr/bin/env python3
 """
-Enterprise Environment Pollution Detector
-for Conda + Poetry hybrid setup.
+Enterprise Environment Pollution Detector (Advanced)
 
 Features:
-    - Detect Conda-layer pollution
-    - Auto-exclude Conda-core Python dependencies
-    - Detect active interpreter pollution
-    - Scan project imports
-    - Suggest poetry add only for truly required packages
-    - CI-ready exit code
+    - External Conda env inspection
+    - Distinguish pip-installed vs conda-installed
+    - --explain mode
+    - Optional .venv inspection
 """
 
 from __future__ import annotations
 
-import ast
-import importlib.metadata as metadata
+import argparse
 import json
 import re
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 # --------------------------------------------------
 # Utilities
 # --------------------------------------------------
 
-
-def normalize(name: str) -> str:
-    return re.sub(r"[-_.]+", "-", name).lower()
-
-
-def run_command(cmd: list[str]) -> str:
+def run(cmd: list[str]) -> str:
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         check=True,
     )
-    return result.stdout
+    return result.stdout.strip()
+
+
+def normalize(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
 
 
 # --------------------------------------------------
-# Project Metadata
+# Conda Environment Lookup
 # --------------------------------------------------
 
+def get_conda_env_python(env_name: str) -> Path:
+    info = json.loads(run(["conda", "info", "--json"]))
+    envs = info.get("envs", [])
 
-def get_project_name() -> str:
-    pyproject = Path("pyproject.toml")
-    if not pyproject.exists():
-        return ""
+    for env_path in envs:
+        if env_path.endswith(env_name):
+            python_path = Path(env_path) / (
+                "python.exe" if sys.platform == "win32" else "bin/python"
+            )
+            if python_path.exists():
+                return python_path
 
-    with pyproject.open("rb") as f:
-        data = tomllib.load(f)
-
-    return normalize(data.get("project", {}).get("name", ""))
+    raise RuntimeError(f"Conda environment '{env_name}' not found.")
 
 
-def get_locked_packages() -> set[str]:
-    lock_file = Path("poetry.lock")
-    if not lock_file.exists():
-        raise FileNotFoundError("❌ poetry.lock not found.")
+# --------------------------------------------------
+# Installed Packages
+# --------------------------------------------------
+
+def get_pip_installed(python_path: Path) -> dict[str, str]:
+    output = run([str(python_path), "-m", "pip", "list", "--format=json"])
+    data = json.loads(output)
+
+    return {
+        normalize(pkg["name"]): pkg["version"]
+        for pkg in data
+    }
+
+
+def get_conda_metadata(env_name: str) -> dict[str, dict]:
+    output = run(["conda", "list", "-n", env_name, "--json"])
+    data = json.loads(output)
+
+    return {
+        normalize(pkg["name"]): pkg
+        for pkg in data
+    }
+
+
+# --------------------------------------------------
+# Poetry Lock Parsing
+# --------------------------------------------------
+
+def parse_poetry_lock(lock_path: Path) -> set[str]:
+    if not lock_path.exists():
+        raise FileNotFoundError("poetry.lock not found in current directory.")
 
     locked = set()
-    with lock_file.open("r", encoding="utf-8") as f:
+
+    with lock_path.open("r", encoding="utf-8") as f:
         for line in f:
             if line.startswith("name ="):
                 name = line.split("=", 1)[1].strip().strip('"')
@@ -74,223 +99,176 @@ def get_locked_packages() -> set[str]:
 
 
 # --------------------------------------------------
-# Conda Layer
-# --------------------------------------------------
-
-
-def get_conda_python_packages() -> dict[str, str]:
-    python_dists = {}
-
-    for dist in metadata.distributions():
-        name = dist.metadata.get("Name")
-        if not name:
-            continue
-        python_dists[normalize(name)] = dist.version
-
-    try:
-        conda_json = run_command(["conda", "list", "--json"])
-    except Exception:
-        return {}
-
-    conda_data = json.loads(conda_json)
-    conda_names = {normalize(pkg["name"]) for pkg in conda_data}
-
-    return {
-        name: python_dists[name]
-        for name in conda_names
-        if name in python_dists
-    }
-
-
-# --------------------------------------------------
-# Detect Conda-Core Python Dependencies
-# --------------------------------------------------
-
-
-def get_conda_core_dependencies() -> set[str]:
-    """
-    Identify Python packages required by Conda itself.
-    """
-
-    try:
-        result = subprocess.run(
-            ["pipdeptree", "--json"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except Exception:
-        return set()
-
-    tree = json.loads(result.stdout)
-
-    graph = {}
-    for node in tree:
-        name = normalize(node["package"]["key"])
-        deps = {normalize(dep["key"]) for dep in node.get("dependencies", [])}
-        graph[name] = deps
-
-    conda_core_roots = {"conda", "conda-libmamba-solver", "libmambapy"}
-
-    core_deps = set()
-    stack = list(conda_core_roots)
-
-    while stack:
-        pkg = stack.pop()
-        for dep in graph.get(pkg, set()):
-            if dep not in core_deps:
-                core_deps.add(dep)
-                stack.append(dep)
-
-    return core_deps
-
-
-# --------------------------------------------------
-# Active Interpreter Layer
-# --------------------------------------------------
-
-
-def get_active_python_packages() -> dict[str, str]:
-    pkgs = {}
-
-    for dist in metadata.distributions():
-        name = dist.metadata.get("Name")
-        if not name:
-            continue
-        pkgs[normalize(name)] = dist.version
-
-    return pkgs
-
-
-# --------------------------------------------------
-# Project Import Scanner
-# --------------------------------------------------
-
-
-def get_project_imports() -> set[str]:
-    imports = set()
-
-    for py_file in Path(".").rglob("*.py"):
-        if ".venv" in str(py_file):
-            continue
-
-        try:
-            tree = ast.parse(py_file.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    imports.add(normalize(alias.name.split(".")[0]))
-
-            elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    imports.add(normalize(node.module.split(".")[0]))
-
-    return imports
-
-
-# --------------------------------------------------
-# Ignore Minimal Toolchain
-# --------------------------------------------------
-
-
-IGNORED = {
-    "pip",
-    "setuptools",
-    "wheel",
-    "packaging",
-}
-
-
-# --------------------------------------------------
 # Reporting
 # --------------------------------------------------
 
+def explain(pkg: str,
+            version: str,
+            conda_meta: dict[str, dict]) -> None:
 
-def report_layer(title: str,
-                 pollution: set[str],
-                 version_map: dict[str, str],
-                 project_imports: set[str]) -> bool:
+    print(f"  - {pkg}=={version}")
 
-    print(f"\n🔍 {title}")
+    if pkg in conda_meta:
+        channel = conda_meta[pkg].get("channel", "unknown")
+        print(f"      • Installed via conda (channel: {channel})")
 
-    if not pollution:
-        print("   ✓ Clean")
-        return False
-
-    print("   ⚠ Undeclared packages detected:\n")
-
-    for pkg in sorted(pollution):
-        marker = " (USED IN PROJECT)" if pkg in project_imports else ""
-        print(f"     - {pkg}=={version_map[pkg]}{marker}")
-
-    needed = pollution & project_imports
-
-    if needed:
-        print("\n   Suggested poetry add commands:\n")
-        for pkg in sorted(needed):
-            print(f"     poetry add {pkg}")
-
-    return True
+        if channel == "pypi":
+            print("      • Installed via pip inside conda (REAL pollution)")
+        else:
+            print("      • Conda-managed dependency (likely safe)")
+    else:
+        print("      • Not tracked by conda → pip-installed")
 
 
 # --------------------------------------------------
-# Main
+# Severity & Color System
 # --------------------------------------------------
 
+class Severity:
+    INFO = "INFO"
+    WARNING = "WARNING"
+    CRITICAL = "CRITICAL"
+
+
+def color(text: str, level: str) -> str:
+    if not sys.stdout.isatty():
+        return text
+
+    colors = {
+        Severity.INFO: "\033[36m",       # Cyan
+        Severity.WARNING: "\033[33m",    # Yellow
+        Severity.CRITICAL: "\033[31m",   # Red
+    }
+    reset = "\033[0m"
+
+    return f"{colors.get(level, '')}{text}{reset}"
+
+
+# --------------------------------------------------
+# Detection Logic (Upgraded)
+# --------------------------------------------------
+
+def classify_package(pkg: str,
+                     version: str,
+                     conda_meta: dict[str, dict],
+                     locked: set[str]) -> tuple[str, str] | tuple[None, None]:
+    """
+    Returns (severity, reason)
+    """
+
+    if pkg in locked:
+        return None, None
+
+    if pkg not in conda_meta:
+        return Severity.CRITICAL, "pip-installed inside Conda (real pollution)"
+
+    channel = conda_meta[pkg].get("channel", "")
+
+    if channel == "pypi":
+        return Severity.CRITICAL, "installed via pip (pypi channel)"
+
+    return Severity.INFO, f"conda-managed dependency (channel: {channel})"
+
+
+def detect_pollution(env_name: str,
+                     explain_mode: bool,
+                     strict_mode: bool,
+                     check_venv: bool) -> None:
+
+    print("\nEnterprise Environment Pollution Detector\n")
+
+    python_path = get_conda_env_python(env_name)
+    lock_path = Path("poetry.lock")
+
+    print(f"🔍 Target Conda Env: {env_name}")
+    print(f"🐍 Python Path: {python_path}")
+    print(f"📋 poetry.lock: {lock_path.resolve()}\n")
+
+    pip_pkgs = get_pip_installed(python_path)
+    conda_meta = get_conda_metadata(env_name)
+    locked = parse_poetry_lock(lock_path)
+
+    issues = []
+
+    for pkg, version in sorted(pip_pkgs.items()):
+        if pkg in {"pip", "setuptools", "wheel"}:
+            continue
+
+        severity, reason = classify_package(pkg, version, conda_meta, locked)
+
+        if severity:
+            issues.append((severity, pkg, version, reason))
+
+    if not issues:
+        print(color("✓ Conda layer clean.\n", Severity.INFO))
+    else:
+        print("Detected packages:\n")
+
+        for severity, pkg, version, reason in issues:
+            label = color(f"[{severity}]", severity)
+            print(f"{label} {pkg}=={version}")
+
+            if explain_mode:
+                print(f"    → {reason}")
+
+        critical_found = any(s == Severity.CRITICAL for s, *_ in issues)
+
+        if critical_found:
+            print(color("\n❌ Critical pollution detected.\n", Severity.CRITICAL))
+            if strict_mode:
+                sys.exit(1)
+        else:
+            print(color("\n⚠ Only informational issues found.\n", Severity.WARNING))
+
+    # --------------------------------------------------
+    # Optional .venv Check
+    # --------------------------------------------------
+
+    if check_venv and Path(".venv").exists():
+        print("\n🔍 Checking Poetry .venv layer\n")
+
+        venv_python = (
+            Path(".venv") / "Scripts/python.exe"
+            if sys.platform == "win32"
+            else Path(".venv") / "bin/python"
+        )
+
+        if venv_python.exists():
+            venv_pkgs = get_pip_installed(venv_python)
+            venv_undeclared = sorted(set(venv_pkgs) - locked)
+
+            if not venv_undeclared:
+                print(color("✓ .venv matches poetry.lock\n", Severity.INFO))
+            else:
+                print(color("⚠ .venv mismatch detected:\n", Severity.WARNING))
+                for pkg in venv_undeclared:
+                    print(f"  - {pkg}=={venv_pkgs[pkg]}")
+
+                if strict_mode:
+                    sys.exit(1)
+
+
+# --------------------------------------------------
+# CLI
+# --------------------------------------------------
 
 def main() -> None:
-    print("Enterprise Environment Pollution Detector\n")
-
-    locked = get_locked_packages()
-    project_name = get_project_name()
-    project_imports = get_project_imports()
-
-    polluted = False
-
-    # ---- Conda Layer ----
-    conda_pkgs = get_conda_python_packages()
-    conda_core_deps = get_conda_core_dependencies()
-
-    conda_pollution = (
-        set(conda_pkgs)
-        - locked
-        - {project_name}
-        - IGNORED
-        - conda_core_deps
+    parser = argparse.ArgumentParser(
+        description="Advanced Conda/Poetry environment pollution detector."
     )
+    parser.add_argument("--env", required=True)
+    parser.add_argument("--explain", action="store_true")
+    parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--check-venv", action="store_true")
 
-    polluted |= report_layer(
-        "Conda Layer",
-        conda_pollution,
-        conda_pkgs,
-        project_imports
+    args = parser.parse_args()
+
+    detect_pollution(
+        env_name=args.env,
+        explain_mode=args.explain,
+        strict_mode=args.strict,
+        check_venv=args.check_venv,
     )
-
-    # ---- Active Interpreter Layer ----
-    active_pkgs = get_active_python_packages()
-
-    active_pollution = (
-        set(active_pkgs)
-        - locked
-        - {project_name}
-        - IGNORED
-    )
-
-    polluted |= report_layer(
-        f"Active Interpreter Layer ({sys.executable})",
-        active_pollution,
-        active_pkgs,
-        project_imports
-    )
-
-    if polluted:
-        print("\n❌ Environment pollution detected.")
-        sys.exit(1)
-
-    print("\n✅ Environment is clean.")
 
 
 if __name__ == "__main__":

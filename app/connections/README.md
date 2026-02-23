@@ -3,6 +3,7 @@
 Multi-database abstraction layer using the **Strategy Pattern** for clean, maintainable database connectivity across MSSQL, PostgreSQL, MySQL, Trino, Hive, and Alibaba ODPS.
 
 ## Table of Contents
+
 - [Architecture Overview](#architecture-overview)
 - [Quick Start](#quick-start)
 - [Supported Databases](#supported-databases)
@@ -27,7 +28,7 @@ The connection framework uses the **Strategy Pattern** to encapsulate database-s
 
 ### Module Structure
 
-```
+```text
 app/connections/
 ├── connection_strategy.py          # High-level facade (DBConnectorStrategy)
 ├── connection.py                   # Legacy connector (being phased out)
@@ -67,12 +68,12 @@ from app.connections.connection_strategy import DBConnectorStrategy
 with DBConnectorStrategy("mssql") as conn:
     # Execute from string
     df = conn.execute_query("SELECT COUNT(*) as total FROM orders")
-    
+
     # Execute from file
     df = conn.execute_query("queries/monthly_report.sql")
-    
+
     # Non-query operations (INSERT/UPDATE/DELETE)
-    rows_affected = conn.execute_non_query("DELETE FROM temp_data WHERE created < ?", 
+    rows_affected = conn.execute_non_query("DELETE FROM temp_data WHERE created < ?",
                                            params=("2024-01-01",))
 ```
 
@@ -86,15 +87,15 @@ class UserRepository:
     def __init__(self):
         self.strategy = create_strategy("mssql")  # Type-inferred as MSSQLStrategy
         self.strategy.connect()
-    
+
     def get_active_users(self) -> pd.DataFrame:
         return self.strategy.execute_query(
             "SELECT id, name, email FROM users WHERE active = 1"
         )
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, *args):
         self.strategy.disconnect()
 
@@ -108,7 +109,7 @@ with UserRepository() as repo:
 ## Supported Databases
 
 | Database | Strategy Class | `db_type` | Special Features |
-|----------|----------------|-----------|------------------|
+| ---------- | ---------------- | ----------- | ------------------ |
 | **MSSQL** | `MSSQLStrategy` | `"mssql"` | ODBC Driver 17+, connection pooling |
 | **PostgreSQL** | `PostgreSQLStrategy` | `"postgres"` | psycopg2, connection pooling |
 | **Hologres** | `PostgreSQLStrategy` | `"hologres"` | Uses PostgreSQL protocol |
@@ -153,13 +154,13 @@ with create_strategy("mssql") as strategy:
         params=("User logged in",)
     )
     print(f"Inserted {rows} rows")
-    
+
     # UPDATE
     rows = strategy.execute_non_query(
         "UPDATE users SET last_login = GETDATE() WHERE user_id = ?",
         params=(456,)
     )
-    
+
     # DDL
     strategy.execute_non_query("CREATE INDEX idx_user_email ON users(email)")
 ```
@@ -237,7 +238,7 @@ The factory function uses `@overload` decorators for precise type inference:
 from app.connections.strategies import create_strategy
 
 # Type checker knows this is MSSQLStrategy
-mssql = create_strategy("mssql")  
+mssql = create_strategy("mssql")
 # mssql.connection is typed as PyodbcConnection
 
 # Type checker knows this is PostgreSQLStrategy
@@ -262,14 +263,14 @@ class ExtendedMSSQLStrategy(MSSQLStrategy):
     def execute_stored_procedure(self, proc_name: str, params=None):
         if not self.cursor:
             raise ConnectionError("No active cursor")
-        
+
         if params:
             param_str = ", ".join([f"@{k}=?" for k in params.keys()])
             query = f"EXEC {proc_name} {param_str}"
             self.cursor.execute(query, tuple(params.values()))
         else:
             self.cursor.execute(f"EXEC {proc_name}")
-        
+
         # Fetch results
         import pandas as pd
         columns = [desc[0] for desc in self.cursor.description]
@@ -362,7 +363,7 @@ odps_config = {
 
 ### Adding a New Database Strategy
 
-**Example: Adding Snowflake support**
+#### **Example: Adding Snowflake support**
 
 1. **Create strategy file** (`strategies/snowflake_strategy.py`):
 
@@ -391,7 +392,7 @@ class SnowflakeStrategy(RDBMSBaseStrategy):
         return f"snowflake://{self.config.user}:{encoded_password}@{self.config.host}/{self.config.database}"
 ```
 
-2. **Update factory** (`strategies/factory.py`):
+1. **Update factory** (`strategies/factory.py`):
 
 ```python
 from .snowflake_strategy import SnowflakeStrategy
@@ -405,7 +406,7 @@ _STRATEGY_MAP = {
 def create_strategy(db_type: Literal["snowflake"]) -> SnowflakeStrategy: ...
 ```
 
-3. **Export in `__init__.py`**:
+1. **Export in `__init__.py`**:
 
 ```python
 from .snowflake_strategy import SnowflakeStrategy
@@ -473,7 +474,7 @@ To use only **MSSQL** and **PostgreSQL** in another project:
 
 ### Files to Copy
 
-```
+```text
 app/connections/strategies/
 ├── __init__.py           # Edit: remove unused imports
 ├── base.py              # Keep as-is (or remove ODPSConfig if unneeded)
@@ -522,7 +523,7 @@ def create_strategy(db_type: str) -> DatabaseStrategy: ...
 def create_strategy(db_type: str):
     if db_type not in database_config:
         raise ValueError(f"Unsupported database type: {db_type}")
-    
+
     db_cfg = database_config[db_type]
     cfg = DBConfig(
         db_type=db_type,
@@ -535,7 +536,7 @@ def create_strategy(db_type: str):
         pool_size=db_cfg.get("pool_size", 5),
         max_overflow=db_cfg.get("max_overflow", 10),
     )
-    
+
     strategy_cls = _STRATEGY_MAP.get(db_type)
     if not strategy_cls:
         raise ValueError(f"No strategy found for: {db_type}")
@@ -551,6 +552,7 @@ def create_strategy(db_type: str):
 **Problem:** `ImportError: cannot import name 'create_strategy'`
 
 **Solution:** Ensure `strategies/__init__.py` exports `create_strategy`:
+
 ```python
 from .factory import create_strategy
 __all__ = ["create_strategy", ...]
@@ -561,6 +563,7 @@ __all__ = ["create_strategy", ...]
 **Problem:** IDE doesn't autocomplete strategy-specific methods
 
 **Solution:** Use explicit type annotation:
+
 ```python
 from app.connections.strategies import create_strategy, MSSQLStrategy
 
@@ -572,6 +575,7 @@ strategy: MSSQLStrategy = create_strategy("mssql")  # type: ignore
 **Problem:** `PoolError: QueuePool limit exceeded`
 
 **Solution:** Increase pool size in config or ensure connections are closed:
+
 ```python
 database_config["mssql"]["pool_size"] = 10
 database_config["mssql"]["max_overflow"] = 20
