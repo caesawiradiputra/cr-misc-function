@@ -12,17 +12,18 @@ Enhanced version with safety features: user confirmation, backup tags, logging, 
 
 ## 📋 Features
 
-✅ **User Confirmation** - Prevents accidental execution  
-✅ **Backup Tags** - Creates recovery points before reset  
-✅ **Detailed Logging** - Full audit trail of operations  
-✅ **Dry-Run Mode** - Preview changes without executing  
-✅ **Flexible Execution** - Multiple parameter options  
+✅ **User Confirmation** - Prevents accidental execution
+✅ **Backup Tags** - Creates recovery points before reset
+✅ **Detailed Logging** - Full audit trail of operations
+✅ **Dry-Run Mode** - Preview changes without executing
+✅ **Flexible Execution** - Multiple parameter options
 
 ---
 
 ## 🚀 Usage Examples
 
 ### **1. Preview Before Executing (Safest)**
+
 ```powershell
 # Preview what would happen - NO changes made
 .\reset-branches.ps1 -DryRun
@@ -34,6 +35,7 @@ Enhanced version with safety features: user confirmation, backup tags, logging, 
 ```
 
 ### **2. Normal Execution (With Confirmation)**
+
 ```powershell
 # Requires user to type 'yes' to confirm
 .\reset-branches.ps1
@@ -44,6 +46,7 @@ Enhanced version with safety features: user confirmation, backup tags, logging, 
 ```
 
 ### **3. Skip Confirmation (For Automation)**
+
 ```powershell
 # Bypass confirmation with -Force
 # Still creates backup tags
@@ -51,6 +54,7 @@ Enhanced version with safety features: user confirmation, backup tags, logging, 
 ```
 
 ### **4. Skip Backup Creation**
+
 ```powershell
 # Useful if backup storage is limited
 # NOT recommended - reduces recovery options
@@ -58,6 +62,7 @@ Enhanced version with safety features: user confirmation, backup tags, logging, 
 ```
 
 ### **5. Dry-Run + Skip Backups (Safe Preview)**
+
 ```powershell
 # Preview without creating backup tags
 .\reset-branches.ps1 -DryRun -NoBackup
@@ -67,7 +72,7 @@ Enhanced version with safety features: user confirmation, backup tags, logging, 
 
 ## 📊 Branch Reset Flow
 
-```
+```text
 master (origin/master) ──┐
                          ├──> dev (reset to origin/master)
                          │
@@ -75,6 +80,7 @@ master (origin/master) ──┐
 ```
 
 **What happens:**
+
 1. `master` ← `origin/master` (force reset)
 2. `dev` ← `origin/master` (force reset)
 3. `sit` ← `origin/dev` (force reset)
@@ -84,12 +90,14 @@ master (origin/master) ──┐
 ## 📁 Output & Logs
 
 Logs are automatically saved to:
-```
+
+```text
 scripts/powershell/logs/reset-branches-YYYYMMDD-HHMMSS.log
 ```
 
 Example log structure:
-```
+
+```text
 ═══════════════════════════════════════════════════════════
 Branch Reset Utility
 ═══════════════════════════════════════════════════════════
@@ -137,7 +145,7 @@ git push origin master --force
 ## ⚠️ Parameters Reference
 
 | Parameter | Default | Purpose |
-|-----------|---------|---------|
+| ----------- | --------- | --------- |
 | `-DryRun` | `$false` | Preview changes without executing |
 | `-NoBackup` | `$false` | Skip backup tag creation |
 | `-Force` | `$false` | Skip user confirmation prompt |
@@ -145,7 +153,7 @@ git push origin master --force
 ### **Parameter Combinations**
 
 | Command | Behavior |
-|---------|----------|
+| --------- | ---------- |
 | `.\reset-branches.ps1` | Normal mode + confirmation + backups |
 | `.\reset-branches.ps1 -DryRun` | Preview only, no changes |
 | `.\reset-branches.ps1 -Force` | Skip confirmation but create backups |
@@ -159,6 +167,7 @@ git push origin master --force
 ### ✅ Recommended Workflow
 
 1. **Always preview first:**
+
    ```powershell
    .\reset-branches.ps1 -DryRun
    ```
@@ -166,17 +175,20 @@ git push origin master --force
 2. **Review the output carefully** - Ensure branches exist and operations look correct
 
 3. **Execute with confirmation:**
+
    ```powershell
    .\reset-branches.ps1
    # Type 'yes' to confirm
    ```
 
 4. **Verify backup tags were created:**
+
    ```powershell
    git tag -l "backup-*"
    ```
 
 5. **Verify branches were reset:**
+
    ```powershell
    git log --oneline master -1
    git log --oneline dev -1
@@ -196,18 +208,22 @@ git push origin master --force
 ## 🐛 Troubleshooting
 
 ### **"Failed to checkout master branch"**
+
 - Issue: Branch doesn't exist locally
 - Solution: Create the branch or check branch name spelling
 
 ### **"Failed to push master branch"**
+
 - Issue: Remote conflicts or permission issues
 - Solution: Check remote access, verify branch exists on origin
 
 ### **"Backup tags already exist"**
+
 - Issue: Tags from previous run exist
 - Solution: This is normal - tags are date-stamped and won't conflict
 
 ### **"Uncommitted changes will be discarded"**
+
 - Issue: Local changes not committed
 - Solution: Commit or stash changes before running
 
@@ -216,6 +232,7 @@ git push origin master --force
 ## 📈 When to Use This Script
 
 ✅ **Perfect for:**
+
 - Automated synchronization of integration branches
 - Resetting staging environments (dev, sit)
 - CI/CD pipeline integration
@@ -223,6 +240,7 @@ git push origin master --force
 - Manual branch cleanup
 
 ❌ **Not recommended for:**
+
 - User feature branches (use merge/rebase instead)
 - Critical production branches without extensive testing
 - Environments where history matters
@@ -232,6 +250,7 @@ git push origin master --force
 ## 🔗 Integration with CI/CD
 
 ### **GitHub Actions Example**
+
 ```yaml
 - name: Reset Integration Branches
   run: |
@@ -241,6 +260,7 @@ git push origin master --force
 ```
 
 ### **Scheduled Execution (Windows Task Scheduler)**
+
 ```powershell
 # Action: Start a program
 # Program: powershell.exe
@@ -253,6 +273,7 @@ git push origin master --force
 ## 📞 Support & Questions
 
 For issues or questions:
+
 1. Check logs in `scripts/powershell/logs/`
 2. Run with `-DryRun` to preview
 3. Review branch names match your setup
@@ -260,5 +281,5 @@ For issues or questions:
 
 ---
 
-**Last Updated**: January 24, 2025  
+**Last Updated**: January 24, 2025
 **Script Version**: 2.0 (Enhanced with safety features)

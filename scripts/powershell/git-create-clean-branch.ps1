@@ -21,40 +21,44 @@
 .PARAMETER SkipFetch
     Skip the 'git fetch origin' step. Useful if you just fetched.
 
+.PARAMETER LastN
+    Optional: Only cherry-pick the last N commits instead of all filtered commits.
+    If not specified, you'll be prompted to choose interactively.
+
 .EXAMPLE
     .\git-create-clean-branch.ps1 -FilePaths "app/connections/", "README.md"
-    
+
     Shows commits that modified connections or README, then asks for confirmation before
     creating clean branch and cherry-picking.
 
 .EXAMPLE
     .\git-create-clean-branch.ps1 -FeatureBranch feature/new-api -BaseBranch dev -FilePaths "app/api/"
-    
+
     Shows commits on feature/new-api that modified api folder, then creates feature/new-api-clean
     from dev and cherry-picks those commits.
 
 .NOTES
     Author: Generated for cr-misc-function project
     Purpose: Create clean branch by cherry-picking commits filtered by specific files/paths
-    
+
     CONFLICT HANDLING:
     If cherry-pick fails mid-process, the script exits with instructions. The clean branch
     remains with successfully picked commits. You CANNOT re-run the script as-is because
     the -clean branch already exists (prevents duplicate commits).
-    
+
     Your options after a conflict:
     1. Resolve manually and continue:
        - Fix conflicts in the files
        - git add <resolved-files>
        - git cherry-pick --continue
        - Manually cherry-pick remaining commits or re-run script logic
-    
+
     2. Start fresh (recommended):
        - git cherry-pick --abort (if in middle of conflict)
        - git checkout <feature-branch>
        - git branch -D <feature-branch-clean>
        - Re-run the script
-    
+
     3. Abort and clean up:
        - git cherry-pick --abort
        - git checkout <feature-branch>
@@ -71,6 +75,9 @@ param(
 
     [Parameter(Mandatory = $true, Position = 2)]
     [string[]]$FilePaths,
+
+    [Parameter()]
+    [int]$LastN = 0,
 
     [switch]$SkipFetch
 )
@@ -196,17 +203,65 @@ foreach ($path in $FilePaths) {
     Write-Host "  - $path" -ForegroundColor Yellow
 }
 Write-Host ""
-Write-Host "Commit Hash | Author | Message" -ForegroundColor DarkGray
+Write-Host "No. | Commit Hash | Author | Message" -ForegroundColor DarkGray
 Write-Host "-------------------------------------------------------------" -ForegroundColor DarkGray
 
-& git @logArgs
+$commits = @(& git @logArgs)
+for ($i = 0; $i -lt $commits.Count; $i++) {
+    $num = $commits.Count - $i
+    Write-Host "$num. $($commits[$i])" -ForegroundColor White
+}
 
 Write-Host ""
 Write-Host ""
 
-# Step 6: Confirm before creating branch and cherry-picking
+# Step 6: Ask whether to cherry-pick all or last N commits
+$commitsToCherry = $commitCount
+if ($LastN -gt 0) {
+    # If -LastN parameter was specified, use it
+    if ($LastN -gt $commitCount) {
+        Write-ErrorMsg "LastN ($LastN) is greater than total filtered commits ($commitCount)"
+        exit 1
+    }
+    $commitsToCherry = $LastN
+    Write-Host "Using last $LastN commit(s) from filtered results" -ForegroundColor Yellow
+} else {
+    # Otherwise, prompt the user interactively
+    Write-Host "Total filtered commits: $commitCount" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Options:" -ForegroundColor Yellow
+    Write-Host "  [a] Cherry-pick all $commitCount commit(s)" -ForegroundColor Yellow
+    Write-Host "  [n] Cherry-pick last N commit(s) only" -ForegroundColor Yellow
+    Write-Host ""
+    $cherryChoice = Read-Host "Select option (a/n)"
+
+    if ($cherryChoice -eq 'n' -or $cherryChoice -eq 'N') {
+        $lastNInput = Read-Host "How many last commit(s) to cherry-pick? (1-$commitCount)"
+
+        # Validate input
+        if (-not [int]::TryParse($lastNInput, [ref]$commitsToCherry)) {
+            Write-ErrorMsg "Invalid number entered: $lastNInput"
+            exit 1
+        }
+
+        if ($commitsToCherry -lt 1 -or $commitsToCherry -gt $commitCount) {
+            Write-ErrorMsg "Number must be between 1 and $commitCount"
+            exit 1
+        }
+
+        Write-Host ""
+        Write-Host "Will cherry-pick last $commitsToCherry commit(s)" -ForegroundColor Cyan
+    } elseif ($cherryChoice -ne 'a' -and $cherryChoice -ne 'A') {
+        Write-ErrorMsg "Invalid option: $cherryChoice"
+        exit 1
+    }
+}
+
+Write-Host ""
+
+# Step 7: Confirm before creating branch and cherry-picking
 $cleanBranchName = "$FeatureBranch-clean"
-Write-Host "This will create branch '$cleanBranchName' and cherry-pick these $commitCount commit(s)" -ForegroundColor Yellow
+Write-Host "This will create branch '$cleanBranchName' and cherry-pick $commitsToCherry commit(s)" -ForegroundColor Yellow
 Write-Host ""
 $confirmation = Read-Host "Continue? (y/N)"
 
@@ -215,7 +270,7 @@ if ($confirmation -ne 'y' -and $confirmation -ne 'Y') {
     exit 0
 }
 
-# Step 7: Create clean branch
+# Step 8: Create clean branch
 Write-Step "Creating clean branch: $cleanBranchName" "[CREATE]"
 
 # Check if clean branch already exists locally
@@ -240,17 +295,17 @@ try {
         Write-ErrorMsg "Failed to create branch '$cleanBranchName'"
         exit 1
     }
-    
+
     # Unset upstream tracking to avoid confusion (branch should show as unpublished)
     git branch --unset-upstream 2>&1 | Out-Null
-    
+
     Write-Success "Created and checked out branch: $cleanBranchName"
 } catch {
     Write-ErrorMsg "Error creating branch: $_"
     exit 1
 }
 
-# Step 8: Get commit hashes and cherry-pick them
+# Step 9: Get commit hashes and cherry-pick them
 Write-Step "Cherry-picking commits" "[PICK]"
 
 $hashArgs = @(
@@ -261,14 +316,24 @@ $hashArgs = @(
 )
 $hashArgs += $FilePaths
 
-$commitHashes = & git @hashArgs
+$commitHashes = @(& git @hashArgs)
+$totalHashes = $commitHashes.Count
+
+# If cherry-picking only last N, skip the earlier ones
+$startIndex = 0
+if ($commitsToCherry -lt $totalHashes) {
+    $startIndex = $totalHashes - $commitsToCherry
+    Write-Info "Skipping first $startIndex commit(s), cherry-picking last $commitsToCherry"
+}
+
 $successCount = 0
 $failCount = 0
 
-foreach ($hash in $commitHashes) {
+for ($i = $startIndex; $i -lt $commitHashes.Count; $i++) {
+    $hash = $commitHashes[$i]
     Write-Host "Cherry-picking $hash..." -ForegroundColor Cyan
     git cherry-pick $hash 2>&1 | Out-Null
-    
+
     if ($LASTEXITCODE -eq 0) {
         $successCount++
         Write-Host "  [OK] Successfully picked $hash" -ForegroundColor Green
@@ -290,7 +355,7 @@ Write-Success "Cherry-pick complete: $successCount succeeded, $failCount failed"
 Write-Success "New clean branch created: $cleanBranchName"
 Write-Host ""
 
-# Step 9: Push clean branch to remote
+# Step 10: Push clean branch to remote
 Write-Step "Pushing clean branch to remote" "[PUSH]"
 Write-Host ""
 Write-Host "This will push '$cleanBranchName' to origin and set up tracking." -ForegroundColor Yellow

@@ -166,6 +166,14 @@ Backup-File `
     (Join-Path $ProjectRoot "pyproject.toml") `
     (Join-Path $LegacyPath "pyproject.poetry.toml")
 
+# Backup Dockerfile if it exists
+$DockerfilePath = Join-Path $ProjectRoot "Dockerfile"
+if (Test-Path $DockerfilePath) {
+    Backup-File `
+        $DockerfilePath `
+        (Join-Path $LegacyPath "Dockerfile")
+}
+
 # Export Conda environment (if active)
 $CondaPrefix = $env:CONDA_PREFIX
 if ($CondaCommand -and $CondaPrefix) {
@@ -240,4 +248,10 @@ Write-Section "Migration Check Completed"
 Write-Host "Next steps:"
 Write-Host "  1. Ensure build-system uses hatchling"
 Write-Host "  2. Run: uv sync"
-Write-Host "  3. Commit changes"
+if (Test-Path $DockerfilePath) {
+    Write-Host "  3. Update Dockerfile to use uv instead of pip/poetry" -ForegroundColor Yellow
+    Write-Host "  4. Commit changes"
+}
+else {
+    Write-Host "  3. Commit changes"
+}

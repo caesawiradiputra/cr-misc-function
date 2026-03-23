@@ -5,7 +5,7 @@
 .DESCRIPTION
     This script compares .github\instructions and .github\prompts with
     .github.template\instructions and .github.template\prompts.
-    
+
     It will:
     - Add missing files from .github.template to .github
     - Replace files in .github that differ from .github.template
@@ -13,7 +13,7 @@
 
 .PARAMETER TargetGitHubRoot
     The workspace root where .github folder should be synced. Defaults to parent of current working directory.
-    
+
     When called from another workspace, this will be automatically detected from the current directory.
     For example: C:\Users\203715\Documents\Repo\da-ndf4w-1p5c-monitoring-streamlit
 
@@ -26,11 +26,11 @@
 .EXAMPLE
     # Run from workspace directory - automatically detects parent .github folder
     .\sync-github-instructions.ps1
-    
+
 .EXAMPLE
     # Preview changes without applying
     .\sync-github-instructions.ps1 -DryRun
-    
+
 .EXAMPLE
     # Specify target workspace explicitly
     .\sync-github-instructions.ps1 -TargetGitHubRoot "C:\path\to\workspace" -Verbose
@@ -116,47 +116,58 @@ $SyncStats = @{
     Errors  = 0
 }
 
-# Process instructions and prompts folders
-$FoldersToSync = @("instructions", "prompts")
+# Process instructions, prompts, agents, and skills folders
+$FoldersToSync = @("instructions", "prompts", "agents", "skills")
 
 foreach ($Folder in $FoldersToSync) {
     $SourceFolder = Join-Path $GitHubTemplatePath $Folder
     $TargetFolder = Join-Path $GitHubPath $Folder
-    
+
     if (-not (Test-Path $SourceFolder)) {
         Write-VerboseOutput "Source folder not found: $SourceFolder"
         continue
     }
-    
+
     # Ensure target folder exists
     if (-not (Test-Path $TargetFolder)) {
         if (-not $DryRun) {
             New-Item -ItemType Directory -Path $TargetFolder | Out-Null
         }
     }
-    
+
     Write-ColorOutput "`n[Processing: $Folder]" -Color $Colors.Info
-    
-    # Get all files from source folder
-    $SourceFiles = Get-ChildItem -Path $SourceFolder -File
-    
+
+    # Get all files from source folder recursively (including subfolders)
+    $SourceFiles = Get-ChildItem -Path $SourceFolder -File -Recurse
+
     foreach ($File in $SourceFiles) {
         $SourceFile = $File.FullName
-        $TargetFile = Join-Path $TargetFolder $File.Name
-        
+
+        # Calculate relative path to preserve folder structure
+        $RelativePath = $File.FullName.Substring($SourceFolder.Length + 1)
+        $TargetFile = Join-Path $TargetFolder $RelativePath
+
+        # Ensure target subdirectory exists
+        $TargetDir = Split-Path -Parent $TargetFile
+        if (-not (Test-Path $TargetDir)) {
+            if (-not $DryRun) {
+                New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+            }
+        }
+
         # Calculate file size for display
         $FileSizeKB = [math]::Round($File.Length / 1KB, 1)
-        
+
         if (Test-Path $TargetFile) {
             # File exists in both - compare content
             $SourceHash = (Get-FileHash -Path $SourceFile -Algorithm SHA256).Hash
             $TargetHash = (Get-FileHash -Path $TargetFile -Algorithm SHA256).Hash
-            
+
             if ($SourceHash -ne $TargetHash) {
                 # Content differs - update
                 Write-ColorOutput "  Check [UPDATED] $($File.Name) ($FileSizeKB KB)" -Color $Colors.Success
                 Write-VerboseOutput "  Content differs - updating from template"
-                
+
                 if (-not $DryRun) {
                     try {
                         Copy-Item -Path $SourceFile -Destination $TargetFile -Force
@@ -177,7 +188,7 @@ foreach ($Folder in $FoldersToSync) {
             # File doesn't exist in target - add it
             Write-ColorOutput "  Check [ADDED] $($File.Name) ($FileSizeKB KB)" -Color $Colors.Success
             Write-VerboseOutput "  File missing in .github - adding from template"
-            
+
             if (-not $DryRun) {
                 try {
                     Copy-Item -Path $SourceFile -Destination $TargetFile -Force
