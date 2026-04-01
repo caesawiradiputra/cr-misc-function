@@ -36,6 +36,7 @@ From project root, run:
 ```
 
 This script automatically:
+
 - Detects the current Conda environment
 - Exports environment spec: `conda env export --from-history`
 - Creates `legacy/` folder if not present
@@ -219,6 +220,38 @@ Reload VS Code or click "Python: Select Interpreter" to confirm the change.
 
 ---
 
+## Phase 4.6: Alternative - Quick Debug with Conda Environment
+
+If you need to debug using the original Conda environment (e.g., to test with specific conda-installed libraries or to bypass the uv virtual environment):
+
+### Activate Conda Environment (PowerShell)
+
+```powershell
+(C:\Users\203715\AppData\Local\miniconda3\shell\condabin\conda-hook.ps1) ; (conda activate py311)
+```
+
+Or for Python 3.9:
+
+```powershell
+(C:\Users\203715\AppData\Local\miniconda3\shell\condabin\conda-hook.ps1) ; (conda activate py39)
+```
+
+### Use Cases
+
+- **Debugging**: Run the application with conda libraries to isolate issues
+- **Library Testing**: Verify behavior with conda-installed packages before switching back to uv
+- **Fallback**: Quick access to the original environment without decommissioning it
+
+### Return to uv Environment
+
+```powershell
+conda deactivate
+# Then activate your uv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+---
+
 ## Phase 5: Decommission Old Conda Env
 
 Once validated:
@@ -229,7 +262,7 @@ conda remove -n cr-misc-function-env --all
 
 The project now depends on:
 
-- Conda runtime (py311)
+- Conda runtime (py311 or py39)
 - uv-managed .venv
 
 ---
