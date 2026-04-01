@@ -10,9 +10,10 @@ entry point for consumers wanting a higher-level facade.
 
 import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Literal
 
 import pandas as pd
+
 from app.configs.log_config import logger
 from app.connections.strategies import (
     DatabaseStrategy,
@@ -61,14 +62,14 @@ class DBConnectorStrategy:
 
     def _read_query(self, query_or_path: str) -> str:
         if os.path.isfile(query_or_path):
-            with open(query_or_path, "r") as f:
+            with open(query_or_path) as f:
                 return f.read()
         return query_or_path
 
     def execute_query(
         self,
         query_or_path: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> pd.DataFrame:
         query = self._read_query(query_or_path)
         return self._strategy.execute_query(query, params)
@@ -76,17 +77,17 @@ class DBConnectorStrategy:
     def execute_non_query(
         self,
         query_or_path: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> int:
         query = self._read_query(query_or_path)
         return self._strategy.execute_non_query(query, params)
 
     def create_table(
         self,
-        schema: Optional[str],
+        schema: str | None,
         table_name: str,
         df: pd.DataFrame,
-        oss_path: Optional[str] = None,
+        oss_path: str | None = None,
         if_exists: Literal["fail", "replace", "append"] = "fail",
         index: bool = False,
     ) -> str:

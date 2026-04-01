@@ -6,6 +6,7 @@ using the MSSQL strategy.
 """
 
 from app.connections.strategies import create_strategy
+from app.repositories.order_repository import OrderRepository
 
 
 def main() -> None:
@@ -19,3 +20,8 @@ def main() -> None:
 
     with mssql_connector as mssql:
         mssql.execute_query("SELECT 1 AS test_col")
+
+    with OrderRepository() as repo:
+        repo.select_all()  # Test inherited method
+        pending_orders = repo.get_pending_orders(days=7)
+        print(f"Found {len(pending_orders)} pending orders in the last 7 days.")

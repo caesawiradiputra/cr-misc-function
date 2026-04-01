@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal
 from urllib.parse import quote_plus
 
 import pandas as pd
@@ -28,7 +28,7 @@ class HiveStrategy(RDBMSBaseStrategy):
     @timed_operation("Table creation")
     def create_table(
         self,
-        schema: Optional[str],
+        schema: str | None,
         table_name: str,
         df: pd.DataFrame,
         if_exists: Literal["fail", "replace", "append"] = "fail",

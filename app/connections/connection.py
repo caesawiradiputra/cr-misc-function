@@ -7,7 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, Literal, Optional, Protocol, Tuple, Union
+from typing import Any, Literal, Protocol
 from urllib.parse import quote_plus
 
 import mysql.connector
@@ -15,8 +15,6 @@ import pandas as pd
 import psycopg2
 import pyodbc
 import trino
-from app.configs.config import database_config, odps_config
-from app.configs.log_config import logger
 from mysql.connector.abstracts import MySQLConnectionAbstract, MySQLCursorAbstract
 from mysql.connector.pooling import PooledMySQLConnection
 from odps import ODPS
@@ -36,6 +34,9 @@ from trino.auth import BasicAuthentication
 from trino.dbapi import Connection as Trino_Connection
 from trino.dbapi import Cursor as Trino_Cursor
 
+from app.configs.config import database_config, odps_config
+from app.configs.log_config import logger
+
 
 # * Configuration Models
 @dataclass
@@ -46,7 +47,7 @@ class DBConfig:
     user: str
     password: str
     database: str
-    driver: Optional[str] = None
+    driver: str | None = None
     pool_size: int = 5
     max_overflow: int = 10
 
@@ -63,7 +64,7 @@ class ODPSConfig:
 
 
 # * Union type for config with discriminated field
-DatabaseConfig = Union[DBConfig, ODPSConfig]
+DatabaseConfig = DBConfig | ODPSConfig
 
 
 # * Strategy Protocol for database operations
@@ -72,10 +73,10 @@ class DatabaseStrategy(Protocol):
 
     def connect(self) -> Any: ...
     def disconnect(self) -> None: ...
-    def execute_query(self, query: str, params: Optional[Any]) -> pd.DataFrame: ...
-    def execute_non_query(self, query: str, params: Optional[Any]) -> int: ...
+    def execute_query(self, query: str, params: Any | None) -> pd.DataFrame: ...
+    def execute_non_query(self, query: str, params: Any | None) -> int: ...
     def create_table(
-        self, schema: Optional[str], table_name: str, df: pd.DataFrame, **kwargs
+        self, schema: str | None, table_name: str, df: pd.DataFrame, **kwargs
     ) -> str: ...
 
 
@@ -141,27 +142,10 @@ class DBConnector:
         self._validate_db_type()
         self.config = self._parse_config()  # * Single unified config
 
-        self.connection: Optional[
-            Union[
-                Trino_Connection,
-                Psycopg2_Connection,
-                Hive_Connection,
-                Pyodbc_Connection,
-                PooledMySQLConnection,
-                MySQLConnectionAbstract,
-            ]
-        ] = None
-        self.connection_odps: Optional[ODPS] = None
-        self.cursor: Optional[
-            Union[
-                Trino_Cursor,
-                Psycopg2_Cursor,
-                Hive_Cursor,
-                Pyodbc_Cursor,
-                MySQLCursorAbstract,
-            ]
-        ] = None
-        self.engine: Optional[Engine] = None
+        self.connection: Trino_Connection | Psycopg2_Connection | Hive_Connection | Pyodbc_Connection | PooledMySQLConnection | MySQLConnectionAbstract | None = None
+        self.connection_odps: ODPS | None = None
+        self.cursor: Trino_Cursor | Psycopg2_Cursor | Hive_Cursor | Pyodbc_Cursor | MySQLCursorAbstract | None = None
+        self.engine: Engine | None = None
         self._odps_lock = threading.Lock()
 
         # * Get pool size from unified config object
@@ -306,7 +290,7 @@ class DBConnector:
 
         except Exception as e:
             logger.error(f"[{self.db_type}] Connection failed: {e}", exc_info=True)
-            raise ConnectionError(f"[{self.db_type}] Failed to connect: {e}")
+            raise ConnectionError(f"[{self.db_type}] Failed to connect: {e}") from e
 
     def get_sqlalchemy_url(self) -> str:
         """Generate SQLAlchemy URL with connection pooling."""
@@ -375,10 +359,10 @@ class DBConnector:
     @_require_odps_connection_and_handle_errors
     def create_table(
         self,
-        schema: Optional[str],
+        schema: str | None,
         table_name: str,
         df: pd.DataFrame,
-        oss_path: Optional[str] = None,
+        oss_path: str | None = None,
         if_exists: Literal["fail", "replace", "append"] = "fail",
         index: bool = False,
     ) -> str:
@@ -399,7 +383,7 @@ class DBConnector:
         else:
             return self._create_rdbms_table(schema, table_name, df, if_exists, index)
 
-    def _validate_schema(self, schema: Optional[str]):
+    def _validate_schema(self, schema: str | None):
         """Validate schema/table naming conventions."""
         if schema and not schema.isidentifier():
             raise ValueError(
@@ -442,7 +426,7 @@ class DBConnector:
                 )
 
     def _create_odps_table(
-        self, schema: Optional[str], table_name: str, df: pd.DataFrame, if_exists: str
+        self, schema: str | None, table_name: str, df: pd.DataFrame, if_exists: str
     ) -> str:
         """Create ODPS table implementation."""
         odps_table_name = f"{schema}.{table_name}" if schema else table_name
@@ -461,7 +445,7 @@ class DBConnector:
 
     def _create_rdbms_table(
         self,
-        schema: Optional[str],
+        schema: str | None,
         table_name: str,
         df: pd.DataFrame,
         if_exists: Literal["fail", "replace", "append"],
@@ -551,7 +535,7 @@ class DBConnector:
     def execute_query(
         self,
         query_or_path: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> pd.DataFrame:
         """
         Executes a SQL query from a string or a SQL file and returns results as a Pandas DataFrame.
@@ -566,7 +550,7 @@ class DBConnector:
         """
         try:
             if os.path.isfile(query_or_path):
-                with open(query_or_path, "r") as file:
+                with open(query_or_path) as file:
                     query = file.read()
             else:
                 query = query_or_path
@@ -608,13 +592,13 @@ class DBConnector:
             logger.error(
                 f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}")
+            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}") from e
 
     @_require_odps_connection_and_handle_errors
     def execute_non_query(
         self,
         query_or_path: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> int:
         """
         Executes a SQL statement that does not return rows (e.g., INSERT, UPDATE, DELETE, CREATE TABLE).
@@ -629,7 +613,7 @@ class DBConnector:
         """
         try:
             if os.path.isfile(query_or_path):
-                with open(query_or_path, "r") as file:
+                with open(query_or_path) as file:
                     query = file.read()
             else:
                 query = query_or_path
@@ -680,4 +664,4 @@ class DBConnector:
             logger.error(
                 f"[{self.db_type}] Error executing non-query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}")
+            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}") from e

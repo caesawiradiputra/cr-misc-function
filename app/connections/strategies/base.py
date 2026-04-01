@@ -3,13 +3,14 @@ import re
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Literal
 
 import pandas as pd
-from app.configs.log_config import logger
 from sqlalchemy import create_engine
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.pool import QueuePool
+
+from app.configs.log_config import logger
 
 
 # * Configuration Models
@@ -21,7 +22,7 @@ class DBConfig:
     user: str
     password: str
     database: str
-    driver: Optional[str] = None
+    driver: str | None = None
     pool_size: int = 5
     max_overflow: int = 10
 
@@ -37,7 +38,7 @@ class ODPSConfig:
     max_overflow: int = 0  # * Not used but added for consistency
 
 
-DatabaseConfig = Union[DBConfig, ODPSConfig]
+DatabaseConfig = DBConfig | ODPSConfig
 
 # * Decorators
 
@@ -76,20 +77,20 @@ class DatabaseStrategy(ABC):
     def execute_query(
         self,
         query: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> pd.DataFrame: ...
 
     @abstractmethod
     def execute_non_query(
         self,
         query: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> int: ...
 
     @abstractmethod
     def create_table(
         self,
-        schema: Optional[str],
+        schema: str | None,
         table_name: str,
         df: pd.DataFrame,
         if_exists: Literal["fail", "replace", "append"] = "fail",
@@ -100,7 +101,7 @@ class DatabaseStrategy(ABC):
     @abstractmethod
     def get_connection_url(self) -> str: ...
 
-    def _validate_schema(self, schema: Optional[str]) -> None:
+    def _validate_schema(self, schema: str | None) -> None:
         if schema and not schema.isidentifier():
             raise ValueError(
                 f"[{self.db_type}] Invalid schema name '{schema}': must be a valid Python identifier"
@@ -129,9 +130,9 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
         if not isinstance(config, DBConfig):
             raise TypeError(f"[{config.db_type}] RDBMSBaseStrategy requires DBConfig")
         self.config: DBConfig = config
-        self.connection: Optional[Any] = None
-        self.cursor: Optional[Any] = None
-        self.engine: Optional[Engine] = None
+        self.connection: Any | None = None
+        self.cursor: Any | None = None
+        self.engine: Engine | None = None
 
     @abstractmethod
     def _create_connection(self) -> Any: ...
@@ -161,7 +162,7 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
             logger.info(f"[{self.db_type}] Connected to {self.config.host}")
         except Exception as e:
             logger.error(f"[{self.db_type}] Connection failed: {e}", exc_info=True)
-            raise ConnectionError(f"[{self.db_type}] Failed to connect: {e}")
+            raise ConnectionError(f"[{self.db_type}] Failed to connect: {e}") from e
 
     def disconnect(self) -> None:
         if self.cursor:
@@ -188,7 +189,7 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
     def execute_query(
         self,
         query: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> pd.DataFrame:
         if not self.is_connected():
             raise ConnectionError(
@@ -216,12 +217,12 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
             logger.error(
                 f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}")
+            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}") from e
 
     def execute_non_query(
         self,
         query: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> int:
         if not self.is_connected():
             raise ConnectionError(
@@ -257,12 +258,12 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
             logger.error(
                 f"[{self.db_type}] Error executing non-query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}")
+            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}") from e
 
     @timed_operation("Table creation")
     def create_table(
         self,
-        schema: Optional[str],
+        schema: str | None,
         table_name: str,
         df: pd.DataFrame,
         if_exists: Literal["fail", "replace", "append"] = "fail",

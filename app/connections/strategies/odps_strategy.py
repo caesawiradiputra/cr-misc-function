@@ -1,13 +1,14 @@
 import re
 import threading
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Literal
 from urllib.parse import quote_plus
 
 import pandas as pd
-from app.configs.log_config import logger
 from odps import ODPS
 from odps import errors as odps_errors
 from odps.df import DataFrame as OdpsDataFrame
+
+from app.configs.log_config import logger
 
 from .base import DatabaseStrategy, ODPSConfig, timed_operation
 
@@ -20,7 +21,7 @@ class ODPSStrategy(DatabaseStrategy):
         if not isinstance(config, ODPSConfig):
             raise TypeError(f"[{config.db_type}] ODPSStrategy requires ODPSConfig")
         self.config: ODPSConfig = config
-        self.connection: Optional[ODPS] = None
+        self.connection: ODPS | None = None
         self._odps_lock = threading.Lock()
 
     def connect(self) -> None:
@@ -38,7 +39,7 @@ class ODPSStrategy(DatabaseStrategy):
             )
         except Exception as e:
             logger.error(f"[{self.db_type}] Connection failed: {e}", exc_info=True)
-            raise ConnectionError(f"[{self.db_type}] Failed to connect: {e}")
+            raise ConnectionError(f"[{self.db_type}] Failed to connect: {e}") from e
 
     def disconnect(self) -> None:
         self.connection = None
@@ -49,7 +50,7 @@ class ODPSStrategy(DatabaseStrategy):
     def execute_query(
         self,
         query: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> pd.DataFrame:
         if not self.is_connected():
             raise ConnectionError(
@@ -75,17 +76,17 @@ class ODPSStrategy(DatabaseStrategy):
             return df
         except odps_errors.ODPSError as e:
             logger.error(f"[{self.db_type}] ODPS error: {e}", exc_info=True)
-            raise RuntimeError(f"[{self.db_type}] ODPS query failed: {str(e)}")
+            raise RuntimeError(f"[{self.db_type}] ODPS query failed: {str(e)}") from e
         except Exception as e:
             logger.error(
                 f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}")
+            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}") from e
 
     def execute_non_query(
         self,
         query: str,
-        params: Optional[Union[Dict[str, Any], Tuple[Any, ...]]] = None,
+        params: dict[str, Any] | tuple[Any, ...] | None = None,
     ) -> int:
         if not self.is_connected():
             raise ConnectionError(
@@ -110,17 +111,17 @@ class ODPSStrategy(DatabaseStrategy):
             return 0
         except odps_errors.ODPSError as e:
             logger.error(f"[{self.db_type}] ODPS error: {e}", exc_info=True)
-            raise RuntimeError(f"[{self.db_type}] ODPS non-query failed: {str(e)}")
+            raise RuntimeError(f"[{self.db_type}] ODPS non-query failed: {str(e)}") from e
         except Exception as e:
             logger.error(
                 f"[{self.db_type}] Error executing non-query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}")
+            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}") from e
 
     @timed_operation("Table creation")
     def create_table(
         self,
-        schema: Optional[str],
+        schema: str | None,
         table_name: str,
         df: pd.DataFrame,
         if_exists: Literal["fail", "replace", "append"] = "fail",

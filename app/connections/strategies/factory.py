@@ -1,4 +1,4 @@
-from typing import Dict, Literal, overload
+from typing import Literal, overload
 
 from app.configs.config import database_config, odps_config
 
@@ -66,7 +66,7 @@ def create_strategy(db_type: str):
     if db_type not in database_config:
         raise ValueError(f"[{db_type}] Unsupported database type")
 
-    db_cfg_raw: Dict = database_config[db_type]
+    db_cfg_raw: dict = database_config[db_type]
     for field in ["host", "port", "user", "password", "database"]:
         if not db_cfg_raw.get(field):
             raise ValueError(f"[{db_type}] Missing DB config field: {field}")
