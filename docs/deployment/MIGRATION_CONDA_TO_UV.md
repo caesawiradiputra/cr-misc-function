@@ -180,6 +180,12 @@ Run tests:
 uv run pytest
 ```
 
+Run type checking:
+
+```bash
+uv run mypy app/
+```
+
 Compare behavior with old Conda environment.
 
 If missing dependencies, add them directly using `uv add`:
@@ -192,6 +198,8 @@ For development dependencies:
 
 ```bash
 uv add --dev pytest
+uv add --dev mypy
+uv add --dev types-pytz
 ```
 
 This automatically updates `pyproject.toml`, `uv.lock`, and installs into `.venv` in one step.
@@ -200,7 +208,19 @@ Repeat until all dependencies are resolved.
 
 ---
 
-## Phase 4.5: Configure VS Code Workspace Settings
+## Phase 4.5: Type Checking Setup
+
+Install mypy and type stubs for third-party libraries:
+
+```bash
+uv add --dev mypy types-pytz
+```
+
+This ensures full type checking support. If mypy reports missing stubs for other packages, install them with `uv add --dev types-<package>`.
+
+---
+
+## Phase 4.6: Configure VS Code Workspace Settings
 
 Update `.vscode/settings.json` to point to the uv-managed virtual environment:
 
@@ -220,7 +240,7 @@ Reload VS Code or click "Python: Select Interpreter" to confirm the change.
 
 ---
 
-## Phase 4.6: Alternative - Quick Debug with Conda Environment
+## Phase 4.7: Alternative - Quick Debug with Conda Environment
 
 If you need to debug using the original Conda environment (e.g., to test with specific conda-installed libraries or to bypass the uv virtual environment):
 

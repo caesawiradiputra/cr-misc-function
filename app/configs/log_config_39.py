@@ -38,17 +38,28 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any, Optional, TypedDict
 
-from loguru import Logger, logger
+from loguru import logger
+
+
+class LogFileInfo(TypedDict):
+    """Type definition for log file information dictionary."""
+
+    path: str
+    name: str
+    mtime: float
+    size: int
+    age_days: int
 
 # Lazy imports to avoid circular dependencies with proper type hints
 _config_loaded: bool = False
-_debug: bool | None = None
-_log_dir: str | None = None
-_log_file_prefix: str | None = None
-_log_level: str | None = None
-_log_retention_days: int | None = None
-_max_log_files: int | None = None
+_debug: Optional[bool] = None
+_log_dir: Optional[str] = None
+_log_file_prefix: Optional[str] = None
+_log_level: Optional[str] = None
+_log_retention_days: Optional[int] = None
+_max_log_files: Optional[int] = None
 
 
 def _load_config() -> None:
@@ -204,7 +215,7 @@ def _cleanup_old_logs() -> None:
         return
 
     try:
-        log_files = []
+        log_files: list[LogFileInfo] = []
         for file in os.listdir(_log_dir):
             if file.startswith(_log_file_prefix) and file.endswith(".log"):
                 filepath = os.path.join(_log_dir, file)
@@ -235,7 +246,7 @@ def _cleanup_old_logs() -> None:
                     pass
 
         # Remove excess files by count
-        remaining_files = [f for f in log_files if os.path.exists(f["path"])]
+        remaining_files: list[LogFileInfo] = [f for f in log_files if os.path.exists(f["path"])]
         if len(remaining_files) > _max_log_files:
             for log_file in remaining_files[_max_log_files:]:
                 try:
@@ -357,16 +368,16 @@ class ScriptLogContext:
         self.script_name = script_name
         self.cleanup = cleanup
 
-    def __enter__(self) -> Logger:
+    def __enter__(self) -> Any:
         init_logging(self.script_name, cleanup=self.cleanup)
         logger.info("Script started: {}", self.script_name)
         return logger
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[object],
     ) -> None:
         if exc_type:
             logger.exception("Script {} failed", self.script_name)
@@ -375,7 +386,7 @@ class ScriptLogContext:
         logger.complete()
 
 
-def with_logging(script_name: str | None = None, cleanup: bool = True):
+def with_logging(script_name: Optional[str] = None, cleanup: bool = True):
     """Decorator to wrap a function with automatic logging init and teardown.
 
     Initializes logging before function execution and ensures cleanup
