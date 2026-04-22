@@ -1,9 +1,8 @@
 """Unified logging pipeline bridging loguru with stdlib logging.
 
-Provides colorized or JSON console output, structured file logging with rotation/retention,
-and automatic interception of third-party library logs through the standard library logging bridge.
-
-Uses LoggingConfig schema from app.configs.config_schemas for validated configuration.
+Provides lazy-loaded configuration, colorized or JSON console output, structured file
+logging with rotation/retention, and automatic interception of third-party library
+logs through the standard library logging bridge.
 
 Console Output Format:
     - LOG_FORMAT='json': JSON format for log aggregation systems (Grafana, ELK)
@@ -16,12 +15,12 @@ File Output Format (always colorized loguru markup):
 
 Usage:
     # Main script (initialize once)
-    from app.configs.log_config import init_logging, logger
+    from configs.log_config import init_logging, logger
     init_logging("my_script")
     logger.info("App started")
 
     # Any module (import, use immediately)
-    from app.configs.log_config import logger
+    from configs.log_config import logger
     logger.debug("Doing work...")
 
     # Debug logging with {} placeholders
@@ -30,13 +29,13 @@ Usage:
     logger.debug("Processing user={}, status={}", user_id, status)
 
     # With context manager (automatic lifecycle management)
-    from app.configs.log_config import ScriptLogContext
+    from configs.log_config import ScriptLogContext
     with ScriptLogContext("data_import"):
         logger.info("Importing...")
         logger.debug("Processing id={}, count={}", 123, 456)
 
     # With decorator (for functions)
-    from app.configs.log_config import with_logging
+    from configs.log_config import with_logging
     @with_logging("cleanup_job")
     def cleanup():
         logger.info("Cleaning...")
@@ -48,29 +47,21 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional, TypedDict
+from typing import TypedDict
 
 from loguru import logger
 
-# Import LoggingConfig schema and DEBUG flag
-try:
-    from app.configs.config import DEBUG, LOGGING_CONFIG
-except ImportError:
-    # Fallback for standalone use: create a minimal LoggingConfig
-    from app.configs.config_schemas import LoggingConfig
 
-    LOGGING_CONFIG = LoggingConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-        format=os.environ.get("LOG_FORMAT", "json").lower(),
-        dir=os.environ.get("LOG_DIR", "./logs"),
-        file_prefix=os.environ.get("LOG_FILE_PREFIX", "app"),
-        retention_days=int(os.environ.get("LOG_RETENTION_DAYS", "7")),
-        max_files=int(os.environ.get("MAX_LOG_FILES", "50")),
-    )
-    DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
+class LogFileEntry(TypedDict):
+    """Type definition for log file metadata."""
+    path: str
+    name: str
+    mtime: float
+    size: int
+    age_days: int
 
 
-def _format_location(name: Optional[str], function: Optional[str], line: Optional[int], width: int = 60) -> str:
+def _format_location(name: str | None, function: str | None, line: int | None, width: int = 60) -> str:
     """Format logger location (name:function:line) with smart truncation and padding.
 
     Combines the three components into a single fixed-width field:
@@ -101,7 +92,7 @@ def _format_location(name: Optional[str], function: Optional[str], line: Optiona
         return f"..{truncated}"
 
 
-def _location_filter(record: dict) -> bool:  # type: ignore[misc]
+def _location_filter(record: dict) -> bool:
     """Filter to add formatted location to record extras for use in format string.
 
     This filter calculates the smart-truncated location (name:function:line) and
@@ -119,18 +110,73 @@ def _location_filter(record: dict) -> bool:  # type: ignore[misc]
     )
     return True
 
+# Lazy imports to avoid circular dependencies with proper type hints
+_config_loaded: bool = False
+_debug: bool | None = None
+_log_dir: str | None = None
+_log_file_prefix: str | None = None
+_log_level: str | None = None
+_log_retention_days: int | None = None
+_max_log_files: int | None = None
+_log_format: str | None = None  # 'json' or 'text' (console only)
 
-class LogFileEntry(TypedDict):
-    """Type definition for log file metadata."""
-    path: str
-    name: str
-    mtime: float
-    size: int
-    age_days: int
+
+def _load_config() -> None:
+    """Load configuration from app.configs.config or environment variables.
+
+    This is a lazy-loaded singleton that runs once. Subsequent calls return early.
+    Configuration sources (in priority order):
+        1. app.configs.config module (preferred)
+        2. Environment variables (fallback for standalone use)
+        3. Built-in defaults if env vars missing
+
+    Side Effects:
+        Sets global variables: _debug, _log_dir, _log_file_prefix, _log_level,
+        _log_retention_days, _max_log_files, _config_loaded.
+
+        Overrides _log_level to "DEBUG" if _debug flag is True.
+    """
+    global _config_loaded, _debug, _log_dir, _log_file_prefix, _log_level, _log_retention_days, _max_log_files, _log_format
+
+    if _config_loaded:
+        return
+
+    try:
+        from configs.config import (
+            DEBUG,
+            LOG_DIR,
+            LOG_FILE_PREFIX,
+            LOG_FORMAT,
+            LOG_LEVEL,
+            LOG_RETENTION_DAYS,
+            MAX_LOG_FILES,
+        )
+        _debug = DEBUG
+        _log_dir = LOG_DIR
+        _log_file_prefix = LOG_FILE_PREFIX
+        _log_level = LOG_LEVEL
+        _log_retention_days = LOG_RETENTION_DAYS
+        _max_log_files = MAX_LOG_FILES
+        _log_format = LOG_FORMAT
+    except ImportError:
+        # Fallback for standalone use (plug-and-play)
+        _debug = os.environ.get("DEBUG", "false").lower() == "true"
+        _log_dir = os.environ.get("LOG_DIR", "./logs")
+        _log_file_prefix = os.environ.get("LOG_FILE_PREFIX", "app")
+        _log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+        _log_retention_days = int(os.environ.get("LOG_RETENTION_DAYS", "7"))
+        _max_log_files = int(os.environ.get("MAX_LOG_FILES", "50"))
+        _log_format = os.environ.get("LOG_FORMAT", "json").lower()
+
+    # Override log level to DEBUG if DEBUG flag is True
+    if _debug:
+        _log_level = "DEBUG"
+
+    _config_loaded = True
 
 
 # Ensure log directory exists
-Path(LOGGING_CONFIG.dir).mkdir(parents=True, exist_ok=True)
+Path(os.environ.get("LOG_DIR", "./logs")).mkdir(parents=True, exist_ok=True)
 
 # Log formats (both use loguru color markup)
 CONSOLE_FORMAT = (
@@ -165,22 +211,17 @@ class InterceptHandler(logging.Handler):
             self.handleError(record)
 
 
-def _setup_std_logging_bridge(level: str = "INFO") -> None:
+def _setup_std_logging_bridge() -> None:
     """Route all standard library logging through loguru.
 
     This ensures that logs from third-party libraries (requests, sqlalchemy, etc.)
-    are captured and formatted through the same loguru pipeline. The log level
-    matches the application's configured logging level.
-
-    Args:
-        level: Logging level for stdlib bridge (default: "INFO"). Should match
-            the application's LOGGING.level to respect user configuration.
+    are captured and formatted through the same loguru pipeline.
     """
     logging.root.handlers = [InterceptHandler()]
-    logging.root.setLevel(getattr(logging, level.upper(), logging.INFO))
+    logging.root.setLevel(logging.DEBUG)
 
 
-def _console_json_sink(message: dict) -> None:  # type: ignore[arg-type]
+def _console_json_sink(message: dict) -> None:
     """Output formatted JSON log record to stdout for structured logging.
 
     This custom sink transforms loguru message records into minimal JSON output
@@ -217,30 +258,36 @@ def _console_json_sink(message: dict) -> None:  # type: ignore[arg-type]
     sys.stdout.flush()
 
 
+
+
 def _cleanup_old_logs() -> None:
     """Clean up old log files based on retention policy.
 
-    Removes log files older than LOGGING.retention_days and limits total file count to LOGGING.max_files.
+    Removes log files older than LOG_RETENTION_DAYS and limits total file count to MAX_LOG_FILES.
     This function is called automatically by init_logging() when cleanup=True.
 
     Retention Logic (applied in this order):
-        1. Delete files older than LOGGING.retention_days
-        2. Keep only the most recent LOGGING.max_files (sorted by modification time)
+        1. Delete files older than LOG_RETENTION_DAYS
+        2. Keep only the most recent MAX_LOG_FILES (sorted by modification time)
 
     Returns:
         None. Any errors during cleanup are silently caught to prevent logger initialization from failing.
 
     Side Effects:
-        May delete files from LOGGING.dir that match the pattern "{LOGGING.file_prefix}*.log"
+        May delete files from LOG_DIR that match the pattern "{LOG_FILE_PREFIX}*.log"
     """
-    if not os.path.exists(LOGGING_CONFIG.dir):
+    _load_config()
+
+    if _log_dir is None or _log_file_prefix is None or _log_retention_days is None or _max_log_files is None:
+        return
+    if not os.path.exists(_log_dir):
         return
 
     try:
         log_files: list[LogFileEntry] = []
-        for file in os.listdir(LOGGING_CONFIG.dir):
-            if file.startswith(LOGGING_CONFIG.file_prefix) and file.endswith(".log"):
-                filepath = os.path.join(LOGGING_CONFIG.dir, file)
+        for file in os.listdir(_log_dir):
+            if file.startswith(_log_file_prefix) and file.endswith(".log"):
+                filepath = os.path.join(_log_dir, file)
                 mtime = os.path.getmtime(filepath)
                 file_size = os.path.getsize(filepath)
                 age_days = (datetime.now() - datetime.fromtimestamp(mtime)).days
@@ -258,7 +305,7 @@ def _cleanup_old_logs() -> None:
         deleted_count = 0
 
         # Remove old files by age
-        cutoff_time = (datetime.now() - timedelta(days=LOGGING_CONFIG.retention_days)).timestamp()
+        cutoff_time = (datetime.now() - timedelta(days=_log_retention_days)).timestamp()
         for log_file in log_files:
             if log_file["mtime"] < cutoff_time:
                 try:
@@ -269,8 +316,8 @@ def _cleanup_old_logs() -> None:
 
         # Remove excess files by count
         remaining_files = [f for f in log_files if os.path.exists(f["path"])]
-        if len(remaining_files) > LOGGING_CONFIG.max_files:
-            for log_file in remaining_files[LOGGING_CONFIG.max_files:]:
+        if len(remaining_files) > _max_log_files:
+            for log_file in remaining_files[_max_log_files:]:
                 try:
                     os.remove(log_file["path"])
                     deleted_count += 1
@@ -289,7 +336,7 @@ def init_logging(script_name: str = "app", cleanup: bool = True) -> None:
 
     Sets up:
         - Console sink with JSON formatting (Grafana-compatible) or standard text format
-          depending on LOGGING.format config ('json' or 'text')
+          depending on LOG_FORMAT config ('json' or 'text')
         - File sink with detailed diagnostics and rotation/retention
         - Standard library logging bridge (captures third-party library logs)
         - Correlation IDs bound to all log records (script_name, execution_id)
@@ -318,9 +365,10 @@ def init_logging(script_name: str = "app", cleanup: bool = True) -> None:
             logger.info("Doing work...")
     """
     logger.debug("init_logging called with script_name={}, cleanup={}", script_name, cleanup)
+    _load_config()
 
-    # Override log level to DEBUG if DEBUG flag is True
-    log_level = "DEBUG" if DEBUG else LOGGING_CONFIG.level
+    if _log_level is None or _log_dir is None or _log_file_prefix is None:
+        return
 
     # Clean up old logs if requested
     if cleanup:
@@ -330,37 +378,37 @@ def init_logging(script_name: str = "app", cleanup: bool = True) -> None:
     logger.remove()
 
     # Setup standard logging bridge first (captures third-party library logs)
-    _setup_std_logging_bridge(level=log_level)
+    _setup_std_logging_bridge()
 
-    # Add console handler based on LOGGING.format preference
-    if LOGGING_CONFIG.format == "json":
+    # Add console handler based on LOG_FORMAT preference
+    if _log_format == "json":
         # JSON sink for log aggregation systems (Grafana, ELK)
         logger.add(
             _console_json_sink,  # type: ignore[arg-type]  # Custom JSON sink
-            level=log_level,
+            level=_log_level,
         )
     else:
         # Text format with smart location truncation
         logger.add(
             sys.stdout,
-            level=log_level,
+            level=_log_level,
             format=CONSOLE_FORMAT,
             colorize=True,
-            filter=_location_filter,  # type: ignore[arg-type]
+            filter=_location_filter, # type: ignore
         )
 
     # Add file handler (detailed structured text with full diagnostics)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(LOGGING_CONFIG.dir, f"{LOGGING_CONFIG.file_prefix}_{script_name}_{timestamp}.log")
+    log_file = os.path.join(_log_dir, f"{_log_file_prefix}_{script_name}_{timestamp}.log")
     logger.add(
         log_file,
-        level=log_level,
+        level=_log_level,
         format=FILE_FORMAT,
         rotation="1 day",  # Rotate daily
-        retention=f"{LOGGING_CONFIG.retention_days} days",  # Keep for N days
-        compression="zip" if LOGGING_CONFIG.enable_compression else None,  # Compress old logs if enabled
+        retention=f"{_log_retention_days} days",  # Keep for N days
+        compression="zip",  # Compress old logs
         backtrace=True,
-        diagnose=LOGGING_CONFIG.diagnose,  # Full diagnostics in file logs
+        diagnose=True,  # Full diagnostics in file logs
         enqueue=True,  # Thread-safe
     )
 
@@ -368,7 +416,7 @@ def init_logging(script_name: str = "app", cleanup: bool = True) -> None:
     execution_id = f"{script_name}_{timestamp}"
     logger.configure(extra={"script_name": script_name, "execution_id": execution_id})
 
-    logger.info("Logging initialized - Script: {}, Level: {}", script_name, log_level)
+    logger.info("Logging initialized - Script: {}, Level: {}", script_name, _log_level)
 
 
 class ScriptLogContext:
@@ -401,16 +449,16 @@ class ScriptLogContext:
         self.script_name = script_name
         self.cleanup = cleanup
 
-    def __enter__(self) -> Any:
+    def __enter__(self):
         init_logging(self.script_name, cleanup=self.cleanup)
         logger.info("Script started: {}", self.script_name)
         return logger
 
     def __exit__(
         self,
-        exc_type: Optional[type],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[object],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
     ) -> None:
         if exc_type:
             logger.exception("Script {} failed", self.script_name)
@@ -419,7 +467,7 @@ class ScriptLogContext:
         logger.complete()
 
 
-def with_logging(script_name: Optional[str] = None, cleanup: bool = True):
+def with_logging(script_name: str | None = None, cleanup: bool = True):
     """Decorator to wrap a function with automatic logging init and teardown.
 
     Initializes logging before function execution and ensures cleanup

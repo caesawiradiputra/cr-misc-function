@@ -1,76 +1,70 @@
 """Application configuration management with multi-source environment loading.
 
-Supports three configuration sources (in priority order):
+Provides centralized configuration access for all application services using Pydantic schemas.
+
+Configuration sources (priority order):
     1. Vault secrets: /vault/secrets/.env (Docker/Kubernetes deployments)
     2. Local .env file: project root directory
     3. Environment variables and defaults: built-in fallbacks
 
-Usage:
-    from app.configs.config import DEBUG, LOG_LEVEL, DATABASE_MSSQL, now
+All configurations are loaded at import time. Use module-level variables (DEBUG, LOGGING_CONFIG,
+DATABASE_MSSQL, ODPS, OSS_NEGATIVE_LIST) for direct access to configuration objects.
 
-    # All configuration is loaded at import time
+Usage:
+    from app.configs import DEBUG, LOGGING_CONFIG, DATABASE_MSSQL
+
     if DEBUG:
         logger.setLevel(logging.DEBUG)
 
+    if LOGGING_CONFIG.validate_format():
+        console_output = LOGGING_CONFIG.format
+
 Environment Variables:
-    DEBUG: Set to 'true' to enable debug mode (default: 'false')
-    DATETIME_NOW: ISO format datetime; if empty uses current time in configured timezone
-    LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) - default: INFO
-    LOG_DIR: Directory for log files - default: ./logs
-    LOG_FILE_PREFIX: Prefix for log filenames - default: misc_function
-    LOG_RETENTION_DAYS: Keep logs for N days - default: 7
-    MAX_LOG_FILES: Maximum number of log files to retain - default: 50
-    DATABASE_MSSQL_*: MSSQL connection parameters
-    ODPS_*: Alibaba MaxCompute (ODPS) connection parameters
-    OSS_*: Alibaba Cloud OSS connection parameters
-    ENABLE_TASK_OUTPUT_CACHE: Enable/disable task output caching (default: true)
-    TASK_OUTPUT_CACHE_HOURS: Cache retention hours (default: 12)
+    DEBUG: Enable debug mode ('true'/'false', default: 'false')
+    DATETIME_NOW: ISO format datetime; empty = current time
+    LOG_LEVEL, LOG_FORMAT, LOG_DIR, LOG_FILE_PREFIX, etc.
+    DATABASE_MSSQL_*, DATABASE_POSTGRES_*, ODPS_*, OSS_*, etc.
+    (See config_schemas.py for complete environment variable mappings)
 
 Notes:
-    - This module loads configuration at import time.
-    - Changes to environment variables after import won't be reflected until reload.
-    - All database and service configurations default to empty strings if env vars are missing.
-    - Validation of required credentials happens at connection time, not config load time.
-
-Customization:
-    To use in another workspace:
-    1. Copy this file to your project's app/configs/directory
-    2. Keep the structure and environment variable names consistent
-    3. Optionally customize DEFAULT_TIMEZONE for your region
-    4. Add new databases/services by extending database_config and oss_config dicts
+    - Configuration is loaded at module import time
+    - Changes to environment variables after import are not reflected until reload
+    - Validation of required credentials happens at connection time, not config load time
+    - Extend schemas in config_schemas.py for new services
 """
 
+import logging
 import os
-from datetime import datetime, timedelta
-from typing import Any
 
-import pytz
 from dotenv import load_dotenv
+
+from app.configs.config_schemas import (
+    AppConfig,
+    DatabaseConfig,
+    LoggingConfig,
+    ODPSConfig,
+    OSSConfig,
+)
 
 # Import logger only if available (allows standalone use without log_config)
 try:
     from app.configs.log_config import logger
 except ImportError:
-    import logging
     logger = logging.getLogger(__name__)
 
 
 def load_environment() -> None:
     """Load environment configuration from multiple sources.
 
-    Priority order:
-        1. Vault secrets: /vault/secrets/.env (Docker/Kubernetes) - when present
-        2. Local .env file: from project root - always attempted
-        3. Environment variables and defaults - built-in fallbacks
+    Loads environment variables in priority order:
+        1. Vault secrets: /vault/secrets/.env (if present)
+        2. Local .env file: project root directory
 
-    This function is idempotent and safe to call multiple times.
-    Both calls use override=False to preserve environment variables already set.
+    The function is idempotent and safe to call multiple times. Both calls use
+    override=False to preserve already-set environment variables.
 
     Side Effects:
-        Prints informational messages about which configuration sources were loaded.
-
-    Raises:
-        No exceptions are raised; missing files are logged as info.
+        Prints status messages indicating which configuration sources were loaded.
     """
     vault_env = "/vault/secrets/.env"
 
@@ -86,66 +80,52 @@ def load_environment() -> None:
 load_environment()
 
 # ============================================================================
-# DEBUG AND DATETIME CONFIGURATION
+# DEBUG AND APPLICATION CONFIGURATION
 # ============================================================================
-DEBUG: bool = os.environ.get("DEBUG", "false").lower() == "true"
-DATETIME_NOW: str = os.environ.get("DATETIME_NOW", "").upper()
+APP_CONFIG: AppConfig = AppConfig(
+    debug=os.environ.get("DEBUG", "false").lower() == "true"
+)
+DEBUG = APP_CONFIG.debug
 
 # ============================================================================
-# LOGGING CONFIGURATION
+# LOGGING CONFIGURATION (using LoggingConfig schema)
 # ============================================================================
-LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO").upper()
-LOG_DIR: str = os.environ.get("LOG_DIR", "./logs")
-LOG_FILE_PREFIX: str = os.environ.get("LOG_FILE_PREFIX", "misc_function")
-LOG_RETENTION_DAYS: int = int(os.environ.get("LOG_RETENTION_DAYS", "7"))
-MAX_LOG_FILES: int = int(os.environ.get("MAX_LOG_FILES", "50"))
+LOGGING_CONFIG: LoggingConfig = LoggingConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format=os.environ.get("LOG_FORMAT", "json").lower(),  # 'json' or 'text'
+    dir=os.environ.get("LOG_DIR", "./logs"),
+    file_prefix=os.environ.get("LOG_FILE_PREFIX", "misc_function"),
+    retention_days=int(os.environ.get("LOG_RETENTION_DAYS", "7")),
+    max_files=int(os.environ.get("MAX_LOG_FILES", "50")),
+    enable_file_rotation=os.environ.get("ENABLE_LOG_ROTATION", "true").lower() == "true",
+    enable_compression=os.environ.get("ENABLE_LOG_COMPRESSION", "true").lower() == "true",
+    diagnose=os.environ.get("LOG_DIAGNOSE", "true").lower() == "true",
+)
 
 # Timezone configuration (change this for different regions)
-DEFAULT_TIMEZONE = "Asia/Jakarta"  # Customize for your region
-
-try:
-    now: datetime = (
-        datetime.fromisoformat(DATETIME_NOW).replace(tzinfo=pytz.timezone(DEFAULT_TIMEZONE))
-        if DATETIME_NOW != ""
-        else datetime.now(pytz.timezone(DEFAULT_TIMEZONE))
-    )
-except ValueError as e:
-    raise ValueError(f"Invalid DATETIME_NOW format (expected ISO format): {DATETIME_NOW}") from e
-
-print(f"✓ Processing time: {now} ({DEFAULT_TIMEZONE})")
-
-# Derived date calculations (typically for daily batch jobs)
-start_date: str = (now - timedelta(1)).strftime("%Y-%m-%d")
-end_date: str = (now - timedelta(1)).strftime("%Y-%m-%d")
-
-start_month: datetime = now.strptime(start_date, "%Y-%m-%d").replace(day=1)
-start_month_partition_no: str = start_month.strftime("%Y%m%d")
-
-date_id: datetime = now.strptime(start_date, "%Y-%m-%d")
-date_id_partition_no: str = date_id.strftime("%Y%m%d")
+DEFAULT_TIMEZONE = "Asia/Jakarta"
 
 
 # ============================================================================
-# DATABASE CONFIGURATION: MSSQL
+# DATABASE CONFIGURATION: MSSQL (using DatabaseConfig schema)
 # ============================================================================
-DATABASE_MSSQL_USER: str = os.environ.get("DATABASE_MSSQL_USER", "")
-DATABASE_MSSQL_PASSWORD: str = os.environ.get("DATABASE_MSSQL_PASSWORD", "")
-DATABASE_MSSQL_DATABASE: str = os.environ.get("DATABASE_MSSQL_DATABASE", "")
-DATABASE_MSSQL_HOST: str = os.environ.get("DATABASE_MSSQL_HOST", "")
-DATABASE_MSSQL_PORT: str = os.environ.get("DATABASE_MSSQL_PORT", "1433")  # Default MSSQL port
-DATABASE_MSSQL_DRIVER: str = os.environ.get("DATABASE_MSSQL_DRIVER", "ODBC Driver 17 for SQL Server")
+DATABASE_MSSQL: DatabaseConfig = DatabaseConfig(
+    host=os.environ.get("DATABASE_MSSQL_HOST", ""),
+    port=os.environ.get("DATABASE_MSSQL_PORT", "1433"),
+    user=os.environ.get("DATABASE_MSSQL_USER", ""),
+    password=os.environ.get("DATABASE_MSSQL_PASSWORD", ""),
+    database=os.environ.get("DATABASE_MSSQL_DATABASE", ""),
+    driver=os.environ.get("DATABASE_MSSQL_DRIVER", "ODBC Driver 17 for SQL Server"),
+    dialect=os.environ.get("DATABASE_MSSQL_DIALECT", "mssql"),
+    library=os.environ.get("DATABASE_MSSQL_LIBRARY", "pyodbc"),
+    pool_size=int(os.environ.get("DATABASE_MSSQL_POOL_SIZE", "5")),
+    max_overflow=int(os.environ.get("DATABASE_MSSQL_MAX_OVERFLOW", "10")),
+    connect_timeout=int(os.environ.get("DATABASE_MSSQL_CONNECT_TIMEOUT", "30")),
+    command_timeout=int(os.environ.get("DATABASE_MSSQL_COMMAND_TIMEOUT", "300")),
+)
 
-DATABASE_MSSQL: dict[str, Any] = {
-    "user": DATABASE_MSSQL_USER,
-    "password": DATABASE_MSSQL_PASSWORD,
-    "database": DATABASE_MSSQL_DATABASE,
-    "host": DATABASE_MSSQL_HOST,
-    "port": DATABASE_MSSQL_PORT,
-    "driver": DATABASE_MSSQL_DRIVER,
-}
-
-# Database router (add more databases by extending this dict)
-database_config: dict[str, dict[str, Any]] = {
+# Database router for accessing multiple database configurations
+database_config: dict[str, DatabaseConfig] = {
     "mssql": DATABASE_MSSQL,
     # Add other databases as needed:
     # "postgres": DATABASE_POSTGRES,
@@ -156,43 +136,30 @@ database_config: dict[str, dict[str, Any]] = {
 # ============================================================================
 # ALIBABA MAXCOMPUTE (ODPS) CONFIGURATION
 # ============================================================================
-ODPS_ACCESS_ID: str = os.environ.get("ODPS_ACCESS_ID", "")
-ODPS_ACCESS_KEY: str = os.environ.get("ODPS_ACCESS_KEY", "")
-ODPS_PROJECT: str = os.environ.get("ODPS_PROJECT", "")
-ODPS_ENDPOINT: str = os.environ.get("ODPS_ENDPOINT", "")
-
-odps_config: dict[str, Any] = {
-    "access_id": ODPS_ACCESS_ID,
-    "secret_access_key": ODPS_ACCESS_KEY,
-    "default_project": ODPS_PROJECT,
-    "endpoint": ODPS_ENDPOINT,
-}
-
+ODPS: ODPSConfig = ODPSConfig(
+    access_id=os.environ.get("ODPS_ACCESS_ID", ""),
+    secret_access_key=os.environ.get("ODPS_ACCESS_KEY", ""),
+    project=os.environ.get("ODPS_PROJECT", ""),
+    endpoint=os.environ.get("ODPS_ENDPOINT", ""),
+    region=os.environ.get("ODPS_REGION", ""),
+)
 
 # ============================================================================
-# ALIBABA CLOUD OSS (OBJECT STORAGE SERVICE) CONFIGURATION
+# ALIBABA OBJECT STORAGE SERVICE (OSS) CONFIGURATION
 # ============================================================================
-OSS_NEGATIVE_LIST_ACCESS_KEY_ID: str = os.environ.get("OSS_NEGATIVE_LIST_ACCESS_KEY_ID", "")
-OSS_NEGATIVE_LIST_ACCESS_KEY_SECRET: str = os.environ.get("OSS_NEGATIVE_LIST_ACCESS_KEY_SECRET", "")
-OSS_NEGATIVE_LIST_BUCKET_NAME: str = os.environ.get("OSS_NEGATIVE_LIST_BUCKET_NAME", "")
-OSS_NEGATIVE_LIST_ENDPOINT: str = os.environ.get("OSS_NEGATIVE_LIST_ENDPOINT", "")
-OSS_NEGATIVE_LIST_REGION: str = os.environ.get("OSS_NEGATIVE_LIST_REGION", "")
-
-oss_config: dict[str, dict[str, Any]] = {
-    "negative_list": {
-        "access_key_id": OSS_NEGATIVE_LIST_ACCESS_KEY_ID,
-        "access_key_secret": OSS_NEGATIVE_LIST_ACCESS_KEY_SECRET,
-        "bucket_name": OSS_NEGATIVE_LIST_BUCKET_NAME,
-        "endpoint": OSS_NEGATIVE_LIST_ENDPOINT,
-        "region": OSS_NEGATIVE_LIST_REGION,
-    },
-    # Add more OSS buckets as needed:
-    # "other_bucket": { ... }
-}
+OSS_NEGATIVE_LIST: OSSConfig = OSSConfig(
+    access_key_id=os.environ.get("OSS_NEGATIVE_LIST_ACCESS_KEY_ID", ""),
+    access_key_secret=os.environ.get("OSS_NEGATIVE_LIST_ACCESS_KEY_SECRET", ""),
+    bucket_name=os.environ.get("OSS_NEGATIVE_LIST_BUCKET_NAME", ""),
+    endpoint=os.environ.get("OSS_NEGATIVE_LIST_ENDPOINT", ""),
+    region=os.environ.get("OSS_NEGATIVE_LIST_REGION", ""),
+)
 
 # ============================================================================
-# PERSISTENT VOLUME CLAIM (PVC) AND CACHING CONFIGURATION
+# PROJECT-SPECIFIC CONFIGURATION (add directly in config.py)
 # ============================================================================
 # Enable caching of task output files on PVC to skip re-processing
-ENABLE_TASK_OUTPUT_CACHE: bool = os.environ.get("ENABLE_TASK_OUTPUT_CACHE", "true").lower() == "true"
+ENABLE_TASK_OUTPUT_CACHE: bool = (
+    os.environ.get("ENABLE_TASK_OUTPUT_CACHE", "true").lower() == "true"
+)
 TASK_OUTPUT_CACHE_HOURS: int = int(os.environ.get("TASK_OUTPUT_CACHE_HOURS", "12"))

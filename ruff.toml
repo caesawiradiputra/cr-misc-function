@@ -56,4 +56,4 @@ line-ending = "auto"
 # Tests can be looser
 "tests/**/*.py" = ["S101", "D"]
 
-"app/configs/log_config_39.py" = ["UP045"]
+"app/configs/*_39.py" = ["UP007", "UP045"]
