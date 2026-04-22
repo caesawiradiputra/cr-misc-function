@@ -1,3 +1,71 @@
+<#
+.SYNOPSIS
+Reset Git branches (master, dev, sit) to their remote state with backup safeguards.
+
+.DESCRIPTION
+This script provides a safe way to reset local Git branches to match their remote counterparts.
+It creates backup tags before making any changes, allowing recovery if needed. The script supports
+dry-run mode for validation and can selectively reset only the SIT branch.
+
+The script performs the following operations:
+  1. Fetches all changes from origin
+  2. Creates backup tags at current remote state (for recovery)
+  3. Resets branches in order: master -> dev -> sit
+  4. Force-pushes changes back to origin
+
+This is useful for cleaning up corrupted branches or syncing with remote when local history diverges.
+
+.PARAMETER DryRun
+Switch parameter. When used, the script validates and displays what would happen without making
+actual changes. Use this before running for real to verify the operations.
+
+Example: .\git-reset-branches.ps1 -DryRun
+
+.PARAMETER NoBackup
+Switch parameter. When used, backup tags are NOT created before resetting. Use with caution.
+By default (without this switch), backup tags are created for recovery.
+
+Example: .\git-reset-branches.ps1 -NoBackup
+
+.PARAMETER Force
+Switch parameter. When used, bypasses the confirmation prompt. The script will proceed without
+asking for user confirmation. Useful in CI/CD pipelines.
+
+Example: .\git-reset-branches.ps1 -Force
+
+.PARAMETER OnlySit
+Switch parameter. When used, only the SIT branch is reset to match dev. Master and dev branches
+are skipped. Useful for partial resets.
+
+Example: .\git-reset-branches.ps1 -OnlySit
+
+.EXAMPLE
+# Basic usage with confirmation and backup:
+.\git-reset-branches.ps1
+
+.EXAMPLE
+# Validate what would happen without making changes:
+.\git-reset-branches.ps1 -DryRun
+
+.EXAMPLE
+# Reset only SIT branch to dev state with user confirmation:
+.\git-reset-branches.ps1 -OnlySit
+
+.EXAMPLE
+# Full automated reset without backup and with auto-confirm (for CI/CD):
+.\git-reset-branches.ps1 -NoBackup -Force
+
+.EXAMPLE
+# Dry-run to preview SIT-only reset:
+.\git-reset-branches.ps1 -DryRun -OnlySit
+
+.NOTES
+Author: Development Team
+LastModified: April 2026
+
+The script creates timestamped log files in the .\logs\ directory for audit purposes.
+All backup tags are pushed to origin for remote recovery capability.
+#>
 param(
     [switch]$DryRun = $false,
     [switch]$NoBackup = $false,
@@ -5,7 +73,11 @@ param(
     [switch]$OnlySit = $false
 )
 
-# Setup logging
+
+# ============================================================================
+# SETUP LOGGING
+# ============================================================================
+# Initialize timestamped log file for audit trail and troubleshooting
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $logFile = Join-Path $PSScriptRoot "logs\reset-branches-$timestamp.log"
 $logDir = Split-Path $logFile
@@ -35,7 +107,12 @@ if ($NoBackup) {
     Write-Host ""
 }
 
-# User confirmation (skip if -Force is used)
+
+# ============================================================================
+# USER CONFIRMATION
+# ============================================================================
+# Prompt user for confirmation unless -Force switch is provided
+# This is a safety measure to prevent accidental data loss
 if (-not $Force) {
     Write-Host "[WARNING] This script will FORCE RESET branches!" -ForegroundColor Red
     if ($OnlySit) {
@@ -67,7 +144,12 @@ if (-not $Force) {
     Write-Host ""
 }
 
-# Fetch latest remote info
+
+# ============================================================================
+# FETCH LATEST CHANGES FROM REMOTE
+# ============================================================================
+# Pull the latest remote state before performing any resets
+# This ensures we're resetting to the current remote branch state
 Write-Host "Fetching latest changes from origin..." -ForegroundColor Cyan
 if ($DryRun) {
     Write-Host "[DRY RUN] git fetch --all --prune" -ForegroundColor Gray
@@ -89,7 +171,13 @@ $localBranches = git branch --format='%(refname:short)' | ForEach-Object { $_.Tr
 # Define protected branches
 $protectedBranches = @("master", "dev", "sit")
 
-# Create backup tags (unless -NoBackup is used)
+
+# ============================================================================
+# CREATE BACKUP TAGS
+# ============================================================================
+# Tag the current remote state before any resets for recovery purposes
+# This allows restoring to the previous state if something goes wrong
+# Backup tags are only created if -NoBackup switch is not used
 if (-not $NoBackup) {
     Write-Host "Creating backup tags..." -ForegroundColor Cyan
     $backupCreatedCount = 0
@@ -145,7 +233,12 @@ if (-not $NoBackup) {
     }
 }
 
-# Verify all protected branches exist locally
+
+# ============================================================================
+# VERIFY PROTECTED BRANCHES EXIST LOCALLY
+# ============================================================================
+# Check that all required branches exist locally before attempting reset
+# If a branch doesn't exist locally, we'll warn the user but continue
 Write-Host "Verifying protected branches exist..." -ForegroundColor Cyan
 
 foreach ($branch in $protectedBranches) {
@@ -156,8 +249,15 @@ foreach ($branch in $protectedBranches) {
 
 Write-Host ""
 
+# ============================================================================
+# RESET PROTECTED BRANCHES
+# ============================================================================
+# Reset master, dev, and sit branches to match remote state
+# These operations are skipped if -OnlySit parameter is used
+
 # Only reset master and dev if not in -OnlySit mode
 if (-not $OnlySit) {
+    # --- MASTER BRANCH: Reset to remote state ---
     # Update master branch from origin
     Write-Host "Updating master branch..." -ForegroundColor Cyan
     if ($DryRun) {
@@ -199,6 +299,7 @@ if (-not $OnlySit) {
         }
     }
 
+    # --- DEV BRANCH: Reset to match master ---
     # Update dev branch from master
     if ($localBranches -contains "dev") {
         Write-Host "Updating dev branch from master..." -ForegroundColor Cyan
@@ -247,6 +348,7 @@ if (-not $OnlySit) {
     Write-Host "[SKIPPED] Master and dev branches (--OnlySit mode)`n" -ForegroundColor Cyan
 }
 
+# --- SIT BRANCH: Reset to match dev ---
 # Update sit branch from dev
 if ($localBranches -contains "sit") {
     Write-Host "Updating sit branch from dev..." -ForegroundColor Cyan
@@ -291,6 +393,11 @@ if ($localBranches -contains "sit") {
 else {
     Write-Host "[WARNING] Sit branch does not exist, skipping...`n" -ForegroundColor Yellow
 }
+
+# ============================================================================
+# SUMMARY AND CLEANUP
+# ============================================================================
+# Display results and cleanup
 
 Write-Host "=============================================================" -ForegroundColor Cyan
 if ($OnlySit) {
