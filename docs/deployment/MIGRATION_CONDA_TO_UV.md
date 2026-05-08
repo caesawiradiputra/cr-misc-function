@@ -222,11 +222,29 @@ This ensures full type checking support. If mypy reports missing stubs for other
 
 ## Phase 4.6: Configure VS Code Workspace Settings
 
-Update `.vscode/settings.json` to point to the uv-managed virtual environment:
+Update `.vscode/settings.json` to point to the uv-managed virtual environment.
+
+If VS Code is opened at repository root (`.../cr-misc-function`):
 
 ```json
 {
-    "python.defaultInterpreterPath": "cr-misc-function/.venv/Scripts/python.exe"
+    "python.defaultInterpreterPath": "${workspaceFolder}/cr-misc-function/.venv/Scripts/python.exe",
+    "python-envs.workspaceSearchPaths": [
+        ".\\**\\.venv"
+    ],
+    "terminal.integrated.cwd": "${workspaceFolder}/cr-misc-function"
+}
+```
+
+If VS Code is opened at project root (`.../cr-misc-function/cr-misc-function`):
+
+```json
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "python-envs.workspaceSearchPaths": [
+        ".\\**\\.venv"
+    ],
+    "terminal.integrated.cwd": "${workspaceFolder}"
 }
 ```
 
