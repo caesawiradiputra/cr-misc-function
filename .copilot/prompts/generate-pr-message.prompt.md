@@ -326,6 +326,7 @@ release/YYYY-MM-DD_JIRA-ID/
 2. **Implementation 2**: Detailed explanation
 
 ## 🧪 Testing Performed
+**[Only include if: test results are in git diff OR user specifically asks for it]**
 
 ### Test Cases
 - Test case 1: Expected result
@@ -406,25 +407,53 @@ This release deploys the following tested changes from staging (dev) to producti
 
 ## Generation Guidelines
 
+### ⚠️ CRITICAL: No Assumptions or Hallucinations - Only Git Diff Facts
+
+**BEFORE GENERATING ANY CONTENT:**
+- ❌ **DO NOT assume** what changed based on branch name, requirement text, or git history
+- ❌ **DO NOT hallucinate** implementation details, test cases, or objectives
+- ❌ **DO NOT invent** files, methods, or code changes that don't exist
+- ✅ **ALWAYS verify** everything against actual `git diff <target-branch>...HEAD` output
+- ✅ **ONLY describe** what is present in the actual git diff
+- ✅ **ONLY include description** if the user provided it in the prompt
+
+**Golden Rule:**
+```
+If it's not in the git diff output, it doesn't exist in this PR.
+```
+
+**Description Rule:**
+- If user provided description/summary in prompt → Use it
+- If user did NOT provide description → Do NOT generate or assume one; leave blank or omit section
+
+**Example:**
+- ✅ Correct: "Three files modified: connection.py, strategy_factory.py, and tests" (from git diff)
+- ❌ Wrong: "Added comprehensive error handling" (not verified in diff)
+- ❌ Wrong: Generating a description when user only said `/generate-pr-message dev`
+
 ### 1. Extract Branch Information
 - Get current branch name: Extract ticket ID (e.g., `fea/DA-1079-...` → `DA-1079`)
 - Identify type from branch prefix: `fea/` = Feature, `fix/` = Fix, `refactor/` = Refactor
 
 ### 2. Analyze Changes Thoroughly
-- **ALWAYS** run `git diff <target-branch>...HEAD --name-status` to see actual changed files
-- **ALWAYS** run `git diff <target-branch>...HEAD` to examine actual code changes (do this FIRST)
+- **RUN FIRST**: `git diff <target-branch>...HEAD` to examine actual code changes (do this BEFORE writing anything)
+- **RUN SECOND**: `git diff <target-branch>...HEAD --name-status` to see actual changed files
+- ⚠️ **GIT DIFF IS THE ONLY SOURCE OF TRUTH** - All descriptions must match actual diff output
+- ⚠️ **ONLY INCLUDE facts from the diff** - do NOT infer, assume, or add details not present in the diff
+- ⚠️ **If something is not in git diff, it is not part of this PR** - do not mention it
 - Compare current feature/fix branch to target branch (dev or master)
-- Categorize changes by file and functionality
-- Identify breaking changes or dependencies
-- Note test coverage additions
+- Categorize changes by file and functionality **based on actual diff content only**
+- Identify breaking changes or dependencies **only if visible in actual code changes**
+- Note test coverage additions **only if test files are in the diff**
 - **Extract ticket ID from git branch name** (e.g., `fea/DA-1079-feature-name` → `DA-1079`)
   - This is the authoritative ticket ID for the release folder and CHANGELOG footer
   - Use it regardless of whether requirement text includes it
 - **If requirement text provided**:
   - Use ONLY for context (understand business purpose)
   - **DO NOT copy or include** requirement text anywhere in output
-  - **ONLY describe actual code changes** from git diff
-  - Focus on: what files changed, what methods were added/modified, what tests were added
+  - **ONLY describe actual code changes** that are present in git diff output
+  - **DO NOT generate descriptions if not present in diff** (e.g., "Added error handling" if not in diff)
+  - Focus only on: what files changed (from diff), what methods were added/modified (from diff), what tests were added (from diff)
 - **If release folder already exists**: Check for existing CHANGELOG.md
   - Read current content to preserve context
   - Update version if user provided different version
@@ -432,6 +461,17 @@ This release deploys the following tested changes from staging (dev) to producti
   - Preserve ddl/, data/, config/, docs/ subfolders (user may have added files)
   - Do NOT delete or reset existing folder structure
 - **If release folder is new**: Create full structure with all subfolders
+
+**Testing Section Handling:**
+- **Include ONLY if:**
+  - Test files (*.py test cases) are present in the git diff, OR
+  - User specifically asks for testing information, OR
+  - Test results are explicitly mentioned in the prompt
+- **Omit if:**
+  - No test files in the diff
+  - No test results mentioned
+  - User did NOT ask for testing information
+- **When included**: Describe only tests that are actually in the diff (don't assume test cases)
 
 ### 4. Maintain Consistency
 - Use same version number (or timestamp ID if no version) across all outputs
@@ -451,15 +491,17 @@ This release deploys the following tested changes from staging (dev) to producti
 - **Critical**: Never copy or paste requirement text verbatim
 - **Use for context only**: Understand what business need this addresses, but don't include it
 - **Reference ticket instead**: Link to JIRA ticket (e.g., "Refs: DA-1515") instead of copying requirement
-- **In PR Overview**: Brief mention of feature purpose + ticket reference
-- **In CHANGELOG Summary**: Describe ONLY the technical changes made to the code
-- **In CHANGELOG Objectives**: Extract technical objectives from actual code (not from requirement text)
+- **ONLY generate description if user provided it** - If no description in prompt, do not invent or assume one
+- **In PR Overview**: Use ONLY description provided by user (or omit if not provided) + ticket reference
+- **In CHANGELOG Summary**: Describe ONLY the technical changes made to the code (from git diff)
+- **In CHANGELOG Objectives**: Extract ONLY from actual code changes (not from requirement text or assumptions)
 - **In CHANGELOG Key Implementations**:
   - Describe what code was added/modified (not what was required)
-  - Show files, classes, methods that were changed
-  - Explain technical implementation details
+  - Show only files, classes, methods that are actually in the diff
+  - Explain only technical implementation details visible in the code changes
 - **In CHANGELOG Footer**: Add ticket reference (e.g., "Refs: DA-1515")
 - **No Requirement Section**: Do NOT create a "Business Requirements" or similar section - all requirements are in JIRA
+- **No Generated Descriptions**: If user did NOT provide description/summary text, do NOT generate one from assumptions
 ## Output Format
 
 **IMPORTANT:**
@@ -970,19 +1012,33 @@ No new dependencies.
 ## Quality Checklist
 
 Before finalizing output, ensure:
+- [ ] **NO HALLUCINATIONS** - Everything verified against actual `git diff <target>...HEAD` output
+  - [ ] No assumed facts about what changed (verified from diff only)
+  - [ ] No inferred implementation details (from diff only)
+  - [ ] No invented test cases or edge cases (from diff only)
+  - [ ] No generated descriptions if user did NOT provide one in prompt
 - [ ] Branch name parsed correctly to extract ticket ID
 - [ ] Version number used consistently across all outputs
 - [ ] Target branch (dev/sit/master) identified correctly
 - [ ] **Git diff analyzed first** - examined actual code changes before writing anything
+- [ ] **All facts match git diff output** - Every statement verified against actual diff
+  - [ ] File lists match actual changed files in diff
+  - [ ] Method/function names match actual code in diff
+  - [ ] Test cases reflect tests actually added in diff
+  - [ ] Nothing mentioned that isn't in the diff
 - [ ] **Requirement text NOT copied** into CHANGELOG or PR (if provided)
   - [ ] No verbatim requirement text in any output
   - [ ] Ticket ID referenced instead (e.g., "Refs: DA-1515")
   - [ ] Requirement used only for context, not for content
+- [ ] **Description only if user provided it** - No generated or assumed descriptions
+  - [ ] If user did NOT provide description/summary → section is omitted or blank
+  - [ ] If user provided description → use it as-is, do not embellish or change it
 - [ ] **CHANGELOG is technical-focused**
   - [ ] Summary describes code changes, not business requirements
-  - [ ] Files modified list shows actual changed files
-  - [ ] Implementations describe what was coded, not what was needed
-  - [ ] Testing shows technical test cases and results, not requirement verification
+  - [ ] Files modified list shows actual changed files from diff
+  - [ ] Implementations describe what was coded (from diff), not what was needed
+  - [ ] **Testing section included ONLY if test files in diff or explicitly requested**
+  - [ ] If testing included: test cases reflect actual tests in diff, not assumed tests
 - [ ] **NO Business Requirements section** - All requirements are in JIRA ticket
 - [ ] PR messages are under line limits (25 and 30 lines)
 - [ ] Changelog file includes comprehensive technical details
@@ -995,4 +1051,5 @@ Before finalizing output, ensure:
 
 ---
 
-**You are now ready to generate PR messages and changelog.** Focus on technical changes in code, not business requirements. Reference JIRA tickets, don't copy their content. Only describe what's in the git diff.
+**You are now ready to generate PR messages and changelog.**
+**Remember:** Only describe what's in the git diff. No assumptions. No hallucinations. No generated content if not provided by user.
