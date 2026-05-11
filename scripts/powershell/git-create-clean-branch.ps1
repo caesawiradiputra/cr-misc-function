@@ -82,7 +82,10 @@ param(
     [switch]$SkipFetch
 )
 
-# Helper functions for colored output
+# ============================================================================
+# HELPER FUNCTIONS - Status messages with color coding
+# ============================================================================
+
 function Write-Step {
     param([string]$Message, [string]$Prefix = "[STEP]")
     Write-Host "`n$Prefix " -ForegroundColor Cyan -NoNewline
@@ -106,6 +109,10 @@ function Write-ErrorMsg {
     Write-Host "[ERROR] " -ForegroundColor Red -NoNewline
     Write-Host $Message -ForegroundColor White
 }
+
+# ============================================================================
+# MAIN LOGIC
+# ============================================================================
 
 # Step 1: Validate we're in a git repository
 Write-Step "Checking git repository" "[CHECK]"

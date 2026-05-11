@@ -33,7 +33,7 @@
 .NOTES
     Author: Development Team
     Version: 1.0.0
-    
+
     This script performs the following steps:
     1. Fetches latest changes from origin
     2. Checks out the feature branch
@@ -60,13 +60,15 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-#region Helper Functions
+# ============================================================================
+# HELPER FUNCTIONS - Status messages and Git utilities
+# ============================================================================
 
 function Write-Step {
     param(
         [Parameter(Mandatory)]
         [string]$Message,
-        
+
         [string]$Icon = "[*]"
     )
     Write-Host "`n$Icon $Message" -ForegroundColor Cyan
@@ -102,14 +104,14 @@ function Get-CurrentBranch {
 
 function Test-BranchExists {
     param([Parameter(Mandatory)][string]$Branch)
-    
+
     git rev-parse --verify "$Branch" 2>$null | Out-Null
     return $LASTEXITCODE -eq 0
 }
 
 function Test-RemoteBranchExists {
     param([Parameter(Mandatory)][string]$Branch)
-    
+
     git ls-remote --heads origin "$Branch" 2>$null | Out-Null
     return $LASTEXITCODE -eq 0
 }
@@ -119,15 +121,15 @@ function Get-UncommittedChanges {
     return -not [string]::IsNullOrWhiteSpace($status)
 }
 
-#endregion
-
-#region Main Script
+# ============================================================================
+# MAIN LOGIC
+# ============================================================================
 
 try {
     Write-Host "`n" -NoNewline
-    Write-Host "===================================================" -ForegroundColor Cyan
-    Write-Host "    Git Rebase Branch - Clean Merge Helper" -ForegroundColor Cyan
-    Write-Host "===================================================" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "Git Rebase Branch - Clean Merge Helper" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan
 
     # Step 0: Verify we're in a git repository
     Write-Step "Verifying git repository" "[CHECK]"
@@ -167,7 +169,7 @@ try {
 
     # Step 3: Verify branches exist
     Write-Step "Verifying branches" "[CHECK]"
-    
+
     if (-not (Test-RemoteBranchExists "refs/heads/$BaseBranch")) {
         throw "Base branch 'origin/$BaseBranch' does not exist"
     }
@@ -193,21 +195,21 @@ try {
 
     # Step 5: Show commits that will be rebased
     Write-Step "Commits to be rebased" "[COMMITS]"
-    
+
     $commitCount = git rev-list --count "origin/$BaseBranch..$FeatureBranch"
-    
+
     if ($commitCount -eq 0) {
         Write-Info "No commits to rebase. $FeatureBranch is up to date with origin/$BaseBranch"
         exit 0
     }
-    
+
     Write-Host "`n$commitCount commit(s) from $FeatureBranch will be replayed onto origin/$BaseBranch :" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Commit Hash | Author | Message" -ForegroundColor DarkGray
     Write-Host "-------------------------------------------------------------" -ForegroundColor DarkGray
-    
+
     git log --reverse --oneline --pretty=format:"%C(yellow)%h%C(reset) | %C(cyan)%an%C(reset) | %s" "origin/$BaseBranch..$FeatureBranch"
-    
+
     Write-Host ""
     Write-Host ""
 
@@ -218,7 +220,7 @@ try {
     Write-Host "  3. May cause conflicts that you'll need to resolve" -ForegroundColor Yellow
     Write-Host ""
     $confirmation = Read-Host "Continue with rebase? (y/N)"
-    
+
     if ($confirmation -ne 'y' -and $confirmation -ne 'Y') {
         Write-Info "Rebase cancelled by user"
         exit 0
@@ -237,19 +239,19 @@ try {
     # Step 8: Perform rebase
     Write-Step "Rebasing $FeatureBranch onto origin/$BaseBranch" "[REBASE]"
     git rebase "origin/$BaseBranch"
-    
+
     if ($LASTEXITCODE -ne 0) {
         Write-Error-Custom "Rebase encountered conflicts!"
         Write-Host "`n[HELP] To resolve conflicts:"
         Write-Host "  1. Fix conflicts in the listed files" -ForegroundColor Yellow
         Write-Host "  2. Run: git add <resolved-files>" -ForegroundColor Yellow
         Write-Host "  3. Run: git rebase --continue" -ForegroundColor Yellow
-        
+
         Write-Host "`n[INFO] Understanding Current vs Incoming:" -ForegroundColor Cyan
         Write-Host "  Current  = $BaseBranch (base branch being rebased onto)" -ForegroundColor White
         Write-Host "  Incoming = $FeatureBranch (your feature commits being replayed)" -ForegroundColor White
         Write-Host "  Tip: Usually keep 'Incoming' to preserve your feature changes" -ForegroundColor Yellow
-        
+
         Write-Host "`n[WARNING] To abort rebase: git rebase --abort" -ForegroundColor Red
         exit 1
     }
@@ -258,10 +260,10 @@ try {
 
     # Step 9: Verify rebased commits
     Write-Step "Verifying rebased commits" "[VERIFY]"
-    
+
     # Count rebased commits
     $rebasedCount = (git rev-list --count "origin/$BaseBranch..HEAD")
-    
+
     Write-Host "`n$rebasedCount commit(s) ready to merge into $BaseBranch :" -ForegroundColor Green
     Write-Host ""
     Write-Host "Commit Hash | Author | Message" -ForegroundColor DarkGray
@@ -273,9 +275,9 @@ try {
 
     # Step 9: Provide next steps
     Write-Host "`n" -NoNewline
-    Write-Host "===================================================" -ForegroundColor Green
-    Write-Host "    [SUCCESS] Rebase Complete - Next Steps" -ForegroundColor Green
-    Write-Host "===================================================" -ForegroundColor Green
+    Write-Host "============================================================" -ForegroundColor Green
+    Write-Host "[SUCCESS] Rebase Complete - Next Steps" -ForegroundColor Green
+    Write-Host "============================================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "Your backup branch is: $backupBranchName" -ForegroundColor Cyan
     Write-Host ""
@@ -296,5 +298,3 @@ try {
     Write-Error-Custom "Script failed: $_"
     exit 1
 }
-
-#endregion

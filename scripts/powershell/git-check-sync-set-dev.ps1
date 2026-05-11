@@ -43,6 +43,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# ============================================================================
+# HELPER FUNCTIONS - Status messages with color coding
+# ============================================================================
+
 function Write-Info($msg)  { Write-Host "[INFO]  $msg" -ForegroundColor Cyan }
 function Write-Warn($msg)  { Write-Host "[WARN]  $msg" -ForegroundColor Yellow }
 function Write-Okay($msg)  { Write-Host "[OK]    $msg" -ForegroundColor Green }
@@ -105,7 +109,7 @@ function Checkout-And-FF-Only([string]$Branch) {
 function Display-BranchDiffs([string]$Remote, [string]$Master, [string]$Dev) {
     Write-Host ""
     Write-Host "=== BRANCH DIFF SUMMARY ===" -ForegroundColor Cyan
-    
+
     Write-Host ""
     Write-Host "$Remote/$Master <-> $Remote/$Dev" -ForegroundColor Cyan
     git diff "$Remote/$Master" "$Remote/$Dev" --stat 2>$null
@@ -113,37 +117,37 @@ function Display-BranchDiffs([string]$Remote, [string]$Master, [string]$Dev) {
 
 function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev) {
     Write-Info "Updating local protected branches from remote..."
-    
+
     foreach ($Branch in @($Master, $Dev)) {
         git show-ref --verify --quiet "refs/heads/$Branch" 2>$null
         if ($LASTEXITCODE -eq 0) {
             $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
-            
+
             if ($currentBranch -ne $Branch) {
                 $prevErrorAction = $ErrorActionPreference
                 $ErrorActionPreference = 'Continue'
-                
+
                 git checkout $Branch 2>$null | Out-Null
                 $checkoutCode = $LASTEXITCODE
-                
+
                 $ErrorActionPreference = $prevErrorAction
-                
+
                 if ($checkoutCode -ne 0) {
                     Write-Warn "Failed to checkout '$Branch', skipping pull..."
                     continue
                 }
             }
-            
+
             Write-Info "Pulling '$Branch' from '$Remote/$Branch'"
-            
+
             $prevErrorAction = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
-            
+
             git pull $Remote 2>$null | Out-Null
             $pullCode = $LASTEXITCODE
-            
+
             $ErrorActionPreference = $prevErrorAction
-            
+
             if ($pullCode -ne 0) {
                 Write-Warn "Failed to pull '$Branch', but continuing..."
             }
@@ -151,11 +155,22 @@ function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev) {
     }
 }
 
+# ============================================================================
+# MAIN LOGIC
+# ============================================================================
+
 try {
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "Check Sync and Set Dev Branch" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    # Step 1: Validate environment
     Write-Info "Validating environment"
     Assert-GitAvailable
     Assert-InGitRepo
 
+    # Step 2: Fetch latest changes
     if (-not $NoFetch) {
         Write-Info "Fetching '$Remote' (with prune)"
         git fetch $Remote --prune | Out-Null
@@ -166,15 +181,16 @@ try {
 
     Update-LocalBranches -Remote $Remote -Master $Master -Dev $Dev
 
+    # Step 3: Verify protected branches exist
     foreach ($b in @($Master, $Dev)) {
         if (-not (Test-RemoteBranchExists -Remote $Remote -Branch $b)) {
             throw "Remote branch '$Remote/$b' does not exist"
         }
     }
 
-    $devSynced = Test-MasterInBranch -Remote $Remote -Master $Master -Branch $Dev
-
+    # Step 4: Compare code changes
     Write-Info "Comparing code changes between branches..."
+    $devSynced = Test-MasterInBranch -Remote $Remote -Master $Master -Branch $Dev
 
     if ($devSynced) {
         Write-Okay "'$Remote/$Dev' has NO code differences from '$Remote/$Master'"
@@ -182,11 +198,12 @@ try {
         Write-Warn "'$Remote/$Dev' HAS code differences from '$Remote/$Master'"
     }
 
+    # Step 5: Activate dev if in sync
     if ($devSynced) {
-        Write-Info "'$Dev' is in sync with '$Master' (same code)."
-        
+        Write-Okay "'$Dev' is in sync with '$Master' (same code)."
+
         Display-BranchDiffs -Remote $Remote -Master $Master -Dev $Dev
-        
+
         Write-Host ""
         Write-Host "About to:" -ForegroundColor Cyan
         Write-Host "  1. Create/ensure local '$Dev' tracking '$Remote/$Dev'" -ForegroundColor DarkGray
