@@ -10,9 +10,13 @@ Console Output Format:
     - LOG_FORMAT='text' (default): Loguru colorized text format with:
         Timestamp (green) | Level (color-coded) | Logger:Function:Line (cyan) | Message
 
-File Output Format (always colorized loguru markup):
+File Output Format (always colorized loguru markup, skipped if CREATE_FILE_LOGS=false):
     <green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> |
     <cyan>{name}:{function}:{line}</cyan> | <level>{message}</level>
+
+Configuration:
+    - CREATE_FILE_LOGS: Set to False to skip file creation (console-only logging).
+      Useful for containerized/ephemeral environments. Default: True
 
 Usage:
     # Main script (initialize once)
@@ -41,6 +45,12 @@ Usage:
     def cleanup():
         logger.info("Cleaning...")
         logger.debug("Removed items={}", 10)
+
+    # Console-only logging (no file creation)
+    # In config.py:
+    #   LOGGING_CONFIG = LoggingConfig(..., create_file_logs=False)
+    # or via environment:
+    #   CREATE_FILE_LOGS=false python my_script.py
 """
 import json
 import logging
@@ -65,6 +75,7 @@ except ImportError:
         file_prefix=os.environ.get("LOG_FILE_PREFIX", "app"),
         retention_days=int(os.environ.get("LOG_RETENTION_DAYS", "7")),
         max_files=int(os.environ.get("MAX_LOG_FILES", "50")),
+        create_file_logs=os.environ.get("CREATE_FILE_LOGS", "true").lower() == "true",
     )
     DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 
@@ -350,18 +361,19 @@ def init_logging(script_name: str = "app", cleanup: bool = True) -> None:
 
     # Add file handler (detailed structured text with full diagnostics)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(LOGGING_CONFIG.dir, f"{LOGGING_CONFIG.file_prefix}_{script_name}_{timestamp}.log")
-    logger.add(
-        log_file,
-        level=log_level,
-        format=FILE_FORMAT,
-        rotation="1 day",  # Rotate daily
-        retention=f"{LOGGING_CONFIG.retention_days} days",  # Keep for N days
-        compression="zip" if LOGGING_CONFIG.enable_compression else None,  # Compress old logs if enabled
-        backtrace=True,
-        diagnose=LOGGING_CONFIG.diagnose,  # Full diagnostics in file logs
-        enqueue=True,  # Thread-safe
-    )
+    if LOGGING_CONFIG.create_file_logs:
+        log_file = os.path.join(LOGGING_CONFIG.dir, f"{LOGGING_CONFIG.file_prefix}_{script_name}_{timestamp}.log")
+        logger.add(
+            log_file,
+            level=log_level,
+            format=FILE_FORMAT,
+            rotation="1 day",  # Rotate daily
+            retention=f"{LOGGING_CONFIG.retention_days} days",  # Keep for N days
+            compression="zip" if LOGGING_CONFIG.enable_compression else None,  # Compress old logs if enabled
+            backtrace=True,
+            diagnose=LOGGING_CONFIG.diagnose,  # Full diagnostics in file logs
+            enqueue=True,  # Thread-safe
+        )
 
     # Bind correlation ID context to every log record
     execution_id = f"{script_name}_{timestamp}"

@@ -100,6 +100,7 @@ LOGGING_CONFIG: LoggingConfig = LoggingConfig(
     enable_file_rotation=os.environ.get("ENABLE_LOG_ROTATION", "true").lower() == "true",
     enable_compression=os.environ.get("ENABLE_LOG_COMPRESSION", "true").lower() == "true",
     diagnose=os.environ.get("LOG_DIAGNOSE", "true").lower() == "true",
+    create_file_logs=os.environ.get("CREATE_FILE_LOGS", "true").lower() == "true",
 )
 
 # Timezone configuration (change this for different regions)

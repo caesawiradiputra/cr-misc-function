@@ -256,7 +256,7 @@ class LoggingConfig(BaseModel):
     Environment Variable Integration:
     Load from environment in config.py using:
         LOG_LEVEL, LOG_FORMAT, LOG_DIR, LOG_FILE_PREFIX,
-        LOG_RETENTION_DAYS, MAX_LOG_FILES
+        LOG_RETENTION_DAYS, MAX_LOG_FILES, CREATE_FILE_LOGS
 
     Attributes:
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL; default: "INFO")
@@ -268,6 +268,8 @@ class LoggingConfig(BaseModel):
         enable_file_rotation: Enable daily log file rotation (default: True)
         enable_compression: Compress rotated logs as zip files (default: True)
         diagnose: Include full diagnostics traceback in file logs (default: True)
+        create_file_logs: Whether to create log files (default: True). Set to False to log
+            only to console output. Useful for containerized/ephemeral environments.
 
     Example (Production - JSON to Grafana):
         LOGGING = LoggingConfig(
@@ -288,6 +290,13 @@ class LoggingConfig(BaseModel):
             retention_days=3,
             max_files=20,
         )
+
+    Example (Containerized - Console Only):
+        LOGGING = LoggingConfig(
+            level="INFO",
+            format="json",  # For Grafana aggregation
+            create_file_logs=False,  # Skip file creation in ephemeral environments
+        )
     """
     level: str = Field(default="INFO", description="Logging level")
     format: str = Field(default="json", description="Console format: 'json' or 'text'")
@@ -298,6 +307,7 @@ class LoggingConfig(BaseModel):
     enable_file_rotation: bool = Field(default=True, description="Enable daily rotation")
     enable_compression: bool = Field(default=True, description="Compress rotated logs")
     diagnose: bool = Field(default=True, description="Full diagnostics in file logs")
+    create_file_logs: bool = Field(default=True, description="Create log files (default: True)")
 
     class Config:
         extra = "allow"
