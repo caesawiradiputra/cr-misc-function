@@ -1,6 +1,6 @@
 ---
 name: generate-commit-message
-description: Generate well-structured, semantically correct commit messages using **Conventional Commits** format with **gitmoji** annotations. This skill analyzes only staged Git changes and produces technical commit messages.
+description: Generate well-structured, semantically correct commit messages using **Conventional Commits** format with **gitmoji** annotations. Analyzes staged changes, identifies application-impacting changes vs refactoring, and recommends splitting commits when beneficial.
 ---
 
 # Generate Commit Message Skill
@@ -25,7 +25,8 @@ Master the art of crafting meaningful, standardized commit messages that documen
 - Generating a commit message from staged Git changes
 - Creating well-structured messages following **Conventional Commits** standard
 - Adding semantic meaning through **gitmoji** annotations
-- Distinguishing between primary changes (logic/features) and secondary changes (refactoring/style)
+- **Distinguishing between primary changes (application-impacting logic/routing/config) and secondary changes (refactoring/docstrings/type hints)**
+- **Recommending commit splits when staged changes would be clearer as multiple focused commits**
 - Ensuring proper formatting and character limits (≤72 chars)
 
 **❌ DO NOT USE IF:**
@@ -81,46 +82,72 @@ git diff --staged
 
 #### Step 3: Categorize Changes
 
-**PRIMARY CHANGES** (drives commit title):
-- Schema changes (new/modified database columns)
-- New functionality (features, capabilities, business logic)
-- Behavior changes (logic modifications affecting output/behavior)
-- Database alterations (any data structure changes)
+**PRIMARY CHANGES** (application-impacting, drives commit title):
+- New routes, endpoints, or handlers
+- New functions or classes affecting application logic
+- Logic changes (conditionals, algorithms, calculations)
+- Configuration changes affecting behavior
+- Model/schema changes (data structure, validation)
+- Database alterations (new columns, indices, migrations)
+- Bug fixes in application logic
+- Performance improvements in critical paths
+- Security fixes
 
-**SECONDARY CHANGES** (supporting details in body):
-- Type hint modernization (e.g., Python 3.10+ union syntax)
+**SECONDARY CHANGES** (refactoring/maintenance, even if they're the majority of changes):
+- Docstring additions or improvements
+- Type hint modernization (e.g., Python 3.10+ union syntax `X | Y`)
 - Import reorganization
-- Code formatting/style
-- Code refactoring (without behavior change)
+- Code style/formatting fixes (linting, spacing)
+- Code restructuring (extract methods, rename variables) without logic change
+- Development package changes (dev dependencies, test utilities)
+- Logging additions (debug, info logs)
+- Comment improvements
+- Code cleanup (remove dead code, unused imports)
 
-**Decision rule:**
-- If PRIMARY changes exist → select type based on primary change
+**Decision rule - CRITICAL**:
+- **ALWAYS focus the commit on PRIMARY (application-impacting) changes first**
+- If PRIMARY changes exist → select type based on primary change, list secondary as supporting details in body
 - If ONLY secondary changes exist → select type based on secondary change type
+- **Even if 80% of the diff is secondary changes (docstrings, type hints), the commit message focuses on the primary 20%**
+
+**Example**: Commit adds 5 new routes (PRIMARY) + modernizes type hints across 50 lines (SECONDARY)
+- ✅ Correct: `✨ feat(api): add new user management endpoints`
+  - Body lists: "Modernize type hints to Python 3.11+ union syntax"
+- ❌ Wrong: `📝 docs(types): modernize type hints` (misses the real value — new endpoints)
 
 ### Phase 2: Generation (5 steps)
 
 #### Step 4: Select Type and Gitmoji (Decision Tree)
 
+**FOCUS ON PRIMARY CHANGES - Skip secondary changes (docstrings, type hints, logging) when deciding the type**
+
 ```
-Does diff include PRIMARY changes?
-├─ YES (schema, logic, behavior, DB changes)
-│  └─ Select type based on PRIMARY change
-│     ├─ New functionality? → feat ✨
-│     ├─ Bug fixed? → fix 🐛
-│     ├─ Performance improved? → perf 🚀
-│     ├─ Security issue resolved? → security 🔒
-│     └─ Major architecture changed? → arch 🏗️
+Does diff include PRIMARY changes (routes, logic, functions, config, models, schema, bug fixes)?
+├─ YES → Select type based on PRIMARY change ONLY
+│  ├─ New functionality/endpoints/routes? → feat ✨
+│  ├─ Bug fixed in logic? → fix 🐛
+│  ├─ Performance improved? → perf 🚀
+│  ├─ Security issue resolved? → security 🔒
+│  ├─ Config/schema changed? → feat ✨ (if new) or fix 🐛 (if fixing)
+│  └─ Major architecture changed? → arch 🏗️
 │
-└─ NO (only refactoring/style/tests)
+│  (List secondary changes in body as supporting details)
+│
+└─ NO primary changes (ONLY refactoring/docstrings/type hints/logging/style)
    └─ Select type based on secondary change type
-      ├─ Code restructuring? → refactor ♻️
+      ├─ Code restructuring/refactoring? → refactor ♻️
+      ├─ Type hints modernized? → chore 🔧 (or refactor ♻️)
+      ├─ Docstrings added? → docs 📝
+      ├─ Logging improved? → chore 🔧
       ├─ Code formatting? → style 🎨
       ├─ Tests added/fixed? → test 🧪
-      ├─ Docs updated? → docs 📝
       └─ Code removed? → chore 🗑️
 ```
 
-**Best practice:** If multiple types apply, choose the most impactful change type.
+**Best practice:**
+- **ALWAYS** choose type based on application-impacting (primary) changes
+- Secondary changes go in the body, not in the type decision
+- If 80% of diff is docstrings but 20% adds a new route, use `feat` (not `docs`)
 
 #### Step 5: Determine Scope
 
@@ -261,6 +288,7 @@ Include ONLY if changes need explanation:
 - **Blank line required** between subject and body
 - Omit entirely if changes are self-explanatory
 - Use **bullet points** for multiple related changes
+- **List secondary changes as supporting details** (docstrings, type hints, logging, refactoring)
 
 **Example:**
 ```
@@ -268,7 +296,15 @@ Include ONLY if changes need explanation:
 
 - Add updated_at column with server default CURRENT_TIMESTAMP
 - Modernize type hints to Python 3.10+ union syntax
-- Reorganize imports for better readability
+- Add docstrings explaining timestamp logic
+```
+
+**Pattern for mixed primary + secondary:**
+```
+<type>(<scope>): <primary change description>
+
+- PRIMARY: <describe the main application-impacting change>
+- SECONDARY: <supporting refactoring or documentation changes>
 ```
 
 ### Footer Content Rules
@@ -283,12 +319,15 @@ Add footer information ONLY when applicable:
 
 | ❌ Pitfall | ✅ Solution | Example |
 |-----------|-----------|---------|
+| **Focusing on secondary changes** | Identify PRIMARY (application-impacting) changes; use those for type. Secondary goes in body. | Diff: 200 lines docstrings + 10 lines new logic. Use `feat`, not `docs`. Subject: "new endpoints"; body: "added docstrings" |
+| **Wrong type when mixing primary + secondary** | ALWAYS base type on primary changes only. Secondary is supporting detail. | Diff: New route (primary) + type hints (secondary). Use `feat`, not `chore`. |
+| **Refusing to split when should split** | Recommend splitting if PRIMARY changes are unrelated or secondary refactoring is massive. | Diff: New endpoint + rename 30 functions. Recommend 2 commits: feat, then refactor. |
 | **Using "add" for MODIFIED files** | Only use "add" for NEW files; use "fix"/"refactor" for modifications | Diff shows `--- a/ +++ b/`, so use `fix(module):` not `add(module):` |
 | **Generic or vague descriptions** | Be specific about what changed | `fix(parser): resolve stack overflow in recursive descent` not `fix parser bug` |
 | **Past tense or non-imperative** | Always use imperative mood (command form) | `Refactor authentication handler` not `Refactored authentication handler` |
 | **Subject line too long** | Count characters; trim to ≤72 | Trim verbose descriptions; move details to body |
 | **Scope too broad** | Use single module; skip if affects multiple | Use `auth` not `app`; skip scope for config files |
-| **Mixing unrelated changes** | Suggest splitting into separate commits | If changing module A and B unrelated things, ask to `git reset --soft HEAD~1` and stage separately |
+| **Mixing unrelated primary changes** | Recommend splitting into separate commits | If changing module A routing AND module B logic, ask to split into 2 commits |
 | **Missing context in body** | Explain WHY the change, not HOW | Instead of "added validation", explain "validation prevents null pointer exception when X occurs" |
 | **No ticket reference** | Extract from branch name or ask user | Branch `feat/DA-1000-auth` → add `Closes DA-1000` |
 | **Forgetting to stage changes** | Always run `git status` and `git diff --staged` first | If nothing staged: suggest `git add .` or `git add -p` |
@@ -367,16 +406,64 @@ Closes DA-7890
 
 1. ✅ Run `git status` — confirm staged changes exist
 2. ✅ Run `git diff --staged` — examine full diff
-3. ✅ Identify file types (NEW vs MODIFIED vs DELETED)
-4. ✅ Identify primary vs secondary changes
-5. ✅ Extract ticket ID (if available in branch name)
-6. ✅ Select appropriate type and gitmoji
-7. ✅ Write subject line (imperative mood, ≤72 chars)
-8. ✅ Add body (if needed; explain WHY)
-9. ✅ Add footer (ticket reference, breaking changes)
-10. ✅ Validate: Read entire message; confirm it matches the diff
+3. **⚠️ ASSESS IF CHANGES SHOULD BE SPLIT** (see below) — if yes, recommend splitting before generating message
+4. ✅ Identify file types (NEW vs MODIFIED vs DELETED)
+5. ✅ Identify primary vs secondary changes (focus on PRIMARY only)
+6. ✅ Extract ticket ID (if available in branch name)
+7. ✅ Select appropriate type and gitmoji based on PRIMARY changes
+8. ✅ Write subject line (imperative mood, ≤72 chars, describes primary change)
+9. ✅ Add body (list secondary changes as supporting details; explain WHY if needed)
+10. ✅ Add footer (ticket reference, breaking changes)
+11. ✅ Validate: Read entire message; confirm it focuses on primary application-impacting changes
 
-**Result:** Self-contained commit message that documents the change clearly.
+**Result:** Self-contained commit message that documents the primary change clearly.
+
+### When to Recommend Splitting Commits
+
+**SUGGEST SPLITTING if staged changes include:**
+- Multiple unrelated PRIMARY changes (e.g., add routes AND fix database bug AND security patch)
+- PRIMARY change + very large refactoring that could stand alone (e.g., new endpoint + massive docstring/type hint overhaul)
+- Different modules with different types (e.g., fix in auth module + new feature in payments module)
+- Primary feature change + major code restructuring that deserves its own review
+
+**Example scenarios to split:**
+
+✅ **Before**: User stages new endpoint + renames 30 functions + adds type hints across 200 lines
+- **Recommendation**:
+  ```
+  Commit 1: ✨ feat(api): add new user management endpoints
+  Commit 2: ♻️ refactor(core): modernize type hints and rename functions for clarity
+  ```
+
+✅ **Before**: User stages security fix + refactors database queries
+- **Recommendation**:
+  ```
+  Commit 1: 🔒 security(auth): sanitize input to prevent XSS
+  Commit 2: ♻️ refactor(db): optimize query structure
+  ```
+
+❌ **NOT recommended to split**: Bug fix + docstring update (same module, same file)
+- These can stay together: `🐛 fix(parser): handle null reference in token validation` + body mentions docstring updates
+
+**How to suggest splitting:**
+```
+I notice your staged changes include:
+1. PRIMARY: New endpoint for user management (app/api/users.py)
+2. SECONDARY: Modernized type hints (50+ lines) and renamed functions across utilities/
+
+I'd recommend splitting into 2 commits:
+  - Commit 1: New endpoint (feat)
+  - Commit 2: Type hints + refactoring (refactor)
+
+This makes code review easier and keeps changes focused.
+
+To split:
+  git reset (unstage all)
+  git add app/api/users.py (new endpoint only)
+  git commit -m "..."
+  git add app/utils/ (type hints and refactoring)
+  git commit -m "..."
+```
 
 ## Troubleshooting & Edge Cases
 
@@ -426,9 +513,43 @@ git diff --staged      # Verify
 
 ### Problem: "Staged changes are very large/unrelated"
 
-**Cause:** Multiple different changes staged together
+**Cause:** Multiple different changes staged together (primary + secondary, or multiple unrelated primaries)
+
+**Detection:**
+- Diff affects multiple modules with different types of changes
+- PRIMARY changes + massive SECONDARY refactoring
+- Different PRIMARY changes that should have separate commits
 
 **Solution:**
+
+**Option 1: Recommend splitting (PREFERRED)**
+- Identify the primary changes and secondary changes
+- Ask user if they'd like to split into focused commits
+- Provide `git reset && git add -p` workflow
+
+Example message to user:
+```
+I notice you have:
+- PRIMARY: New feature (add user endpoints)
+- SECONDARY: Large refactoring (type hints modernization)
+
+I recommend splitting into 2 commits:
+1. New feature commit (feat)
+2. Refactoring commit (refactor)
+
+This makes the history clearer. Run:
+  git reset
+  git add -p (select new endpoint files)
+  git commit -m "..."
+  git add -p (select refactoring changes)
+  git commit -m "..."
+```
+
+**Option 2: Single commit if changes are tightly coupled**
+- If the refactoring is essential to the primary change, keep together
+- Example: New endpoint + docstring update (same file, same change)
+- Use primary change as commit type, list secondary in body
+
 ```bash
 # Unstage everything
 git reset
@@ -464,7 +585,15 @@ When staged changes span **unrelated areas**, suggest splitting:
 
 ## Pre-Submission Quality Checklist
 
+**Primary vs Secondary Validation:**
+- [ ] Identified all PRIMARY (application-impacting) changes
+- [ ] Identified all SECONDARY (refactoring/documentation) changes
+- [ ] Commit type is based on PRIMARY change, not secondary
+- [ ] If no primary changes, type is based on secondary change
+- [ ] Body lists secondary changes as supporting details (if any)
+
 **Subject Line Validation:**
+- [ ] Describes PRIMARY change, not secondary refactoring
 - [ ] Uses gitmoji (✨, 🐛, 🚀, etc.)
 - [ ] Type is lowercase and correct (feat, fix, refactor, etc.)
 - [ ] Scope (if used) is lowercase, single word or hyphenated
@@ -484,17 +613,24 @@ When staged changes span **unrelated areas**, suggest splitting:
 - [ ] 2-4 lines maximum
 - [ ] Uses bullet points for multiple changes
 - [ ] Each bullet is concise and specific
+- [ ] Secondary changes listed as supporting details, not main focus
 
 **Footer Validation (if included):**
 - [ ] Ticket reference format: `Refs DA-XXXX` or `Closes DA-XXXX`
 - [ ] Breaking changes marked prominently: `BREAKING CHANGE: description`
 - [ ] Multiple footer items separated by line breaks
 
+**Split Recommendation Validation:**
+- [ ] If multiple unrelated PRIMARY changes, recommend splitting
+- [ ] If PRIMARY change + massive secondary refactoring, consider recommending split
+- [ ] If user agrees to split, don't generate message — guide them to `git reset && git add -p`
+
 **Source Truth Validation:**
 - [ ] Message reflects ONLY staged changes (from `git diff --staged`)
 - [ ] Message does NOT assume from chat history or branch name
 - [ ] Message is self-contained (makes sense without context)
 - [ ] Message matches actual file types (NEW/MODIFIED/DELETED)
+- [ ] Commit type matches PRIMARY changes in diff
 
 ---
 
@@ -502,36 +638,50 @@ When staged changes span **unrelated areas**, suggest splitting:
 
 **🔴 DO NOT:**
 
-1. **Assume change type from chat history**
+1. **Focus on secondary changes (docstrings, type hints, logging) when a primary change exists**
+   - ALWAYS identify primary (application-impacting) changes first
+   - Use primary change for commit type
+   - List secondary changes in body as supporting details
+   - Example: New endpoint (primary) + type hints (secondary) → `feat`, not `chore`
+
+2. **Use commit type based on what's most visible in the diff**
+   - Diffs often show refactoring/docstrings as large, primary changes as small
+   - Base type on importance/impact, not line count
+   - Example: 200 lines docstrings + 20 lines new logic → `feat`, not `docs`
+
+3. **Assume change type from chat history**
    - Always run `git diff --staged` to verify
    - What user said they're doing ≠ what the diff shows
    - Example: User says "refactoring" but diff shows NEW files → use `feat`, not `refactor`
 
-2. **Reference business context or domain knowledge**
+4. **Reference business context or domain knowledge**
    - Commit message must make sense from diff alone
    - Don't assume: "Obviously this is for the Q4 feature"
    - Keep messages technical, not business-focused
 
-3. **Add context from branch name alone**
+5. **Add context from branch name alone**
    - Extract ticket ID (DA-XXXX) from branch, yes
    - But verify with diff what actually changed
    - Example: Branch `fix/DA-1000-auth-bug` with diff showing new feature → use `feat`, add `Refs DA-1000`
 
-4. **Commit before user verifies**
+6. **Commit before user verifies**
    - Always present the message for review
    - User catches mistakes better than AI
    - Ask: "Does this accurately describe your changes?"
 
-5. **Use past tense or non-imperative mood**
+7. **Use past tense or non-imperative mood**
    - ✅ "Add caching layer" (present tense, command form)
    - ❌ "Added caching layer" (past tense)
    - ❌ "Adding caching layer" (progressive)
 
 **✅ DO INSTEAD:**
 
+- Identify primary (application-impacting) changes FIRST
 - Analyze `git diff --staged` as source of truth
-- Let the diff guide type selection
+- Let primary changes guide type selection
+- Use secondary changes as supporting details in body
 - Ask user for ticket ID if not in branch name
+- Recommend splitting if changes are unrelated
 - Present message; wait for confirmation
 - Validate message against actual changes
 
