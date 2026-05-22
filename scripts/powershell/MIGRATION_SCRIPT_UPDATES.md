@@ -15,6 +15,7 @@ The migration utility script has been enhanced to support two separate README fi
 **Use Case:** Update migration guides after dependencies change, without needing to validate the entire environment.
 
 **How it works:**
+
 - Skips all validation checks (no need for pyproject.toml, Conda, etc.)
 - Attempts to parse dependencies if pyproject.toml exists (but doesn't fail if it doesn't)
 - Creates `legacy/` directory if it doesn't exist
@@ -23,6 +24,7 @@ The migration utility script has been enhanced to support two separate README fi
 - Early exits after guide generation (skip backup/removal phases)
 
 **Usage:**
+
 ```powershell
 .\dev-migrate-conda-poetry-to-uv.ps1 -GenerateMigrationGuideOnly
 
@@ -35,6 +37,7 @@ The migration utility script has been enhanced to support two separate README fi
 The single `README.md` has been split into two specialized files:
 
 #### **README_LEGACY.md** (Restoration & Rollback)
+
 - **Location:** `legacy/README_LEGACY.md`
 - **Contents:**
   - Information about archive files (poetry.lock, pyproject.toml, conda exports)
@@ -46,6 +49,7 @@ The single `README.md` has been split into two specialized files:
 - **Purpose:** Quick reference for rolling back if migration fails
 
 #### **README_MIGRATION.md** (Step-by-Step Guide)
+
 - **Location:** `legacy/README_MIGRATION.md`
 - **Contents:**
   - 7-step migration walkthrough
@@ -64,11 +68,13 @@ The single `README.md` has been split into two specialized files:
 ## When to Use Each Mode
 
 ### Normal Mode (Full Validation)
+
 ```powershell
 .\dev-migrate-conda-poetry-to-uv.ps1
 ```
 
 **Runs:**
+
 1. ✓ Validate pyproject.toml
 2. ✓ Check Conda environment
 3. ✓ Create backups (poetry.lock, pyproject.toml, conda exports)
@@ -78,13 +84,14 @@ The single `README.md` has been split into two specialized files:
 
 **Best for:** First-time setup, fresh migration validation
 
-
 ### Guide-Only Mode
+
 ```powershell
 .\dev-migrate-conda-poetry-to-uv.ps1 -GenerateMigrationGuideOnly
 ```
 
 **Runs:**
+
 1. ✓ Auto-detect project folder
 2. ✓ Attempt to parse dependencies (if pyproject.toml exists)
 3. ✓ Generate README_MIGRATION.md
@@ -93,24 +100,27 @@ The single `README.md` has been split into two specialized files:
 6. ✗ Skip all file removal
 
 **Best for:**
+
 - Updating guide after dependencies change
 - Regenerating guide without environment checks
 - Quick reference guide creation
 
 ### With Force Override
+
 ```powershell
 .\dev-migrate-conda-poetry-to-uv.ps1 -Force
 ```
 
 Overwrites existing backup files and regenerates guides (useful after re-running checks)
 
-
 ### With Artifact Removal
+
 ```powershell
 .\dev-migrate-conda-poetry-to-uv.ps1 -RemovePoetryArtifacts
 ```
 
 After verifying backups are safe, removes:
+
 - `poetry.lock` (backed up first)
 - `pyproject.toml` (backed up as `pyproject.poetry.toml`)
 
@@ -135,7 +145,9 @@ legacy/
 ## Implementation Details
 
 ### Early Exit for Guide-Only Mode
+
 When `-GenerateMigrationGuideOnly` is set:
+
 ```powershell
 if ($GenerateMigrationGuideOnly) {
     # Extract dependencies if available
@@ -149,13 +161,17 @@ if ($GenerateMigrationGuideOnly) {
 ```
 
 ### Dynamic Content Generation
+
 Both README files are generated with project-specific values:
+
 - **`$ProjectFolderName`** - Auto-detected from working directory
 - **`$UvAddCommands`** - Extracted from pyproject.toml dependencies
 - **`$(Get-Date)`** - Current timestamp
 
 ### Conditional File Creation
+
 Both README files are created if:
+
 - File doesn't exist, OR
 - `-Force` switch is used
 
@@ -166,6 +182,7 @@ This prevents overwriting user edits unless explicitly requested.
 ## Example Workflows
 
 ### Workflow 1: Fresh Migration Setup
+
 ```powershell
 # Step 1: Validate environment and create backups
 .\dev-migrate-conda-poetry-to-uv.ps1
@@ -178,6 +195,7 @@ This prevents overwriting user edits unless explicitly requested.
 ```
 
 ### Workflow 2: Quick Guide Regeneration
+
 ```powershell
 # After updating dependencies in pyproject.toml:
 .\dev-migrate-conda-poetry-to-uv.ps1 -GenerateMigrationGuideOnly
@@ -187,6 +205,7 @@ code legacy/README_MIGRATION.md
 ```
 
 ### Workflow 3: Rollback From Failed Migration
+
 ```powershell
 # Need to restore Poetry?
 code legacy/README_LEGACY.md
@@ -200,6 +219,7 @@ code legacy/README_LEGACY.md
 ## Help Documentation
 
 All parameters are documented with examples:
+
 ```powershell
 get-help .\dev-migrate-conda-poetry-to-uv.ps1
 get-help .\dev-migrate-conda-poetry-to-uv.ps1 -Detailed

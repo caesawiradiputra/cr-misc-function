@@ -1,12 +1,23 @@
 ---
-description: "Refactor and polish Python code while preserving behavior, improving readability, PEP 8 compliance, and docstrings"
+description: "Lightweight AI execution guide for quick Python refactoring. For comprehensive guidance, see refactor-python-code SKILL."
 ---
 
-# Refactor & Polish Python Code
+# Python Refactor - Quick Executor
 
-You are an expert Python engineer performing a **non-breaking refactor** of an existing Python module to improve readability, maintainability, and documentation while ensuring behavior, API, and logic remain unchanged.
+⚡ **This is a lightweight execution guide for AI models to refactor code quickly.**
 
-**📖 See**: [Python Coding Conventions](../instructions/python.instructions.md) for comprehensive project-specific best practices.
+📖 **For comprehensive guidance, decision logic, real-world examples, and best practices, see:**
+- [`skills/refactor-python-code/SKILL.md`](../skills/refactor-python-code/SKILL.md) — Authoritative refactoring guide
+- Use the SKILL when working on repositories, complex refactoring, or architectural changes
+- Use this prompt when you just need quick AI refactoring with minimal guidance
+
+---
+
+# Prerequisites
+
+- **Python version**: Verify the project's Python version (3.9, 3.10, or 3.11+) — affects type hint syntax
+- **Better Comments extension**: Install [Better Comments](https://marketplace.visualstudio.com/items?itemName=aaron-bond.better-comments) for enhanced comment visibility (optional but recommended)
+- **Tests**: Ideally tests exist to validate behavior before/after refactoring
 
 ---
 
@@ -22,7 +33,8 @@ Improve the code in `${file}` (or `${selection}` if highlighted) by applying the
 * Function signatures remain unchanged
 * No new dependencies introduced
 * No public APIs modified
-* Python 3.9+
+* Python 3.9+ (use correct type hint syntax for target version: `typing.List` for 3.9, `list` for 3.10+)
+* Type hints must be compatible with project's Python version
 
 ---
 
@@ -31,6 +43,7 @@ Improve the code in `${file}` (or `${selection}` if highlighted) by applying the
 ## 1. Analysis
 
 Check for:
+- **Python version compatibility** (3.9, 3.10, or 3.11+) — affects type hint syntax choices
 - Missing or incomplete docstrings
 - Inconsistent docstring style
 - Unclear variable/function names
@@ -61,6 +74,22 @@ def calculate_total(items: list) -> float:
 ### Comments
 - Remove obvious/changelog comments
 - Keep only comments that explain *why* or non-obvious logic
+- **Use Better Comments extension syntax for emphasis:**
+  - `# !` for alerts/critical: `# ! Critical: Must handle None`
+  - `# ?` for questions: `# ? Why use this approach?`
+  - `# *` for highlights: `# * Performance-critical path`
+  - `# //` for deprecated: `# // Old implementation`
+
+Example with Better Comments:
+```python
+# ! Critical: Prevents race condition
+if lock.acquire():
+    process_data()
+
+# ? Why not use asyncio here?
+# * ThreadPoolExecutor is 2x faster for I/O on this dataset
+executor = ThreadPoolExecutor(max_workers=5)
+```
 
 ### Naming
 - Follow Python conventions: `snake_case` (variables/functions), `PascalCase` (classes), `UPPER_CASE` (constants)
@@ -98,6 +127,7 @@ Return **only the fully refactored Python code** — no explanations, diffs, or 
 - [ ] Module has clear docstring
 - [ ] Public functions/classes documented
 - [ ] Comments explain non-obvious logic only
+- [ ] Comments use Better Comments syntax for emphasis (optional but recommended)
 - [ ] PEP 8 compliant
 - [ ] Naming clear and consistent
 - [ ] Imports organized correctly
