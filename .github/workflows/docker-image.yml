@@ -17,7 +17,7 @@ on:
           - sit
           - prod
 
-run-name: "Docker Build & Push - Tag: ${{ github.event.inputs.image_tag || github.ref_name }} - Branch: ${{ github.ref_name }}"
+run-name: "Docker Build & Push - Tag: ${{ github.event.inputs.image_tag || github.ref_name }} - Branch: ${{ github.ref_name }} - Environment: ${{ github.event.inputs.environment || 'auto-detected' }}"
 
 jobs:
   build-and-push:
@@ -29,8 +29,12 @@ jobs:
       REGISTRY_NAMESPACE: "bfi-registry"
 
     steps:
+      # Note: Using actions/checkout@v5 because v4 uses Node.js 20 which is deprecated.
+      # Node.js 20 will be removed from GitHub Actions runners on Sept 16, 2026.
+      # v5 uses Node.js 24, ensuring compatibility with future runner defaults.
+      # See: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Extract branch name
         run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
@@ -40,12 +44,12 @@ jobs:
           if [[ "${{ env.BRANCH_NAME }}" == "master" ]]; then
             echo "BRANCH_TAG=latest" >> $GITHUB_ENV
             echo "ENV_TARGET=prod" >> $GITHUB_ENV
-          elif [[ "${{ env.BRANCH_NAME }}" == "sit" ]]; then
-            echo "BRANCH_TAG=sit" >> $GITHUB_ENV
-            echo "ENV_TARGET=sit" >> $GITHUB_ENV
-          else
+          elif [[ "${{ env.BRANCH_NAME }}" == "dev" ]]; then
             echo "BRANCH_TAG=dev" >> $GITHUB_ENV
             echo "ENV_TARGET=dev" >> $GITHUB_ENV
+          else
+            echo "BRANCH_TAG=sit" >> $GITHUB_ENV
+            echo "ENV_TARGET=sit" >> $GITHUB_ENV
           fi
 
       - name: Set environment from workflow input
@@ -101,9 +105,19 @@ jobs:
           echo ""
           echo "🚀 Deployment:"
           echo "  Note: Application secrets are managed in ACK Secrets, not GitHub Secrets"
-          echo "  - ConfigMap: cr-misc-function-config (non-sensitive config)"
-          echo "  - Secret: cr-misc-function-secrets (sensitive data)"
+          echo "  - ConfigMap: ${{ env.IMAGE_NAME }}-config (non-sensitive config)"
+          echo "  - Secret: ${{ env.IMAGE_NAME }}-secrets (sensitive data)"
           echo "  - Refer to docs/ACK-SECRETS.md for deployment details"
+          echo ""
+          echo "💻 Running Locally:"
+          echo "  Use --env-file to load environment variables from .env file:"
+          echo "  docker run -d --name ${{ env.IMAGE_NAME }}-${{ env.IMAGE_TAG }} -p 8000:8000 \\"
+          echo "    --env-file .env \\"
+          echo "    ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          echo ""
+          echo "  Required in .env file:"
+          echo "  - DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD"
+          echo "  - Or use Vault secrets path for production deployments"
           echo ""
           echo "🔗 Full Image Path:"
           echo "  ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
