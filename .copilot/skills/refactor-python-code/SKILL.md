@@ -321,10 +321,10 @@ def get_order(order_id: int) -> dict[str, Any] | None:
         order = database.find(order_id)
         return order
     except KeyError:
-        logger.debug(f"Order not found: {order_id}")
+        logger.debug("Order not found: {}", order_id)
         return None
     except Exception as e:
-        logger.error(f"Unexpected error retrieving order {order_id}: {e}", exc_info=True)
+        logger.error("Unexpected error retrieving order {}: {}", order_id, e)
         raise
 ```
 
@@ -372,10 +372,13 @@ results = [process(item) for item in valid_items]
 
 **Add at function entry to show which arguments are used:**
 
-```python
-import logging
+> **Loguru vs standard logging syntax:**
+> - **Loguru** (`from loguru import logger`): Use `{}` placeholders — `logger.debug("msg: {}", value)`
+> - **Standard logging** (`import logging`): Use `%s` — `logger.debug("msg: %s", value)`
+> - **Never use f-strings** with either — they evaluate eagerly even when the log level is disabled
 
-logger = logging.getLogger(__name__)
+```python
+from loguru import logger  # Loguru (preferred in this project)
 
 def fetch_orders(days: int = 30, format: str = "csv") -> pd.DataFrame:
     """Fetch orders from the past N days.
@@ -387,7 +390,7 @@ def fetch_orders(days: int = 30, format: str = "csv") -> pd.DataFrame:
     Returns:
         Orders DataFrame.
     """
-    logger.debug(f"fetch_orders called: days={days}, format={format}")
+    logger.debug("fetch_orders called: days={}, format={}", days, format)
     # ... implementation
 ```
 
@@ -395,6 +398,7 @@ def fetch_orders(days: int = 30, format: str = "csv") -> pd.DataFrame:
 - Log only optional arguments (not every variable)
 - Use `DEBUG` level only (production logs stay clean)
 - Respect patterns from `app.configs.log_config`
+- Use `{}` placeholders with Loguru, not f-strings
 
 #### 6. Naming Conventions (Seventh Priority)
 
@@ -504,9 +508,7 @@ def __enter__(self):
 
 def __exit__(self, exc_type, exc_val, exc_tb):
     if exc_type:
-        logger.error(f"Operation failed: {exc_val}", exc_info=True)
-    self.strategy.disconnect()
-```
+            logger.error("Operation failed: {}", exc_val)
 
 **3. Public Methods (Domain-Specific Names):**
 
@@ -779,7 +781,7 @@ class OrderRepository:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
-            logger.error(f"Operation failed: {exc_val}", exc_info=True)
+            logger.error("Operation failed: {}", exc_val)
         self.strategy.disconnect()
 
     def get_pending_orders(self) -> pd.DataFrame | None:
