@@ -136,7 +136,7 @@ Example:
 
 **Windows PowerShell**:
 
-- [windows-powershell-environment.instructions.md](../../.copilot/instructions/windows-powershell-environment.instructions.md)
+- [windows-powershell-environment.instructions.md](C:/Users/203715/.copilot/instructions/windows-powershell-environment.instructions.md)
 
 ---
 

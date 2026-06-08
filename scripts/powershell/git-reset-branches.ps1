@@ -33,6 +33,12 @@ asking for user confirmation. Useful in CI/CD pipelines.
 
 Example: .\git-reset-branches.ps1 -Force
 
+.PARAMETER OnlyDev
+Switch parameter. When used, only the DEV branch is reset to match master. Master and SIT branches
+are skipped. Useful for partial resets.
+
+Example: .\git-reset-branches.ps1 -OnlyDev
+
 .PARAMETER OnlySit
 Switch parameter. When used, only the SIT branch is reset to match dev. Master and dev branches
 are skipped. Useful for partial resets.
@@ -56,8 +62,16 @@ Example: .\git-reset-branches.ps1 -OnlySit
 .\git-reset-branches.ps1 -NoBackup -Force
 
 .EXAMPLE
+# Reset only DEV branch to master state with user confirmation:
+.\git-reset-branches.ps1 -OnlyDev
+
+.EXAMPLE
 # Dry-run to preview SIT-only reset:
 .\git-reset-branches.ps1 -DryRun -OnlySit
+
+.EXAMPLE
+# Dry-run to preview DEV-only reset:
+.\git-reset-branches.ps1 -DryRun -OnlyDev
 
 .NOTES
 Author: Development Team
@@ -70,6 +84,7 @@ param(
     [switch]$DryRun = $false,
     [switch]$NoBackup = $false,
     [switch]$Force = $false,
+    [switch]$OnlyDev = $false,
     [switch]$OnlySit = $false
 )
 
@@ -97,6 +112,11 @@ if ($DryRun) {
     Write-Host ""
 }
 
+if ($OnlyDev) {
+    Write-Host "[SINGLE BRANCH MODE] Only DEV branch will be reset to master state" -ForegroundColor Cyan
+    Write-Host ""
+}
+
 if ($OnlySit) {
     Write-Host "[SINGLE BRANCH MODE] Only SIT branch will be reset to dev state" -ForegroundColor Cyan
     Write-Host ""
@@ -115,7 +135,12 @@ if ($NoBackup) {
 # This is a safety measure to prevent accidental data loss
 if (-not $Force) {
     Write-Host "[WARNING] This script will FORCE RESET branches!" -ForegroundColor Red
-    if ($OnlySit) {
+    if ($OnlyDev) {
+        Write-Host "This will:" -ForegroundColor Red
+        Write-Host "  - Reset DEV branch to master state" -ForegroundColor Red
+        Write-Host "  - Discard uncommitted changes on DEV" -ForegroundColor Red
+        Write-Host "  - Force push to origin" -ForegroundColor Red
+    } elseif ($OnlySit) {
         Write-Host "This will:" -ForegroundColor Red
         Write-Host "  - Reset SIT branch to dev state" -ForegroundColor Red
         Write-Host "  - Discard uncommitted changes on SIT" -ForegroundColor Red
@@ -185,7 +210,9 @@ if (-not $NoBackup) {
 
     # Determine which branches to backup
     $branchesToBackup = $protectedBranches
-    if ($OnlySit) {
+    if ($OnlyDev) {
+        $branchesToBackup = @("dev")
+    } elseif ($OnlySit) {
         $branchesToBackup = @("sit")
     }
 
@@ -255,8 +282,8 @@ Write-Host ""
 # Reset master, dev, and sit branches to match remote state
 # These operations are skipped if -OnlySit parameter is used
 
-# Only reset master and dev if not in -OnlySit mode
-if (-not $OnlySit) {
+# Only reset master if not in -OnlySit or -OnlyDev mode
+if (-not $OnlySit -and -not $OnlyDev) {
     # --- MASTER BRANCH: Reset to remote state ---
     # Update master branch from origin
     Write-Host "Updating master branch..." -ForegroundColor Cyan
@@ -299,8 +326,54 @@ if (-not $OnlySit) {
         }
     }
 
-    # --- DEV BRANCH: Reset to match master ---
+    # --- DEV BRANCH: Reset to match master --- (full reset mode)
     # Update dev branch from master
+    if ($localBranches -contains "dev") {
+        Write-Host "Updating dev branch from master..." -ForegroundColor Cyan
+        if ($DryRun) {
+            Write-Host "[DRY RUN] git checkout dev" -ForegroundColor Gray
+            Write-Host "[DRY RUN] git reset --hard origin/master" -ForegroundColor Gray
+            Write-Host "[DRY RUN] git push origin dev --force" -ForegroundColor Gray
+            Write-Host "[OK] Dev branch would be reset to origin/master`n" -ForegroundColor Green
+        } else {
+            git checkout dev
+
+            if ($LASTEXITCODE -eq 0) {
+                git reset --hard origin/master
+
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "[OK] Dev branch reset to origin/master" -ForegroundColor Green
+                    Write-Host "Pushing dev to origin..." -ForegroundColor Yellow
+                    git push origin dev --force
+
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "[OK] Dev branch pushed to origin`n" -ForegroundColor Green
+                    }
+                    else {
+                        Write-Host "[ERROR] Failed to push dev branch`n" -ForegroundColor Red
+                        Stop-Transcript
+                        exit 1
+                    }
+                }
+                else {
+                    Write-Host "[ERROR] Failed to reset dev branch`n" -ForegroundColor Red
+                    Stop-Transcript
+                    exit 1
+                }
+            }
+            else {
+                Write-Host "[ERROR] Failed to checkout dev branch`n" -ForegroundColor Red
+                Stop-Transcript
+                exit 1
+            }
+        }
+    }
+    else {
+        Write-Host "[WARNING] Dev branch does not exist, skipping...`n" -ForegroundColor Yellow
+    }
+} elseif ($OnlyDev) {
+    # --- DEV BRANCH (OnlyDev mode): Reset to match master ---
+    Write-Host "[SKIPPED] Master branch (--OnlyDev mode)`n" -ForegroundColor Cyan
     if ($localBranches -contains "dev") {
         Write-Host "Updating dev branch from master..." -ForegroundColor Cyan
         if ($DryRun) {
@@ -349,8 +422,10 @@ if (-not $OnlySit) {
 }
 
 # --- SIT BRANCH: Reset to match dev ---
-# Update sit branch from dev
-if ($localBranches -contains "sit") {
+# Update sit branch from dev (skipped in OnlyDev mode)
+if ($OnlyDev) {
+    Write-Host "[SKIPPED] Sit branch (--OnlyDev mode)`n" -ForegroundColor Cyan
+} elseif ($localBranches -contains "sit") {
     Write-Host "Updating sit branch from dev..." -ForegroundColor Cyan
     if ($DryRun) {
         Write-Host "[DRY RUN] git checkout sit" -ForegroundColor Gray
@@ -389,8 +464,7 @@ if ($localBranches -contains "sit") {
             exit 1
         }
     }
-}
-else {
+} else {
     Write-Host "[WARNING] Sit branch does not exist, skipping...`n" -ForegroundColor Yellow
 }
 
@@ -400,7 +474,9 @@ else {
 # Display results and cleanup
 
 Write-Host "=============================================================" -ForegroundColor Cyan
-if ($OnlySit) {
+if ($OnlyDev) {
+    Write-Host "[OK] DEV branch has been reset to master state successfully!" -ForegroundColor Cyan
+} elseif ($OnlySit) {
     Write-Host "[OK] SIT branch has been reset to dev state successfully!" -ForegroundColor Cyan
 } else {
     Write-Host "[OK] All branches have been reset successfully!" -ForegroundColor Cyan

@@ -196,10 +196,13 @@ function Generate-MigrationReadme {
         $UvAddLines += "uv add $($FormattedDeps -join ' ')"
     }
 
+    # Always include mypy and ruff in dev tools
+    $AllDevDependencies = @($DevDependencies) + @("mypy", "ruff") | Select-Object -Unique
+
     # Process dev dependencies into a single command
-    if ($DevDependencies.Count -gt 0) {
+    if ($AllDevDependencies.Count -gt 0) {
         $FormattedDevDeps = @()
-        foreach ($dep in $DevDependencies) {
+        foreach ($dep in $AllDevDependencies) {
             $FormattedDevDeps += Format-Dependency $dep
         }
         $UvAddLines += "uv add --dev $($FormattedDevDeps -join ' ')"
@@ -215,6 +218,9 @@ Run these commands (or adjust versions as needed):
 ${backtick}bash
 $($UvAddLines -join "`n")
 ${backtick}
+
+> **Config files:** Copy `mypy.ini` and `ruff.toml` from the shared templates folder into your project root.
+> Template source: `cr-misc-function/templates/mypy.ini` and `cr-misc-function/templates/ruff.toml`
 "@
     } else {
         ""
@@ -344,31 +350,32 @@ if ($GenerateMigrationGuideOnly) {
 
 $PyProjectPath = Join-Path $ProjectRoot "pyproject.toml"
 
+$PyProjectContent = $null
 if (-not (Test-Path $PyProjectPath)) {
-    Fail "pyproject.toml not found in project root."
-}
+    Write-Host "[!] pyproject.toml not found in project root - skipping dependency parsing" -ForegroundColor Yellow
+} else {
+    Write-Host "[+] Found pyproject.toml"
 
-Write-Host "[+] Found pyproject.toml"
+    $PyProjectContent = Get-Content $PyProjectPath -Raw
 
-$PyProjectContent = Get-Content $PyProjectPath -Raw
+    # Extract requires-python (simple regex)
+    $RequiresPython = $null
+    $pythonVersionPattern = 'requires-python\s*=\s*"(.*?)"'
+    if ($PyProjectContent -match $pythonVersionPattern) {
+        $RequiresPython = $Matches[1]
+        Write-Host "[+] requires-python: $RequiresPython"
+    }
+    else {
+        Write-Host "[!] requires-python not found in pyproject.toml" -ForegroundColor Yellow
+    }
 
-# Extract requires-python (simple regex)
-$RequiresPython = $null
-$pythonVersionPattern = 'requires-python\s*=\s*"(.*?)"'
-if ($PyProjectContent -match $pythonVersionPattern) {
-    $RequiresPython = $Matches[1]
-    Write-Host "`[+`] requires-python: $RequiresPython"
-}
-else {
-    Write-Host "`[!`] requires-python not found in pyproject.toml" -ForegroundColor Yellow
-}
-
-# Detect Poetry backend
-$UsingPoetry = $false
-$poetryCorePattern = "poetry.core"
-if ($PyProjectContent -match $poetryCorePattern) {
-    $UsingPoetry = $true
-    Write-Host "`[!`] Poetry backend detected." -ForegroundColor Yellow
+    # Detect Poetry backend
+    $UsingPoetry = $false
+    $poetryCorePattern = "poetry.core"
+    if ($PyProjectContent -match $poetryCorePattern) {
+        $UsingPoetry = $true
+        Write-Host "[!] Poetry backend detected." -ForegroundColor Yellow
+    }
 }
 
 # ============================================================================
@@ -403,15 +410,20 @@ function Backup-File {
     Write-Host "  [+] Backed up: $(Split-Path $Destination -Leaf)"
 }
 
-if ($PoetryLockExists) {
-    Backup-File `
-        (Join-Path $ProjectRoot "poetry.lock") `
-        (Join-Path $LegacyPath "poetry.lock")
-}
-
 Backup-File `
     (Join-Path $ProjectRoot "pyproject.toml") `
     (Join-Path $LegacyPath "pyproject.poetry.toml")
+
+# Backup requirements.txt if it exists
+$RequirementsPath = Join-Path $ProjectRoot "requirements.txt"
+if (Test-Path $RequirementsPath) {
+    Backup-File $RequirementsPath (Join-Path $LegacyPath "requirements.txt")
+}
+
+# Backup any *.lock files except uv.lock (includes poetry.lock, package-lock.json-adjacent, etc.)
+Get-ChildItem -Path $ProjectRoot -Filter "*.lock" -File | Where-Object { $_.Name -ne "uv.lock" } | ForEach-Object {
+    Backup-File $_.FullName (Join-Path $LegacyPath $_.Name)
+}
 
 # Backup Dockerfile if it exists
 $DockerfilePath = Join-Path $ProjectRoot "Dockerfile"
@@ -525,8 +537,11 @@ Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Green
 Write-Host "  1. Open: legacy/README_MIGRATION.md"
 Write-Host "  2. Follow the 7-step migration walkthrough"
-Write-Host "  3. When done, commit your changes:"
-Write-Host "     git add pyproject.toml uv.lock .vscode/settings.json"
+Write-Host "  3. Copy config templates to your project root (if not already present):"
+Write-Host "       cr-misc-function/templates/mypy.ini  -> <project>/mypy.ini" -ForegroundColor Yellow
+Write-Host "       cr-misc-function/templates/ruff.toml -> <project>/ruff.toml" -ForegroundColor Yellow
+Write-Host "  4. When done, commit your changes:"
+Write-Host "     git add pyproject.toml uv.lock .vscode/settings.json mypy.ini ruff.toml"
 Write-Host 'git commit -m "chore: migrate from Poetry to uv"'
 Write-Host ""
 

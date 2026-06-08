@@ -118,7 +118,7 @@ Select references relevant to your project type. These are the authoritative sou
 ### Development Environment
 
 **For this machine (Windows PowerShell):**
-- [windows-powershell-environment.instructions.md](../../.copilot/instructions/windows-powershell-environment.instructions.md) — Terminal commands, path handling, and PowerShell syntax for Windows development
+- [windows-powershell-environment.instructions.md](C:/Users/203715/.copilot/instructions/windows-powershell-environment.instructions.md) — Terminal commands, path handling, and PowerShell syntax for Windows development
 
 ---
 

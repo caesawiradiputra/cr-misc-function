@@ -68,6 +68,7 @@ Add this to `.vscode/settings.json`:
 ```
 
 **Note:** Configure your PowerShell profile to expose manual activation commands (`conda311` / `conda39`) so each terminal can choose the runtime explicitly.
+See **[docs/powershell-profile-setup.md](../../docs/powershell-profile-setup.md)** for step-by-step setup instructions.
 
 ### Step 5 - Verify Installation
 
@@ -160,6 +161,7 @@ uv run script.py     # Run a Python script with venv
 ## See Also
 
 - **README_LEGACY.md** - How to restore Poetry + Conda if needed
+- **[docs/powershell-profile-setup.md](../../docs/powershell-profile-setup.md)** - How to configure `conda311` / `conda39` profile functions
 - [uv Documentation](https://docs.astral.sh/uv/)
 
 ---
