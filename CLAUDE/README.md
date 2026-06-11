@@ -30,6 +30,7 @@ CLAUDE/
 └── commands/
     ├── generate-commit-message.md  ← /generate-commit-message
     ├── refine-commit-message.md    ← /refine-commit-message
+    ├── generate-pr-message.md      ← /generate-pr-message
     ├── refactor-python.md          ← /refactor-python
     ├── refactor-repositories.md    ← /refactor-repositories
     ├── validate-lint-config.md     ← /validate-lint-config
@@ -71,6 +72,7 @@ Some commands accept arguments: `/command-name <argument>`
 | --- | --- | --- |
 | `/generate-commit-message` | Generate Conventional Commit + gitmoji from staged changes | `/generate-commit-message` |
 | `/refine-commit-message` | Iteratively improve an existing commit message | Paste your message, then `/refine-commit-message` |
+| `/generate-pr-message` | Generate PR messages + release folder for a branch deployment | `/generate-pr-message v1.0.0 dev` |
 
 ### Code Quality
 

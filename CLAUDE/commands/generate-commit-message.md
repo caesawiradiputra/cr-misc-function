@@ -202,6 +202,37 @@ Refs DA-6789
 
 ---
 
+## Phase 4: Post-Generation Action
+
+After presenting the commit message, always ask the user which action to take next.
+Gitmoji characters cannot be reliably copy-pasted in the Claude terminal, so do not leave the user to run the commit manually.
+
+Present these options explicitly:
+
+```text
+What would you like to do?
+1. Commit now — I'll run `git commit` with this message
+2. Refine — invoke /refine-commit-message to iterate on the message
+3. Cancel — do nothing
+```
+
+**If the user chooses option 1**, run the commit using a HEREDOC so the emoji is passed correctly:
+
+```powershell
+git commit -m "$(cat <<'EOF'
+<full commit message here>
+EOF
+)"
+```
+
+Then confirm success with the commit hash from `git log --oneline -1`.
+
+**If the user chooses option 2**, invoke `/refine-commit-message` and pass the generated message as the starting point.
+
+**If the user chooses option 3**, do nothing and inform the user the staged changes are still intact.
+
+---
+
 ## Pre-Submission Checklist
 
 - [ ] Ran `git diff --staged` — message based on actual diff, not assumptions

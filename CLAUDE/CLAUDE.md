@@ -93,12 +93,22 @@ git push origin branch_name
 
 ---
 
+## Markdown Style
+
+Rules VS Code cannot auto-fix — apply these manually when writing or editing Markdown files:
+
+- **Code blocks must always specify a language.** Use ` ```text ` for plain text or output; never leave the opening fence bare (` ``` `).
+- **Table separators must have spaces around dashes.** Use `| --- | --- |`, not `|---|---|`.
+
+---
+
 ## Available Slash Commands
 
 | Command | Description |
 | --- | --- |
 | `/generate-commit-message` | Generate Conventional Commit message from staged changes |
 | `/refine-commit-message` | Iteratively improve an existing commit message |
+| `/generate-pr-message` | Generate PR messages + release folder for a branch deployment |
 | `/refactor-python` | Refactor Python code while preserving behavior |
 | `/refactor-repositories` | Refactor repository classes to mandatory structure |
 | `/validate-lint-config` | Validate and sync ruff.toml + mypy.ini with environment |
