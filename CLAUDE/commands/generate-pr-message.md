@@ -1,3 +1,9 @@
+---
+description: Generate staging + production PR messages and the per-ticket release changelog for the dev/master deployment flow
+argument-hint: "[version] [\"optional requirement text\"]"
+allowed-tools: Bash(git fetch:*), Bash(git branch:*), Bash(git diff:*), Bash(git log:*)
+---
+
 # Generate PR Message
 
 Generate the pull request messages and release documentation for promoting a **feature/fix branch** through the deployment flow:
@@ -52,18 +58,9 @@ It also creates or updates a single per-ticket changelog at `release/<TICKET-ID>
 
 ---
 
-## Repository Location
-
-This workspace uses a nested git folder (repo lives in a child folder of the same name):
-
-- Workspace: `C:\Users\203715\Documents\Repo\cr-misc-function\`
-- Git repo: `C:\Users\203715\Documents\Repo\cr-misc-function\cr-misc-function\`
-
-Run all git commands from the git repo folder.
-
----
-
 ## Workflow
+
+> If the workspace root is not the git repo (nested repo folder), locate the folder containing `.git` and run all git commands from there. Project CLAUDE.md files document this where it applies.
 
 ### Phase 1: Detect Context
 
@@ -301,6 +298,8 @@ git add release\<TICKET-ID>\
 git commit -m "📦 release(<ticket>): add <brief-description> deployment package"
 git push
 ```
+
+Tip: after staging the release folder, `/commit` generates and creates this commit following the full Conventional Commits + gitmoji convention.
 
 Then open the **Feature → Dev** PR with PR Message 1. Later, when promoting `dev` to `master`, open that PR with PR Message 2.
 

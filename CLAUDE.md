@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repository Location
+
+The workspace root (`cr-misc-function\`) is **not** the git repo — the repo lives in the child folder of the same name (`cr-misc-function\cr-misc-function\`). Run all git commands from the child folder.
+
 ## Commands
 
 ```powershell

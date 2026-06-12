@@ -88,7 +88,7 @@ git push origin branch_name
 
 - **Package manager**: uv (not pip directly)
 - **Python style**: Google-style docstrings, PEP 8, snake_case functions/variables, PascalCase classes
-- **Commit format**: Conventional Commits + gitmoji (see `/generate-commit-message`)
+- **Commit format**: Conventional Commits + gitmoji (see `/commit`)
 - **Type hints**: Match project Python version — check `pyproject.toml` first
 
 ---
@@ -106,9 +106,9 @@ Rules VS Code cannot auto-fix — apply these manually when writing or editing M
 
 | Command | Description |
 | --- | --- |
-| `/generate-commit-message` | Generate Conventional Commit message from staged changes |
-| `/refine-commit-message` | Iteratively improve an existing commit message |
+| `/commit` | Generate Conventional Commit + gitmoji message, review/refine, and commit |
 | `/generate-pr-message` | Generate PR messages + release folder for a branch deployment |
+| `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees |
 | `/refactor-python` | Refactor Python code while preserving behavior |
 | `/refactor-repositories` | Refactor repository classes to mandatory structure |
 | `/validate-lint-config` | Validate and sync ruff.toml + mypy.ini with environment |

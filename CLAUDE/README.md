@@ -28,8 +28,8 @@ CLAUDE/
 ├── README.md                       ← This file
 ├── CLAUDE.md                       ← Global always-on instructions
 └── commands/
-    ├── generate-commit-message.md  ← /generate-commit-message
-    ├── refine-commit-message.md    ← /refine-commit-message
+    ├── commit.md                   ← /commit
+    ├── clean-gone.md               ← /clean-gone
     ├── generate-pr-message.md      ← /generate-pr-message
     ├── refactor-python.md          ← /refactor-python
     ├── refactor-repositories.md    ← /refactor-repositories
@@ -70,9 +70,9 @@ Some commands accept arguments: `/command-name <argument>`
 
 | Command | Description | Usage |
 | --- | --- | --- |
-| `/generate-commit-message` | Generate Conventional Commit + gitmoji from staged changes | `/generate-commit-message` |
-| `/refine-commit-message` | Iteratively improve an existing commit message | Paste your message, then `/refine-commit-message` |
-| `/generate-pr-message` | Generate PR messages + release folder for a branch deployment | `/generate-pr-message v1.0.0 dev` |
+| `/commit` | Generate Conventional Commit + gitmoji message, review/refine, and commit | `/commit`, `/commit amend`, `/commit <guidance>` |
+| `/generate-pr-message` | Generate PR messages + release folder for a branch deployment | `/generate-pr-message 1.2.0 "requirement text"` |
+| `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees | `/clean-gone` |
 
 ### Code Quality
 
