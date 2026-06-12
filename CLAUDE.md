@@ -47,6 +47,7 @@ Two parallel implementations exist — use the **strategy-based** one (not the m
 ### PVC Data Manager (`app/utils/pvc_data_manager.py`)
 
 Used for sharing DataFrames between Airflow/Kubernetes DAG tasks without repeated OSS round-trips:
+
 - In Kubernetes: uses `/shared-data` PVC mount
 - Locally: uses `./shared-data/`
 - `is_output_fresh()` checks file age against `TASK_OUTPUT_CACHE_HOURS` — set `ENABLE_TASK_OUTPUT_CACHE=false` to disable
@@ -63,3 +64,39 @@ Standalone utility functions (e.g., `data_cleaner.py`) — not tied to the app p
 - `hologres` maps to `PostgreSQLStrategy` (shares PostgreSQL wire protocol)
 - Log format defaults to `json` for production (Grafana); set `LOG_FORMAT=text` for local development
 - Python 3.11 union syntax (`X | Y`, `list[str]`) throughout — do not use `Optional` or `Union`
+
+## Committing Claude Code Setup
+
+When adding or updating the AI assistant config in this repo, use branch
+`chore/claude-code-setup` and the commit message below.
+
+```text
+🔧 chore(claude): add AI assistant config (Claude Code, Copilot)
+
+- Add .claude/settings.json (permissions + hooks) and CLAUDE.md project guidance
+- Add CLAUDE/ template (CLAUDE.md + slash commands)
+- Add .copilot/ (skills, instructions, prompts) and .github/copilot-instructions.md
+- Ignore .claude/settings.local.json (machine-specific permission overrides)
+```
+
+### What this setup provides
+
+- **`.claude/settings.json`** — shared Claude Code config:
+  - `permissions.deny` blocks reading/editing `.env`, `.env.dev`, `.env.prod`,
+    `token.json`, and editing/writing anything under `legacy/**` (rollback/
+    reference snapshots — see AGENTS.md)
+  - `hooks.PostToolUse` runs `ruff format` + `ruff check --fix` automatically
+    whenever Claude edits or writes a `.py` file
+- **`.claude/settings.local.json`** — this machine's permission allow-list
+  (absolute paths); gitignored, never committed
+- **`CLAUDE/`** — canonical source for this project's `CLAUDE.md` and custom
+  slash commands (`CLAUDE/commands/`); synced to the user's global
+  `~/.claude/commands` via `scripts/powershell/chat-Sync-ClaudeContext.ps1`
+- **`.copilot/`** — GitHub Copilot skills, instructions, and prompts; synced
+  to `~/.copilot/` via `chat-Sync-CopilotContext.ps1`
+- **`.github/copilot-instructions.md`** / **`.github/domain-copilot-instructions.md`**
+  — repo-wide and domain-specific Copilot instructions
+
+This repo doubles as a **template/config source**: `.claude/`, `CLAUDE/`,
+`.copilot/`, and `.github/` here are designed to be copy-pasted into other
+projects as a starting point.
