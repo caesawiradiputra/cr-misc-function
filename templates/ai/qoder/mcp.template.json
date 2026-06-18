@@ -1,0 +1,98 @@
+{
+  // =====================================================
+  // MCP (Model Context Protocol) Server Configuration
+  // for Qoder AI / VS Code
+  // =====================================================
+  //
+  // This file defines MCP servers that extend Qoder AI's
+  // capabilities with external tools and data sources.
+  //
+  // Place this file at: .vscode/mcp.json
+  // (Workspace-level, committed to version control)
+  //
+  // For secrets, use the "inputs" mechanism below so
+  // credentials are NOT stored in the file.
+  //
+  // Reference: https://code.visualstudio.com/docs/copilot/chat/mcp-servers
+  // =====================================================
+
+  // --- Secret Inputs ---
+  // Define promptString inputs for API keys and tokens.
+  // Users will be prompted once per session; VS Code stores
+  // the value securely in the OS keychain.
+  "inputs": [
+    // Example: API key for an HTTP-based MCP server
+    // {
+    //   "type": "promptString",
+    //   "id": "[SERVER_NAME]-api-key",
+    //   "description": "[SERVER_NAME] API Key",
+    //   "password": true
+    // }
+  ],
+
+  // --- MCP Server Definitions ---
+  "servers": {
+
+    // ---- Example: HTTP-based MCP Server ----
+    // Connects to a remote MCP endpoint over HTTP.
+    // Use for: hosted MCP services, internal company APIs
+    // "[HTTP_SERVER_NAME]": {
+    //   "type": "http",
+    //   "url": "https://[MCP_HOST]/mcp"
+    // },
+
+    // ---- Example: HTTP with Authentication ----
+    // Passes an API key via header for authenticated endpoints.
+    // "[AUTH_HTTP_SERVER_NAME]": {
+    //   "type": "http",
+    //   "url": "https://[MCP_HOST]/mcp",
+    //   "headers": {
+    //     "Authorization": "Bearer ${input:[SERVER_NAME]-api-key}"
+    //   }
+    // },
+
+    // ---- Example: stdio-based MCP Server ----
+    // Launches a local process as an MCP server.
+    // Use for: local tools, custom Python/Node MCP servers
+    // "[STDIO_SERVER_NAME]": {
+    //   "type": "stdio",
+    //   "command": "[PATH_TO_EXECUTABLE]",
+    //   "args": [
+    //     "-m",
+    //     "[MODULE_NAME]"
+    //   ],
+    //   "env": {
+    //     "API_KEY": "${input:[SERVER_NAME]-api-key}",
+    //     "PYTHONPATH": "[PATH_TO_PROJECT]"
+    //   }
+    // },
+
+    // ---- Example: Python-based MCP Server ----
+    // Runs a Python MCP server from a virtual environment.
+    // Use for: custom tools built with the MCP Python SDK
+    // "[PYTHON_SERVER_NAME]": {
+    //   "type": "stdio",
+    //   "command": "[PATH_TO_VENV]/Scripts/python.exe",
+    //   "args": [
+    //     "-m",
+    //     "[src.mcp_server]"
+    //   ],
+    //   "env": {
+    //     "OPENROUTER_API_KEY": "${input:[SERVER_NAME]-api-key}",
+    //     "PYTHONPATH": "[PATH_TO_PROJECT_ROOT]"
+    //   }
+    // },
+
+    // ---- Example: Node.js-based MCP Server ----
+    // Runs a Node.js MCP server via npx.
+    // Use for: community MCP packages from npm
+    // "[NODE_SERVER_NAME]": {
+    //   "type": "stdio",
+    //   "command": "npx",
+    //   "args": [
+    //     "-y",
+    //     "@[SCOPE]/[PACKAGE_NAME]"
+    //   ]
+    // }
+  }
+}
