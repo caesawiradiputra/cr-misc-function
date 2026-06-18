@@ -1,17 +1,17 @@
 # cr-misc-function
 
-Multi-database connection abstraction layer with unified interface for MSSQL, PostgreSQL, MySQL, Trino, Hive, and Alibaba ODPS.
+Shared commons library providing reusable database abstraction, utility functions, AI tooling templates, and development scripts for use across multiple projects.
 
 ## Features
 
-- **Unified Database Interface**: Single API for multiple database engines
-- **Strategy Pattern Architecture**: Clean separation between database-specific implementations
-- **Connection Pooling**: Built-in connection pooling with configurable pool sizes
-- **Repository Pattern Support**: Domain-specific data access layers
-- **Environment-Based Configuration**: Support for `.env` files and Vault secrets
-- **Type Safety**: Full type hints with IDE autocomplete support
-- **Context Manager Support**: Automatic connection lifecycle management
-- **File-Based Queries**: Execute SQL from files or strings
+- **Unified Database Interface**: Single API for 6 database engines (MSSQL, PostgreSQL, MySQL, Trino, Hive, ODPS)
+- **Strategy Pattern Architecture**: Pluggable database implementations with zero coupling
+- **Repository Pattern**: Type-safe, auto-generated CRUD with domain-specific business logic
+- **Three-Tier Configuration**: Vault secrets, `.env` files, and environment variables with Pydantic validation
+- **Utility Functions**: Copy-paste ready helpers for data I/O, dates, files, and SQL operations
+- **AI Tooling**: 12 Qoder skills, 2 custom agents, Claude Code commands, and Copilot instructions
+- **Reusable Templates**: Conda, Poetry, VS Code, ruff, mypy, and AI agent configs
+- **Development Scripts**: Git workflows, environment management, and lint validation
 
 ## Supported Databases
 
@@ -107,7 +107,7 @@ with DBConnectorStrategy("postgres") as conn:
 ### Repository Pattern Usage
 
 ```python
-from repositories.order_repository import OrderRepository
+from app.repositories.order_repository import OrderRepository
 
 # Pattern 3: Domain-specific repository
 with OrderRepository() as repo:
@@ -250,47 +250,91 @@ DATABASE_MSSQL = {
 
 See [app/connections/README.md](app/connections/README.md) for detailed implementation guide.
 
-## Development Tools
+## Utility Functions
 
-### Environment Management Scripts
+Copy-paste ready utilities in `app/utils/`:
 
-**Detect Undeclared Packages**:
+| Module | Functions | Purpose |
+| ------ | --------- | ------- |
+| `data_utils.py` | 11 | CSV/Parquet/JSON import, export, and conversion |
+| `repo_utils.py` | 7 | SQL query building, placeholder generation, column validation |
+| `date_util.py` | — | Date parsing, formatting, and timezone handling |
+| `file_util.py` | — | File reading, writing, and path operations |
+| `pvc_data_manager.py` | — | PVC data lifecycle management |
 
-```bash
-python scripts/python/dev_detect_undeclared_packages.py --env cr-misc-function-env
+## AI Tooling
+
+### Qoder Skills (`QODER/skills/`)
+
+12 slash-command skills for common development workflows:
+
+| Skill | Trigger | Purpose |
+| ----- | ------- | ------- |
+| commit | `/commit` | Conventional Commits + gitmoji message generation |
+| clean-gone | `/clean-gone` | Delete stale local branches and worktrees |
+| refactor-python | `/refactor-python` | Systematic Python code quality improvement |
+| refactor-repositories | `/refactor-repositories` | Repository pattern enforcement |
+| generate-pr-message | `/generate-pr-message` | PR messages + per-ticket changelog |
+| validate-lint-config | `/validate-lint-config` | Sync ruff.toml and mypy.ini with environment |
+| create-readme | `/create-readme` | README generation following standards |
+| create-confluence-docs | `/create-confluence-docs` | Hierarchical Confluence documentation |
+| generate-cde | `/generate-cde` | CDE registry from scratch (Mode A) |
+| update-cde | `/update-cde` | CDE incremental updates (Mode B) |
+| generate-cde-spreadsheet | `/generate-cde-spreadsheet` | CDE TSV spreadsheets |
+| setup-workspace | `/setup-workspace` | IDE/agent configuration audit |
+
+Sync skills to global `~/.qoder/`:
+
+```powershell
+.\scripts\powershell\chat-Sync-QoderContext.ps1
 ```
 
-Identifies packages installed in Conda environment but not declared in `pyproject.toml`.
-Supports severity classification (INFO/WARNING/CRITICAL) with color-coded output.
+### Other AI Configs
 
-**Generate Environment File**:
+- **Claude Code**: Commands in `CLAUDE/commands/`, context in `CLAUDE/CLAUDE.md`
+- **GitHub Copilot**: Instructions in `.github/copilot-instructions.md`
+- **Templates**: Reusable AI configs in `templates/ai/` (Qoder, Claude, Copilot)
 
-```bash
+## Templates
+
+Reusable project scaffolding in `templates/`:
+
+```text
+templates/
++-- ai/              - AI agent configs (Qoder, Claude Code, Copilot)
++-- conda/py311/     - Conda environment.yml (Python 3.11)
++-- conda/py39/      - Conda environment.yml (Python 3.9)
++-- vscode/          - VS Code extensions.json and settings.json
++-- ruff.toml        - Linting and formatting config
++-- mypy.ini         - Type checking config
+```
+
+## Development Scripts
+
+### Environment Management
+
+```powershell
+# Detect undeclared packages
+python scripts/python/dev_detect_undeclared_packages.py --env cr-misc-function-env
+
+# Generate environment file from Conda
 python scripts/python/dev_generate_env.py --env cr-misc-function-env
 ```
 
-Generates portable `environment.yml` from Conda environment with Poetry detection.
+### Git Workflow
 
-**Remove Base-Only Packages**:
-
-```bash
-python scripts/python/dev_remove_base_only_packages.py
-```
-
-Removes packages that only exist in base Conda environment, not project-specific.
-
-### Git Workflow Scripts
-
-PowerShell scripts in `scripts/powershell/` for branch management:
+PowerShell scripts in `scripts/powershell/`:
 
 - `git-create-clean-branch.ps1` - Create new feature branch
 - `git-clean-branches.ps1` - Clean up merged branches
 - `git-rebase-branch.ps1` - Interactive rebase workflow
+- `chat-Sync-QoderContext.ps1` - Sync Qoder skills to global config
 
 ## Further Reading
 
-- [Architecture Guide](app/connections/README.md) - Detailed strategy implementation
 - [Database Setup Guide](docs/database/SETUP_GUIDE.md) - Database-specific configuration
 - [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) - Production deployment
+- [Migration Guide](docs/deployment/MIGRATION_CONDA_TO_UV.md) - Conda to UV migration
+- [Bootstrap Guide](docs/bootstrap.md) - New project setup from this library
 - [Logging Configuration](docs/logging-configuration.md) - Structured logging setup
-- [Confluence Documentation](docs/confluence/) - Business system documentation
+- [GitHub Workflow Guide](docs/guidelines/GITHUB-WORKFLOW-CONSOLIDATED.md) - Branch and PR conventions
