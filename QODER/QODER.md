@@ -94,6 +94,66 @@ Rules VS Code cannot auto-fix — apply these manually when writing or editing M
 
 ---
 
+## Response Formatting
+
+When generating any output the user needs to copy (code, commit messages, PR descriptions, SQL, configs, shell commands, markdown text):
+
+### Rules
+
+1. **Wrap all copy-paste content in a fenced code block.** If the user will copy it, it must be inside a fence. Explanatory prose goes before or after the block, never interleaved.
+2. **One logical output = one code block.** Each distinct section gets exactly one fence containing the full output. Never split one section's output across multiple blocks.
+3. **Never oscillate.** The critical failure to avoid: open a code block, close it mid-content, add a line of prose, open another block, close it, repeat. This makes copy-paste impossible. If the content belongs together, keep one fence open until the section is done.
+4. **Always specify a language tag.** Use `powershell`, `python`, `sql`, `json`, `yaml`, `markdown` (for commit/PR messages), or `text` (for plain output). Never leave a fence bare.
+5. **Too long for one block? Write a temp file.** If the output is too large for a single code block, write it to `~/.qoder/cache/temp/<descriptive-name>.md` and link the path in the response. Create the folder if needed. Safe to purge anytime with `Remove-Item ~/.qoder/cache/temp/*`.
+
+### Correct Pattern
+
+Prose before the block. Full output inside one fence. Next section: new prose, new fence.
+
+````text
+**Commit 1:**
+
+```markdown
+feat(auth): add OAuth2 login flow
+
+- Implement token refresh logic
+- Add session middleware
+```
+
+**Commit 2:**
+
+```markdown
+fix(auth): correct token expiry check
+
+- Use UTC timestamps for comparison
+```
+````
+
+### Wrong: Oscillation (in → out → in → out)
+
+The content for Commit 1 is broken across plain text and fences. The user cannot select and copy Commit 1 in one action.
+
+````text
+**Commit 1:**
+
+```markdown
+feat(auth): add OAuth2 login flow
+```
+- Implement token refresh logic
+- Add session middleware      <-- plain text leaked outside fence
+
+```markdown
+- Add session middleware      <-- duplicated to compensate
+```
+
+**Commit 2:**
+
+fix(auth): correct token expiry    <-- entire message outside fence
+check                              <-- orphaned line
+````
+
+---
+
 ## Available Skills
 
 | Skill | Description |
