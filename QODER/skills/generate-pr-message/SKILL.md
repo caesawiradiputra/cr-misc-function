@@ -1,6 +1,6 @@
 ---
 name: generate-pr-message
-version: "1.0.0"
+version: "1.1.0"
 updated: "2026-06-18"
 related_skills:
   - commit
@@ -39,6 +39,9 @@ Also creates/updates a per-ticket changelog at `release/<TICKET-ID>/CHANGELOG.md
 5. **Testing section only if** test files appear in the diff OR user explicitly asks.
 6. **Version never carries a `v` prefix** — use `1.2.0`, not `v1.2.0`.
 7. **Agent creates files only.** Do NOT run `git add`/`commit`/`push`/`tag`.
+8. **Release folder files are the FIX.** Files in `release/<TICKET-ID>/` are the new/corrected versions being deployed, not passive reference material. Analyze them for logic changes and document what they fix.
+9. **Current ticket = new, older ticket = old.** When comparing release folders across tickets, the current ticket's folder is always the NEW/FIX version. Older tickets' folders represent the OLD/BUGGY versions that are being corrected.
+10. **PR messages in fenced code blocks.** All PR messages, commit messages, and git tag commands must be output inside fenced markdown code blocks (` ```markdown `, ` ```powershell `) for direct copy-paste. Never render as plain markdown.
 
 ## Workflow
 
@@ -63,6 +66,14 @@ git diff origin/dev...HEAD
 
 Categorize changes based **only on actual diff content**. Two sources feed every output: (1) the git diff, and (2) files in the ticket folder.
 
+#### Phase 2b: Analyze Release Folder Artifacts
+
+Read ALL files in `release/<TICKET-ID>/` (all subfolders). For SQL/config/script files:
+- Identify what logic they contain and what they fix compared to previous releases
+- If older release folders exist (e.g. `release/DA-1505/`), compare them to understand what changed
+- Document the fix direction: OLD (previous ticket) → NEW (current ticket)
+- Release folder files are active deployment artifacts — they must be listed in Changes Made, not just Release Artifacts
+
 ### Phase 3: Create/Update the Per-Ticket Changelog
 
 Path: `release/<TICKET-ID>/CHANGELOG.md`
@@ -73,16 +84,22 @@ release/<TICKET-ID>/
 +-- ddl/       # database schema changes
 +-- data/      # data migration scripts
 +-- config/    # configuration changes
++-- flink/     # Flink SQL streaming jobs
 +-- docs/      # implementation details
++-- (any other subfolder — scan all)
 ```
 
 #### Step 3a — Inventory & read the ticket folder FIRST
 
-Scan `release/<TICKET-ID>/` for files. Read artifacts and fold into changelog:
+Scan `release/<TICKET-ID>/` for ALL files recursively. Read artifacts and fold into changelog:
 - `ddl/` — schema/migration impact
 - `data/` — backfills or one-off scripts
 - `config/` — new/changed settings
+- `flink/` — Flink SQL streaming jobs (analyze logic changes vs previous releases)
 - `docs/` — context only (requirement PDFs for understanding, not copying)
+- Any other subfolder — scan and categorize
+
+**Important:** Release folder files are the corrected versions being deployed. Analyze their logic to understand what they fix — do not just list filenames.
 
 List every file in **Release Artifacts** section.
 
@@ -91,6 +108,18 @@ List every file in **Release Artifacts** section.
 ### Phase 4: Generate Both PR Messages
 
 Always display both, regardless of which PR is being opened now.
+
+### Phase 5: Generate Release Folder Commit Message
+
+After generating both PR messages, also generate a commit message for the release folder:
+
+```text
+📦 release(<TICKET-ID>): {brief description of artifacts}
+
+- {list key files and what they fix/add}
+
+Refs <TICKET-ID>
+```
 
 ## Output Templates
 
@@ -180,4 +209,8 @@ git push origin X.Y.Z
 - [ ] Requirement text not copied anywhere
 - [ ] Testing section only if test files in diff
 - [ ] PR messages within line limits (25/20)
+- [ ] All PR messages, commit messages, and tag commands in fenced code blocks
+- [ ] Release folder files analyzed for logic changes (not just listed)
+- [ ] Old vs new release version correctly identified (current ticket = fix, older ticket = buggy)
+- [ ] Release folder commit message generated
 - [ ] No git commands run by agent
