@@ -1,4 +1,4 @@
-<#!
+<#
 .SYNOPSIS
     Checks if dev branch has the same code changes as master branch (diff-based sync check).
 
@@ -21,6 +21,9 @@
 .PARAMETER NoFetch
     Skip fetching remote refs.
 
+.PARAMETER Force
+    Skip the confirmation prompt and proceed directly with sync.
+
 .EXAMPLE
     .\scripts\powershell\check-sync-set-dev.ps1
 
@@ -37,7 +40,8 @@ param(
     [string]$Remote = "origin",
     [string]$Master = "master",
     [string]$Dev    = "dev",
-    [switch]$NoFetch
+    [switch]$NoFetch,
+    [switch]$Force
 )
 
 Set-StrictMode -Version Latest
@@ -59,51 +63,67 @@ function Assert-GitAvailable {
 }
 
 function Assert-InGitRepo {
-    git rev-parse --is-inside-work-tree 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    git rev-parse --is-inside-work-tree 2>&1 | Out-Null
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($code -ne 0) {
         throw "Current directory is not a Git repository."
     }
 }
 
 function Test-RemoteBranchExists([string]$Remote, [string]$Branch) {
-    git show-ref --verify --quiet "refs/remotes/$Remote/$Branch"
-    return ($LASTEXITCODE -eq 0)
-}
-
-function Get-RemoteSha([string]$Remote, [string]$Branch) {
-    $sha = (git rev-parse "$Remote/$Branch" 2>$null).Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $sha) {
-        throw "Failed to resolve $Remote/$Branch"
-    }
-    return $sha
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    git show-ref --verify --quiet "refs/remotes/$Remote/$Branch" 2>&1 | Out-Null
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    return ($code -eq 0)
 }
 
 function Test-MasterInBranch([string]$Remote, [string]$Master, [string]$Branch) {
     # Check if branches have the same code changes (no diff means sync)
-    $diff = git diff "$Remote/$Master" "$Remote/$Branch" 2>$null
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $diff = git diff "$Remote/$Master" "$Remote/$Branch" 2>&1 | Where-Object { $_ -is [string] }
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($code -ne 0) {
+        throw "git diff between '$Remote/$Master' and '$Remote/$Branch' failed (exit code $code)."
+    }
     return -not $diff
 }
 
 function Ensure-LocalBranch([string]$Branch, [string]$Remote) {
-    git show-ref --verify --quiet "refs/heads/$Branch"
-    if ($LASTEXITCODE -eq 0) {
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    git show-ref --verify --quiet "refs/heads/$Branch" 2>&1 | Out-Null
+    $exists = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = $prevEAP
+    if ($exists) {
         return $true
     }
     # Create local branch tracking remote
     Write-Info "Creating local branch '$Branch' tracking '$Remote/$Branch'"
-    git checkout -b $Branch --track "$Remote/$Branch" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Failed to create local branch '$Branch'" }
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    git checkout -b "$Branch" --track "$Remote/$Branch" 2>&1 | Out-Null
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($code -ne 0) { throw "Failed to create local branch '$Branch'" }
     return $true
 }
 
 function Checkout-And-FF-Only([string]$Branch) {
     Write-Info "Checking out local branch '$Branch'"
-    git checkout $Branch | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Failed to checkout '$Branch'" }
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    git checkout "$Branch" 2>&1 | Out-Null
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($code -ne 0) { throw "Failed to checkout '$Branch'" }
 
     Write-Info "Fast-forwarding '$Branch'"
-    git pull --ff-only | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Failed to fast-forward '$Branch'" }
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    git pull --ff-only 2>&1 | Out-Null
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($code -ne 0) { throw "Failed to fast-forward '$Branch'" }
 }
 
 function Display-BranchDiffs([string]$Remote, [string]$Master, [string]$Dev) {
@@ -112,7 +132,9 @@ function Display-BranchDiffs([string]$Remote, [string]$Master, [string]$Dev) {
 
     Write-Host ""
     Write-Host "$Remote/$Master <-> $Remote/$Dev" -ForegroundColor Cyan
-    git diff "$Remote/$Master" "$Remote/$Dev" --stat 2>$null
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    git diff "$Remote/$Master" "$Remote/$Dev" --stat 2>&1 | Where-Object { $_ -is [string] }
+    $ErrorActionPreference = $prevEAP
 }
 
 function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev) {
@@ -127,7 +149,7 @@ function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev) {
                 $prevErrorAction = $ErrorActionPreference
                 $ErrorActionPreference = 'Continue'
 
-                git checkout $Branch 2>$null | Out-Null
+                git checkout "$Branch" 2>$null | Out-Null
                 $checkoutCode = $LASTEXITCODE
 
                 $ErrorActionPreference = $prevErrorAction
@@ -143,7 +165,7 @@ function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev) {
             $prevErrorAction = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
 
-            git pull $Remote 2>$null | Out-Null
+            git pull --ff-only $Remote 2>$null | Out-Null
             $pullCode = $LASTEXITCODE
 
             $ErrorActionPreference = $prevErrorAction
@@ -170,25 +192,31 @@ try {
     Assert-GitAvailable
     Assert-InGitRepo
 
+    # Save original branch to restore on non-success exits
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $originalBranch = (git rev-parse --abbrev-ref HEAD 2>&1 | Where-Object { $_ -is [string] }).Trim()
+    $ErrorActionPreference = $prevEAP
+
     # Step 2: Fetch latest changes
     if (-not $NoFetch) {
         Write-Info "Fetching '$Remote' (with prune)"
-        git fetch $Remote --prune | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "git fetch failed" }
+        $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        git fetch $Remote --prune 2>&1 | Out-Null
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = $prevEAP
+        if ($code -ne 0) { throw "git fetch failed" }
     } else {
         Write-Warn "Skipping fetch due to -NoFetch"
     }
 
-    Update-LocalBranches -Remote $Remote -Master $Master -Dev $Dev
-
-    # Step 3: Verify protected branches exist
+    # Step 3: Verify protected branches exist (read-only, before mutating local state)
     foreach ($b in @($Master, $Dev)) {
         if (-not (Test-RemoteBranchExists -Remote $Remote -Branch $b)) {
             throw "Remote branch '$Remote/$b' does not exist"
         }
     }
 
-    # Step 4: Compare code changes
+    # Step 4: Compare code changes (read-only, before mutating local state)
     Write-Info "Comparing code changes between branches..."
     $devSynced = Test-MasterInBranch -Remote $Remote -Master $Master -Branch $Dev
 
@@ -202,33 +230,62 @@ try {
     if ($devSynced) {
         Write-Okay "'$Dev' is in sync with '$Master' (same code)."
 
-        Display-BranchDiffs -Remote $Remote -Master $Master -Dev $Dev
-
         Write-Host ""
         Write-Host "About to:" -ForegroundColor Cyan
-        Write-Host "  1. Create/ensure local '$Dev' tracking '$Remote/$Dev'" -ForegroundColor DarkGray
-        Write-Host "  2. Checkout local '$Dev'" -ForegroundColor DarkGray
-        Write-Host "  3. Fast-forward '$Dev' with latest changes" -ForegroundColor DarkGray
+        Write-Host "  1. Update local '$Master' and '$Dev' from remote" -ForegroundColor DarkGray
+        Write-Host "  2. Create/ensure local '$Dev' tracking '$Remote/$Dev'" -ForegroundColor DarkGray
+        Write-Host "  3. Checkout local '$Dev'" -ForegroundColor DarkGray
+        Write-Host "  4. Fast-forward '$Dev' with latest changes" -ForegroundColor DarkGray
         Write-Host ""
-        $confirm = Read-Host "Proceed with syncing and activating '$Dev'? (y/n)"
-        if ($confirm -ne 'y' -and $confirm -ne 'Y') {
-            Write-Warn "Sync cancelled by user"
-            exit 0
+
+        if (-not $Force) {
+            $confirm = $null
+            while ($true) {
+                $confirm = Read-Host "Proceed with syncing and activating '$Dev'? (y/n)"
+                $confirm = $confirm.Trim().ToLower()
+                if ($confirm -eq 'y' -or $confirm -eq 'n' -or $confirm -eq '') {
+                    break
+                }
+                Write-Warn "Invalid input: '$confirm'. Please enter 'y' or 'n'."
+            }
+            if ($confirm -ne 'y') {
+                Write-Warn "Sync cancelled by user"
+                exit 3
+            }
+        } else {
+            Write-Info "Skipping confirmation (-Force)"
         }
+
+        # Only mutate local state after confirmation
+        Update-LocalBranches -Remote $Remote -Master $Master -Dev $Dev
+
+        # Ensure local dev branch exists (tracking remote) BEFORE checkout
         Write-Info "Activating local '$Dev'..."
         Ensure-LocalBranch -Branch $Dev -Remote $Remote | Out-Null
         Checkout-And-FF-Only -Branch $Dev
         Write-Okay "Active branch is now '$Dev'. You can create new branches from here."
         exit 0
     } else {
+        Display-BranchDiffs -Remote $Remote -Master $Master -Dev $Dev
+
         Write-Err "Conditions not met: '$Dev' must have no code differences from '$Master'. Aborting."
         Write-Host "Suggested next steps:" -ForegroundColor DarkGray
         Write-Host "  - View differences: git diff $Remote/$Master $Remote/$Dev" -ForegroundColor DarkGray
         Write-Host "  - Sync dev with master: git checkout $Dev; git merge $Remote/$Master" -ForegroundColor DarkGray
+
+        # Restore original branch since we didn't succeed
+        if ($originalBranch) {
+            git checkout "$originalBranch" 2>$null | Out-Null
+        }
         exit 2
     }
 }
 catch {
     Write-Err $_.Exception.Message
+
+    # Restore original branch on error
+    if ($originalBranch) {
+        git checkout "$originalBranch" 2>$null | Out-Null
+    }
     exit 1
 }

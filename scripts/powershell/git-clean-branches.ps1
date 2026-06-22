@@ -45,8 +45,6 @@ if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
 
-Start-Transcript -Path $logFile -Append
-
 # Logging helper functions - Color-coded status messages
 function Write-Info($msg)  { Write-Host "[INFO]  $msg" -ForegroundColor Cyan }
 function Write-Warn($msg)  { Write-Host "[WARN]  $msg" -ForegroundColor Yellow }
@@ -60,8 +58,8 @@ $protectedCount = 0            # Branches protected from deletion
 $updatedCount = 0              # Protected branches successfully updated
 $failedCount = 0               # Operations that failed
 $backupTagsDeletedCount = 0    # Backup tags cleaned up
-$branchesToDelete = @()        # Collection of branches marked for deletion
-$backupTagsToDelete = @()      # Collection of backup tags marked for deletion
+$branchesToDelete = [System.Collections.Generic.List[string]]::new()  # Branches marked for deletion
+$backupTagsToDelete = [System.Collections.Generic.List[string]]::new() # Backup tags marked for deletion
 
 Write-Host "=============================================================" -ForegroundColor Cyan
 Write-Host "Branch Cleanup Utility" -ForegroundColor Cyan
@@ -89,12 +87,21 @@ if ($NoUpdate) {
     Write-Host ""
 }
 
+# Validate we are inside a Git repository
+$repoRoot = git rev-parse --show-toplevel 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Err "Not inside a Git repository. Please run from within a Git working directory."
+    exit 1
+}
+Write-Info "Repository: $repoRoot"
+Write-Host ""
+
 # User confirmation checkpoint - Require explicit 'yes' to proceed (unless -Force)
 if (-not $Force) {
     Write-Host "[WARNING] This script will DELETE local branches!" -ForegroundColor Red
     Write-Host "This will:" -ForegroundColor Red
     if (-not $PurgeOnly) {
-        Write-Host "  - Update protected branches (master, dev, sit)" -ForegroundColor Red
+        Write-Host "  - Update protected branches ($($ProtectedBranches -join ', '))" -ForegroundColor Red
     }
     Write-Host "  - Delete branches not on remote" -ForegroundColor Red
     if ($CleanupBackupTags) {
@@ -103,16 +110,26 @@ if (-not $Force) {
     Write-Host "  - Protect: $($ProtectedBranches -join ', ')" -ForegroundColor Red
     Write-Host ""
 
-    $confirm = Read-Host "Type 'yes' to continue"
+    $confirm = $null
+    while ($true) {
+        $confirm = Read-Host "Type 'yes' to continue"
+        $confirm = $confirm.Trim().ToLower()
+        if ($confirm -eq 'yes' -or $confirm -eq '') {
+            break
+        }
+        Write-Warn "Invalid input: '$confirm'. Type 'yes' to confirm or press Enter to cancel."
+    }
 
-    if ($confirm -ne "yes") {
+    if ($confirm -ne 'yes') {
         Write-Warn "Operation cancelled by user"
-        Stop-Transcript
         exit 0
     }
 
     Write-Host ""
 }
+
+# Start logging after confirmation (avoids orphan log files on cancellation)
+Start-Transcript -Path $logFile -Append
 
 # ============================================================================
 # PHASE 1: SYNC WITH REMOTE
@@ -121,9 +138,9 @@ if (-not $Force) {
 # Fetch latest changes and prune deleted branches from remote tracking
 Write-Info "Fetching latest changes from origin (with prune)"
 if ($DryRun) {
-    Write-Host "[DRY RUN] git fetch --all --prune" -ForegroundColor Gray
+    Write-Host "[DRY RUN] git fetch origin --prune" -ForegroundColor Gray
 } else {
-    git fetch --all --prune
+    git fetch origin --prune 2>&1 | Out-Null
 
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to fetch from origin"
@@ -139,9 +156,16 @@ Write-Host ""
 Write-Info "Gathering branch information"
 $localBranches = git branch --format='%(refname:short)' | ForEach-Object { $_.Trim() }
 
-# Extract remote branch names (strip 'origin/' prefix)
+# Extract remote branch names (strip 'origin/' prefix, filter symbolic HEAD ref)
 $remoteBranches = git branch -r --format='%(refname:short)' | ForEach-Object {
     ($_ -replace "^origin/", "").Trim()
+} | Where-Object { $_ -ne "HEAD" }
+
+# Guard: abort if no remote branches found (prevents accidental deletion of all local branches)
+if ($null -eq $remoteBranches -or @($remoteBranches).Count -eq 0) {
+    Write-Err "No remote branches found. Aborting to prevent accidental deletion of all local branches."
+    Stop-Transcript
+    exit 1
 }
 
 # ============================================================================
@@ -152,21 +176,24 @@ $remoteBranches = git branch -r --format='%(refname:short)' | ForEach-Object {
 if (-not $NoUpdate -and -not $PurgeOnly) {
     Write-Info "Updating protected branches"
 
-    $branchesToUpdate = @("master", "dev", "sit")
+    $branchesToUpdate = $ProtectedBranches
+    $originalBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
+    if (-not $originalBranch) { $originalBranch = (git branch --show-current).Trim() }
+    $branchChanged = $false
 
     foreach ($branch in $branchesToUpdate) {
         if ($localBranches -contains $branch) {
             Write-Host "  Updating '$branch'..." -ForegroundColor Gray
 
             if ($DryRun) {
-                Write-Host "    [DRY RUN] git checkout $branch" -ForegroundColor Gray
-                Write-Host "    [DRY RUN] git pull origin $branch" -ForegroundColor Gray
+                Write-Host "    [DRY RUN] git checkout $branch; git pull origin $branch" -ForegroundColor Gray
             } else {
                 # Checkout branch and pull latest changes
-                git checkout $branch 2>$null
+                git checkout $branch 2>&1 | Out-Null
 
                 if ($LASTEXITCODE -eq 0) {
-                    git pull origin $branch 2>$null
+                    $branchChanged = $true
+                    git pull origin $branch 2>&1 | Out-Null
 
                     if ($LASTEXITCODE -eq 0) {
                         Write-Okay "  Updated '$branch'"
@@ -178,10 +205,24 @@ if (-not $NoUpdate -and -not $PurgeOnly) {
                     }
                 }
                 else {
-                    Write-Warn "  Failed to checkout '$branch'"
+                    # Checkout failed — likely checked out in a worktree or has conflicts
+                    Write-Warn "  Failed to checkout '$branch' (may be in use by a worktree)"
                     $failedCount++
                 }
             }
+        }
+        else {
+            Write-Info "  Skipping '$branch' (not found locally)"
+        }
+    }
+
+    # Restore original branch if we changed it during updates
+    if ($branchChanged -and $originalBranch -and -not $DryRun) {
+        git checkout $originalBranch 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Info "  Restored to original branch '$originalBranch'"
+        } else {
+            Write-Warn "  Could not restore to '$originalBranch'"
         }
     }
 
@@ -206,7 +247,7 @@ foreach ($branch in $localBranches) {
     if ($remoteBranches -notcontains $branch) {
         # Branch exists locally but not on remote - mark for deletion
         Write-Host "  [DELETE] '$branch' (not on remote)" -ForegroundColor Yellow
-        $branchesToDelete += $branch
+        $branchesToDelete.Add($branch)
     }
     else {
         # Branch exists on remote - keep it
@@ -240,8 +281,18 @@ if ($branchesToDelete.Count -gt 0) {
         $deletedCount = $branchesToDelete.Count
     } else {
         Write-Info "Deleting branches"
+        # Guard: if current branch is marked for deletion, switch to a safe branch first
+        $currentBranch = (git branch --show-current).Trim()
+        if ($branchesToDelete -contains $currentBranch) {
+            $safeBranch = $ProtectedBranches | Where-Object { $localBranches -contains $_ -and $_ -ne $currentBranch } | Select-Object -First 1
+            if ($safeBranch) {
+                Write-Warn "Current branch '$currentBranch' is marked for deletion. Switching to '$safeBranch' first."
+                git checkout $safeBranch 2>&1 | Out-Null
+            }
+        }
+
         foreach ($branch in $branchesToDelete) {
-            git branch -D $branch 2>$null
+            git branch -D $branch 2>&1 | Out-Null
 
             if ($LASTEXITCODE -eq 0) {
                 Write-Okay "  Deleted '$branch'"
@@ -268,7 +319,7 @@ if ($CleanupBackupTags) {
     Write-Info "Checking for backup tags to cleanup"
 
     # Get all tags matching backup-* pattern
-    $allTags = git tag --list "backup-*" 2>$null
+    $allTags = git tag --list "backup-*" 2>$null | ForEach-Object { $_.Trim() }
 
     if ($null -eq $allTags -or $allTags.Count -eq 0) {
         Write-Info "No backup tags found"
@@ -281,7 +332,7 @@ if ($CleanupBackupTags) {
         Write-Host "Found $($allTags.Count) backup tag(s):"
         foreach ($tag in $allTags) {
             Write-Host "  [DELETE] '$tag'" -ForegroundColor Yellow
-            $backupTagsToDelete += $tag
+            $backupTagsToDelete.Add($tag)
         }
 
         Write-Host ""
@@ -297,16 +348,16 @@ if ($CleanupBackupTags) {
             Write-Info "Deleting backup tags"
             foreach ($tag in $backupTagsToDelete) {
                 # Delete local tag first
-                git tag -d $tag 2>$null
+                git tag -d $tag 2>&1 | Out-Null
                 if ($LASTEXITCODE -eq 0) {
                     # Delete remote tag (push empty ref to remote)
-                    git push origin ":refs/tags/$tag" 2>$null
+                    git push origin ":refs/tags/$tag" 2>&1 | Out-Null
                     if ($LASTEXITCODE -eq 0) {
                         Write-Okay "  Deleted tag '$tag' (local and remote)"
                         $backupTagsDeletedCount++
                     } else {
                         Write-Warn "  Failed to delete remote tag '$tag' (local deleted)"
-                        $backupTagsDeletedCount++
+                        $failedCount++
                     }
                 } else {
                     Write-Err "  Failed to delete tag '$tag'"
@@ -329,7 +380,7 @@ Write-Host "Summary:" -ForegroundColor Cyan
 Write-Host "  Deleted:  $deletedCount" -ForegroundColor $(if ($deletedCount -gt 0) { 'Yellow' } else { 'Gray' }) # Orphaned branches removed
 Write-Host "  Kept:     $keptCount" -ForegroundColor Green                                  # Branches tracking remote
 Write-Host "  Protected: $protectedCount" -ForegroundColor Blue                            # Never deleted
-if (-not $NoUpdate) {
+if (-not $NoUpdate -and -not $PurgeOnly) {
     Write-Host "  Updated:  $updatedCount" -ForegroundColor Green                          # Protected branches synced
 }
 if ($backupTagsDeletedCount -gt 0) {

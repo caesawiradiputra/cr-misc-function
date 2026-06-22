@@ -6,7 +6,8 @@
     Shows commits from the feature branch that affected specific files or directories,
     then asks for confirmation. If confirmed, creates a new branch (with -clean suffix)
     from the base branch and cherry-picks those commits. Output is in reverse order
-    (oldest to newest) to show the evolution of changes.
+    (oldest to newest) to show the evolution of changes. After cherry-picking, the
+    script offers to push the new clean branch to the remote.
 
 .PARAMETER FeatureBranch
     The feature branch to analyze. If not specified, uses current branch.
@@ -23,7 +24,8 @@
 
 .PARAMETER LastN
     Optional: Only cherry-pick the last N commits instead of all filtered commits.
-    If not specified, you'll be prompted to choose interactively.
+    If not specified (or set to 0), you'll be prompted interactively to choose
+    between cherry-picking all commits or specifying a count.
 
 .EXAMPLE
     .\git-create-clean-branch.ps1 -FilePaths "app/connections/", "README.md"
@@ -104,6 +106,12 @@ function Write-Info {
     Write-Host $Message -ForegroundColor White
 }
 
+function Write-Warn {
+    param([string]$Message)
+    Write-Host "[WARN] " -ForegroundColor Yellow -NoNewline
+    Write-Host $Message -ForegroundColor White
+}
+
 function Write-ErrorMsg {
     param([string]$Message)
     Write-Host "[ERROR] " -ForegroundColor Red -NoNewline
@@ -126,6 +134,10 @@ Write-Success "Valid git repository"
 # Step 2: Determine feature branch
 if (-not $FeatureBranch) {
     $FeatureBranch = git rev-parse --abbrev-ref HEAD
+    if ($FeatureBranch -eq "HEAD") {
+        Write-ErrorMsg "You are in detached HEAD state. Please specify -FeatureBranch explicitly."
+        exit 1
+    }
     Write-Info "Using current branch: $FeatureBranch"
 } else {
     Write-Info "Analyzing branch: $FeatureBranch"
@@ -134,17 +146,12 @@ if (-not $FeatureBranch) {
 # Step 3: Fetch latest from origin (unless skipped)
 if (-not $SkipFetch) {
     Write-Step "Fetching latest changes" "[FETCH]"
-    try {
-        git fetch origin 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            Write-ErrorMsg "Failed to fetch from origin"
-            exit 1
-        }
-        Write-Success "Fetched latest from origin"
-    } catch {
-        Write-ErrorMsg "Error during fetch: $_"
+    git fetch origin 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-ErrorMsg "Failed to fetch from origin"
         exit 1
     }
+    Write-Success "Fetched latest from origin"
 } else {
     Write-Info "Skipped fetch (--SkipFetch specified)"
 }
@@ -189,7 +196,7 @@ $countArgs = @(
 )
 $countArgs += $FilePaths
 
-$commitCount = & git @countArgs
+$commitCount = [int](& git @countArgs)
 
 if ($commitCount -eq 0) {
     Write-Info "No commits found that modified the specified file paths."
@@ -224,6 +231,7 @@ Write-Host ""
 
 # Step 6: Ask whether to cherry-pick all or last N commits
 $commitsToCherry = $commitCount
+[int]$parsedN = 0
 if ($LastN -gt 0) {
     # If -LastN parameter was specified, use it
     if ($LastN -gt $commitCount) {
@@ -240,27 +248,33 @@ if ($LastN -gt 0) {
     Write-Host "  [a] Cherry-pick all $commitCount commit(s)" -ForegroundColor Yellow
     Write-Host "  [n] Cherry-pick last N commit(s) only" -ForegroundColor Yellow
     Write-Host ""
-    $cherryChoice = Read-Host "Select option (a/n)"
+    while ($true) {
+        $cherryChoice = Read-Host "Select option (a/n)"
 
-    if ($cherryChoice -eq 'n' -or $cherryChoice -eq 'N') {
-        $lastNInput = Read-Host "How many last commit(s) to cherry-pick? (1-$commitCount)"
+        if ($cherryChoice -eq 'n' -or $cherryChoice -eq 'N') {
+            $lastNInput = Read-Host "How many last commit(s) to cherry-pick? (1-$commitCount)"
 
-        # Validate input
-        if (-not [int]::TryParse($lastNInput, [ref]$commitsToCherry)) {
-            Write-ErrorMsg "Invalid number entered: $lastNInput"
-            exit 1
+            # Validate input
+            if (-not [int]::TryParse($lastNInput, [ref]$parsedN)) {
+                Write-ErrorMsg "Invalid number entered: $lastNInput"
+                exit 1
+            }
+
+            if ($parsedN -lt 1 -or $parsedN -gt $commitCount) {
+                Write-ErrorMsg "Number must be between 1 and $commitCount"
+                exit 1
+            }
+
+            $commitsToCherry = $parsedN
+
+            Write-Host ""
+            Write-Host "Will cherry-pick last $commitsToCherry commit(s)" -ForegroundColor Cyan
+            break
+        } elseif ($cherryChoice -eq 'a' -or $cherryChoice -eq 'A') {
+            break
+        } else {
+            Write-Warn "Invalid option: '$cherryChoice'. Please enter 'a' or 'n'."
         }
-
-        if ($commitsToCherry -lt 1 -or $commitsToCherry -gt $commitCount) {
-            Write-ErrorMsg "Number must be between 1 and $commitCount"
-            exit 1
-        }
-
-        Write-Host ""
-        Write-Host "Will cherry-pick last $commitsToCherry commit(s)" -ForegroundColor Cyan
-    } elseif ($cherryChoice -ne 'a' -and $cherryChoice -ne 'A') {
-        Write-ErrorMsg "Invalid option: $cherryChoice"
-        exit 1
     }
 }
 
@@ -275,6 +289,15 @@ $confirmation = Read-Host "Continue? (y/N)"
 if ($confirmation -ne 'y' -and $confirmation -ne 'Y') {
     Write-Info "Operation cancelled. No changes made."
     exit 0
+}
+
+# Step 7b: Check for uncommitted changes
+$dirtyFiles = git status --porcelain 2>$null
+if (-not [string]::IsNullOrWhiteSpace($dirtyFiles)) {
+    Write-ErrorMsg "You have uncommitted changes. Please commit or stash them first."
+    Write-Host "`nUncommitted files:" -ForegroundColor Yellow
+    $dirtyFiles -split "`n" | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+    exit 1
 }
 
 # Step 8: Create clean branch
@@ -296,21 +319,16 @@ if ($remoteBranchExists) {
 }
 
 # Create new branch from base
-try {
-    git checkout -b "$cleanBranchName" "origin/$BaseBranch" 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-ErrorMsg "Failed to create branch '$cleanBranchName'"
-        exit 1
-    }
-
-    # Unset upstream tracking to avoid confusion (branch should show as unpublished)
-    git branch --unset-upstream 2>&1 | Out-Null
-
-    Write-Success "Created and checked out branch: $cleanBranchName"
-} catch {
-    Write-ErrorMsg "Error creating branch: $_"
+$originalBranch = git rev-parse --abbrev-ref HEAD 2>$null
+git checkout -b "$cleanBranchName" "origin/$BaseBranch" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-ErrorMsg "Failed to create branch '$cleanBranchName'"
     exit 1
 }
+
+# Unset upstream tracking (branch should show as unpublished until explicitly pushed)
+git branch --unset-upstream 2>&1 | Out-Null
+Write-Success "Created and checked out branch: $cleanBranchName"
 
 # Step 9: Get commit hashes and cherry-pick them
 Write-Step "Cherry-picking commits" "[PICK]"
@@ -334,7 +352,6 @@ if ($commitsToCherry -lt $totalHashes) {
 }
 
 $successCount = 0
-$failCount = 0
 
 for ($i = $startIndex; $i -lt $commitHashes.Count; $i++) {
     $hash = $commitHashes[$i]
@@ -345,20 +362,22 @@ for ($i = $startIndex; $i -lt $commitHashes.Count; $i++) {
         $successCount++
         Write-Host "  [OK] Successfully picked $hash" -ForegroundColor Green
     } else {
-        $failCount++
         Write-Host "  [ERROR] Failed to pick $hash" -ForegroundColor Red
-        Write-Host "  Conflict detected. Please resolve conflicts and run:" -ForegroundColor Yellow
+        Write-Host "  Conflict detected. Resolve conflicts and run:" -ForegroundColor Yellow
         Write-Host "    git cherry-pick --continue" -ForegroundColor Yellow
-        Write-Host "  Or skip this commit with:" -ForegroundColor Yellow
+        Write-Host "  Or skip this commit:" -ForegroundColor Yellow
         Write-Host "    git cherry-pick --skip" -ForegroundColor Yellow
-        Write-Host "  Or abort with:" -ForegroundColor Yellow
+        Write-Host "  Or abort and clean up:" -ForegroundColor Yellow
         Write-Host "    git cherry-pick --abort" -ForegroundColor Yellow
+        Write-Host "    git checkout $originalBranch" -ForegroundColor Yellow
+        Write-Host "    git branch -D $cleanBranchName" -ForegroundColor Yellow
+        Write-Info "Successfully picked $successCount of $($commitHashes.Count - $startIndex) commits before failure."
         exit 1
     }
 }
 
 Write-Host ""
-Write-Success "Cherry-pick complete: $successCount succeeded, $failCount failed"
+Write-Success "Cherry-pick complete: $successCount commit(s) picked"
 Write-Success "New clean branch created: $cleanBranchName"
 Write-Host ""
 
@@ -368,24 +387,27 @@ Write-Host ""
 Write-Host "This will push '$cleanBranchName' to origin and set up tracking." -ForegroundColor Yellow
 Write-Host "IMPORTANT: This creates a NEW branch on remote, does NOT push to $BaseBranch" -ForegroundColor Yellow
 Write-Host ""
-$pushConfirm = Read-Host "Push branch to remote? (y/N)"
+$pushConfirm = $null
+while ($true) {
+    $pushConfirm = Read-Host "Push branch to remote? (y/N)"
+    $pushConfirm = $pushConfirm.Trim().ToLower()
+    if ($pushConfirm -eq 'y' -or $pushConfirm -eq 'n' -or $pushConfirm -eq '') {
+        break
+    }
+    Write-Warn "Invalid input: '$pushConfirm'. Please enter 'y' or 'n'."
+}
 
-if ($pushConfirm -eq 'y' -or $pushConfirm -eq 'Y') {
-    try {
-        git push -u origin "$cleanBranchName" 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            Write-ErrorMsg "Failed to push branch to remote"
-            Write-Info "You can push manually later: git push -u origin $cleanBranchName"
-        } else {
-            Write-Success "Branch pushed to remote and tracking set up"
-            Write-Host ""
-            Write-Info "Next step: Create Pull Request on GitHub/GitLab"
-            Write-Info "  From: $cleanBranchName"
-            Write-Info "  To: $BaseBranch"
-        }
-    } catch {
-        Write-ErrorMsg "Error pushing branch: $_"
+if ($pushConfirm -eq 'y') {
+    git push origin "$cleanBranchName" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-ErrorMsg "Failed to push branch to remote"
         Write-Info "You can push manually later: git push -u origin $cleanBranchName"
+    } else {
+        Write-Success "Branch pushed to remote"
+        Write-Host ""
+        Write-Info "Next step: Create Pull Request on GitHub/GitLab"
+        Write-Info "  From: $cleanBranchName"
+        Write-Info "  To: $BaseBranch"
     }
 } else {
     Write-Info "Skipped push. You can push manually later:"

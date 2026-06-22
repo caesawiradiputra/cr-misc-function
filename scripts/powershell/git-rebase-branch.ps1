@@ -90,12 +90,16 @@ function Write-Error-Custom {
 }
 
 function Test-GitRepository {
-    $gitDir = git rev-parse --git-dir 2>$null
+    git rev-parse --git-dir 2>&1 | Out-Null
     return $LASTEXITCODE -eq 0
 }
 
 function Get-CurrentBranch {
-    $branch = git branch --show-current 2>$null
+    try {
+        $branch = git branch --show-current 2>$null
+    } catch {
+        throw "Failed to get current branch"
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to get current branch"
     }
@@ -104,20 +108,22 @@ function Get-CurrentBranch {
 
 function Test-BranchExists {
     param([Parameter(Mandatory)][string]$Branch)
-
-    git rev-parse --verify "$Branch" 2>$null | Out-Null
+    git rev-parse --verify "$Branch" 2>&1 | Out-Null
     return $LASTEXITCODE -eq 0
 }
 
 function Test-RemoteBranchExists {
     param([Parameter(Mandatory)][string]$Branch)
-
-    git ls-remote --heads origin "$Branch" 2>$null | Out-Null
+    git ls-remote --heads origin "$Branch" 2>&1 | Out-Null
     return $LASTEXITCODE -eq 0
 }
 
 function Get-UncommittedChanges {
-    $status = git status --porcelain 2>$null
+    try {
+        $status = git status --porcelain 2>$null
+    } catch {
+        return $false
+    }
     return -not [string]::IsNullOrWhiteSpace($status)
 }
 
@@ -144,6 +150,12 @@ try {
         Write-Info "Using current branch: $FeatureBranch"
     }
 
+    # Guard: prevent rebasing a branch onto itself
+    if ($FeatureBranch -eq $BaseBranch) {
+        Write-Error-Custom "Feature branch '$FeatureBranch' is the same as base branch '$BaseBranch'. Nothing to rebase."
+        exit 1
+    }
+
     # Step 1: Check for uncommitted changes
     Write-Step "Checking for uncommitted changes" "[FILES]"
     if (Get-UncommittedChanges) {
@@ -158,7 +170,7 @@ try {
     # Step 2: Fetch from origin
     if (-not $SkipFetch) {
         Write-Step "Fetching latest changes from origin" "[FETCH]"
-        git fetch origin
+        git fetch origin --prune 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to fetch from origin"
         }
@@ -170,7 +182,7 @@ try {
     # Step 3: Verify branches exist
     Write-Step "Verifying branches" "[CHECK]"
 
-    if (-not (Test-RemoteBranchExists "refs/heads/$BaseBranch")) {
+    if (-not (Test-RemoteBranchExists $BaseBranch)) {
         throw "Base branch 'origin/$BaseBranch' does not exist"
     }
     Write-Success "Base branch 'origin/$BaseBranch' exists"
@@ -184,7 +196,7 @@ try {
     $currentBranch = Get-CurrentBranch
     if ($currentBranch -ne $FeatureBranch) {
         Write-Step "Checking out feature branch: $FeatureBranch" "[SWITCH]"
-        git checkout $FeatureBranch
+        git checkout $FeatureBranch 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to checkout branch '$FeatureBranch'"
         }
@@ -196,7 +208,7 @@ try {
     # Step 5: Show commits that will be rebased
     Write-Step "Commits to be rebased" "[COMMITS]"
 
-    $commitCount = git rev-list --count "origin/$BaseBranch..$FeatureBranch"
+    [int]$commitCount = git rev-list --count "origin/$BaseBranch..$FeatureBranch"
 
     if ($commitCount -eq 0) {
         Write-Info "No commits to rebase. $FeatureBranch is up to date with origin/$BaseBranch"
@@ -219,9 +231,16 @@ try {
     Write-Host "  2. Drop any commits that came from other branches" -ForegroundColor Yellow
     Write-Host "  3. May cause conflicts that you'll need to resolve" -ForegroundColor Yellow
     Write-Host ""
-    $confirmation = Read-Host "Continue with rebase? (y/N)"
+    $confirmation = $null
+    while ($confirmation -notin @('y', 'Y', 'n', 'N')) {
+        $confirmation = Read-Host "Continue with rebase? (y/N)"
+        if ([string]::IsNullOrWhiteSpace($confirmation)) { $confirmation = 'N' }
+        if ($confirmation -notin @('y', 'Y', 'n', 'N')) {
+            Write-Host "[WARN] Invalid input: '$confirmation'. Please enter 'y' or 'n'." -ForegroundColor Yellow
+        }
+    }
 
-    if ($confirmation -ne 'y' -and $confirmation -ne 'Y') {
+    if ($confirmation -eq 'n' -or $confirmation -eq 'N') {
         Write-Info "Rebase cancelled by user"
         exit 0
     }
@@ -229,7 +248,7 @@ try {
     # Step 7: Create safety backup
     Write-Step "Creating safety backup branch" "[BACKUP]"
     $backupBranchName = "backup/$FeatureBranch-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-    git branch $backupBranchName
+    git branch $backupBranchName 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to create backup branch '$backupBranchName'"
     }
@@ -238,10 +257,12 @@ try {
 
     # Step 8: Perform rebase
     Write-Step "Rebasing $FeatureBranch onto origin/$BaseBranch" "[REBASE]"
-    git rebase "origin/$BaseBranch"
+    git rebase "origin/$BaseBranch" 2>&1 | Tee-Object -Variable rebaseOutput | Out-Null
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error-Custom "Rebase encountered conflicts!"
+        # Show git's error output
+        $rebaseOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
         Write-Host "`n[HELP] To resolve conflicts:"
         Write-Host "  1. Fix conflicts in the listed files" -ForegroundColor Yellow
         Write-Host "  2. Run: git add <resolved-files>" -ForegroundColor Yellow
@@ -262,7 +283,7 @@ try {
     Write-Step "Verifying rebased commits" "[VERIFY]"
 
     # Count rebased commits
-    $rebasedCount = (git rev-list --count "origin/$BaseBranch..HEAD")
+    [int]$rebasedCount = (git rev-list --count "origin/$BaseBranch..HEAD")
 
     Write-Host "`n$rebasedCount commit(s) ready to merge into $BaseBranch :" -ForegroundColor Green
     Write-Host ""
@@ -273,7 +294,24 @@ try {
     Write-Host ""
     Write-Success "Only your feature commits are present ($rebasedCount commit(s))"
 
-    # Step 9: Provide next steps
+    # Step 9b: Offer to clean up backup branch
+    Write-Host ""
+    $cleanupBackup = $null
+    while ($cleanupBackup -notin @('y', 'Y', 'n', 'N')) {
+        $cleanupBackup = Read-Host "Rebase verified. Delete backup branch '$backupBranchName'? (y/N)"
+        if ([string]::IsNullOrWhiteSpace($cleanupBackup)) { $cleanupBackup = 'N' }
+        if ($cleanupBackup -notin @('y', 'Y', 'n', 'N')) {
+            Write-Host "[WARN] Invalid input. Please enter 'y' or 'n'." -ForegroundColor Yellow
+        }
+    }
+    if ($cleanupBackup -eq 'y' -or $cleanupBackup -eq 'Y') {
+        git branch -D $backupBranchName 2>&1 | Out-Null
+        Write-Success "Backup branch deleted"
+    } else {
+        Write-Info "Backup retained. Clean up later with: git branch -D $backupBranchName"
+    }
+
+    # Step 10: Provide next steps
     Write-Host "`n" -NoNewline
     Write-Host "============================================================" -ForegroundColor Green
     Write-Host "[SUCCESS] Rebase Complete - Next Steps" -ForegroundColor Green
@@ -297,4 +335,21 @@ try {
     Write-Host "`n" -NoNewline
     Write-Error-Custom "Script failed: $_"
     exit 1
+} finally {
+    # Detect if a rebase is still in progress (e.g., from Ctrl+C)
+    try {
+        $gitDir = git rev-parse --git-dir 2>$null
+        $rebaseMergeDir = Join-Path $gitDir "rebase-merge"
+        $rebaseApplyDir = Join-Path $gitDir "rebase-apply"
+        if ((Test-Path $rebaseMergeDir) -or (Test-Path $rebaseApplyDir)) {
+            Write-Host "`n[WARNING] A rebase is still in progress." -ForegroundColor Red
+            Write-Host "  To continue:  fix conflicts, git add <files>, then git rebase --continue" -ForegroundColor Yellow
+            Write-Host "  To abort:     git rebase --abort" -ForegroundColor Yellow
+            if ($backupBranchName) {
+                Write-Host "  To hard-reset: git reset --hard $backupBranchName" -ForegroundColor Yellow
+            }
+        }
+    } catch {
+        # Silently ignore - not in a git repo or other error
+    }
 }

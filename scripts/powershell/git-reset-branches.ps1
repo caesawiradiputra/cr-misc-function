@@ -5,13 +5,13 @@ Reset Git branches (master, dev, sit) to their remote state with backup safeguar
 .DESCRIPTION
 This script provides a safe way to reset local Git branches to match their remote counterparts.
 It creates backup tags before making any changes, allowing recovery if needed. The script supports
-dry-run mode for validation and can selectively reset only the SIT branch.
+dry-run mode for validation and can selectively reset only the DEV or only the SIT branch.
 
-The script performs the following operations:
-  1. Fetches all changes from origin
+The script performs a cascading reset:
+  1. Fetches latest changes from origin
   2. Creates backup tags at current remote state (for recovery)
-  3. Resets branches in order: master -> dev -> sit
-  4. Force-pushes changes back to origin
+  3. Resets master to origin/master, then dev to origin/master, then sit to origin/dev
+  4. Force-pushes changes back to origin (with --force-with-lease for safety)
 
 This is useful for cleaning up corrupted branches or syncing with remote when local history diverges.
 
@@ -35,13 +35,13 @@ Example: .\git-reset-branches.ps1 -Force
 
 .PARAMETER OnlyDev
 Switch parameter. When used, only the DEV branch is reset to match master. Master and SIT branches
-are skipped. Useful for partial resets.
+are skipped. Useful for partial resets. Cannot be combined with -OnlySit.
 
 Example: .\git-reset-branches.ps1 -OnlyDev
 
 .PARAMETER OnlySit
 Switch parameter. When used, only the SIT branch is reset to match dev. Master and dev branches
-are skipped. Useful for partial resets.
+are skipped. Useful for partial resets. Cannot be combined with -OnlyDev.
 
 Example: .\git-reset-branches.ps1 -OnlySit
 
@@ -90,11 +90,20 @@ param(
 
 
 # ============================================================================
+# MUTUAL EXCLUSIVITY GUARD
+# ============================================================================
+if ($OnlyDev -and $OnlySit) {
+    Write-Host "[ERROR] -OnlyDev and -OnlySit are mutually exclusive. Please choose one." -ForegroundColor Red
+    exit 1
+}
+
+
+# ============================================================================
 # SETUP LOGGING
 # ============================================================================
-# Initialize timestamped log file for audit trail and troubleshooting
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$logFile = Join-Path $PSScriptRoot "logs\reset-branches-$timestamp.log"
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
+$logFile = Join-Path $scriptDir "logs\reset-branches-$timestamp.log"
 $logDir = Split-Path $logFile
 if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
@@ -129,10 +138,33 @@ if ($NoBackup) {
 
 
 # ============================================================================
+# GIT REPOSITORY VALIDATION
+# ============================================================================
+$null = git rev-parse --is-inside-work-tree 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] This script must be run from inside a Git repository" -ForegroundColor Red
+    Stop-Transcript
+    exit 1
+}
+
+
+# ============================================================================
+# UNCOMMITTED CHANGES CHECK
+# ============================================================================
+$dirtyFiles = git status --porcelain 2>&1
+$dirtyFiles = $dirtyFiles | Where-Object { $_ -is [string] }
+if ($dirtyFiles) {
+    Write-Host "[ERROR] Working directory has uncommitted changes:" -ForegroundColor Red
+    $dirtyFiles | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+    Write-Host "Please commit or stash changes before running this script." -ForegroundColor Yellow
+    Stop-Transcript
+    exit 1
+}
+
+
+# ============================================================================
 # USER CONFIRMATION
 # ============================================================================
-# Prompt user for confirmation unless -Force switch is provided
-# This is a safety measure to prevent accidental data loss
 if (-not $Force) {
     Write-Host "[WARNING] This script will FORCE RESET branches!" -ForegroundColor Red
     if ($OnlyDev) {
@@ -147,7 +179,7 @@ if (-not $Force) {
         Write-Host "  - Force push to origin" -ForegroundColor Red
     } else {
         Write-Host "This will:" -ForegroundColor Red
-        Write-Host "  - Discard uncommitted changes" -ForegroundColor Red
+        Write-Host "  - Reset master, dev, and sit branches" -ForegroundColor Red
         Write-Host "  - Rewrite branch history" -ForegroundColor Red
         Write-Host "  - Force push to origin" -ForegroundColor Red
     }
@@ -158,9 +190,18 @@ if (-not $Force) {
     }
 
     Write-Host ""
-    $confirm = Read-Host "Type 'yes' to continue"
 
-    if ($confirm -ne "yes") {
+    $confirm = $null
+    while ($true) {
+        $confirm = Read-Host "Type 'yes' to continue"
+        $confirm = $confirm.Trim().ToLower()
+        if ($confirm -eq 'yes' -or $confirm -eq '') {
+            break
+        }
+        Write-Host "[WARN] Invalid input: '$confirm'. Type 'yes' to confirm or press Enter to cancel." -ForegroundColor Yellow
+    }
+
+    if ($confirm -ne 'yes') {
         Write-Host "[CANCELLED] Operation cancelled by user" -ForegroundColor Yellow
         Stop-Transcript
         exit 0
@@ -171,15 +212,60 @@ if (-not $Force) {
 
 
 # ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+function Reset-Branch {
+    param(
+        [string]$BranchName,
+        [string]$ResetTarget,
+        [switch]$DryRun
+    )
+
+    Write-Host "Updating $BranchName branch..." -ForegroundColor Cyan
+
+    if ($DryRun) {
+        Write-Host "[DRY RUN] git checkout $BranchName" -ForegroundColor Gray
+        Write-Host "[DRY RUN] git reset --hard $ResetTarget" -ForegroundColor Gray
+        Write-Host "[DRY RUN] git push origin $BranchName --force-with-lease" -ForegroundColor Gray
+        Write-Host "[OK] $BranchName branch would be reset to $ResetTarget`n" -ForegroundColor Green
+        return $true
+    }
+
+    git checkout $BranchName 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] Failed to checkout $BranchName branch`n" -ForegroundColor Red
+        return $false
+    }
+
+    git reset --hard $ResetTarget
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] Failed to reset $BranchName branch`n" -ForegroundColor Red
+        return $false
+    }
+
+    Write-Host "[OK] $BranchName branch reset to $ResetTarget" -ForegroundColor Green
+    Write-Host "Pushing $BranchName to origin..." -ForegroundColor Yellow
+    git push origin $BranchName --force-with-lease
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[OK] $BranchName branch pushed to origin`n" -ForegroundColor Green
+        return $true
+    } else {
+        Write-Host "[ERROR] Failed to push $BranchName branch`n" -ForegroundColor Red
+        return $false
+    }
+}
+
+
+# ============================================================================
 # FETCH LATEST CHANGES FROM REMOTE
 # ============================================================================
-# Pull the latest remote state before performing any resets
-# This ensures we're resetting to the current remote branch state
 Write-Host "Fetching latest changes from origin..." -ForegroundColor Cyan
 if ($DryRun) {
-    Write-Host "[DRY RUN] git fetch --all --prune" -ForegroundColor Gray
+    Write-Host "[DRY RUN] git fetch origin --prune" -ForegroundColor Gray
 } else {
-    git fetch --all --prune
+    git fetch origin --prune 2>&1 | Out-Null
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[ERROR] Failed to fetch from origin" -ForegroundColor Red
@@ -191,7 +277,7 @@ if ($DryRun) {
 Write-Host "[OK] Fetch complete`n" -ForegroundColor Green
 
 # Get list of local branches (for later use)
-$localBranches = git branch --format='%(refname:short)' | ForEach-Object { $_.Trim() }
+$localBranches = git branch --format='%(refname:short)' | Where-Object { $_ -is [string] } | ForEach-Object { $_.Trim() }
 
 # Define protected branches
 $protectedBranches = @("master", "dev", "sit")
@@ -200,9 +286,8 @@ $protectedBranches = @("master", "dev", "sit")
 # ============================================================================
 # CREATE BACKUP TAGS
 # ============================================================================
-# Tag the current remote state before any resets for recovery purposes
-# This allows restoring to the previous state if something goes wrong
-# Backup tags are only created if -NoBackup switch is not used
+$backupTagsToPush = @()
+
 if (-not $NoBackup) {
     Write-Host "Creating backup tags..." -ForegroundColor Cyan
     $backupCreatedCount = 0
@@ -218,15 +303,15 @@ if (-not $NoBackup) {
 
     foreach ($branch in $branchesToBackup) {
         # Get current commit ID of origin/$branch (remote state)
-        $remoteId = git rev-parse "origin/$branch" 2>$null
+        $remoteId = git rev-parse "origin/$branch" 2>&1 | Where-Object { $_ -is [string] }
 
         if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrEmpty($remoteId)) {
-            # Short commit hash for readability (first 8 characters)
-            $remoteShortId = $remoteId.Substring(0, 8)
+            # Short commit hash for readability (first 8 characters, with safety check)
+            $remoteShortId = if ($remoteId.Length -ge 8) { $remoteId.Substring(0, 8) } else { $remoteId }
 
             # Check if a backup tag for this remote commit already exists (avoid duplicate backups)
-            $existingTag = git tag -l "backup-$branch-$remoteShortId-*" 2>$null
-            if ($null -ne $existingTag -and $existingTag.Count -gt 0) {
+            $existingTag = git tag -l "backup-$branch-$remoteShortId-*" 2>&1 | Where-Object { $_ -is [string] }
+            if (-not [string]::IsNullOrEmpty($existingTag)) {
                 Write-Host "  [SKIP] Branch 'origin/$branch' (ID: $remoteShortId) - backup already exists for this commit" -ForegroundColor Gray
                 $backupSkippedCount++
                 continue
@@ -237,10 +322,11 @@ if (-not $NoBackup) {
             if ($DryRun) {
                 Write-Host "[DRY RUN] git tag $tagName origin/$branch" -ForegroundColor Gray
             } else {
-                git tag $tagName "origin/$branch" 2>$null
+                git tag $tagName "origin/$branch" 2>&1 | Out-Null
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "  [OK] Created tag: $tagName" -ForegroundColor Green
                     $backupCreatedCount++
+                    $backupTagsToPush += $tagName
                 } else {
                     Write-Host "  [ERROR] Failed to create tag for '$branch'" -ForegroundColor Red
                 }
@@ -252,11 +338,21 @@ if (-not $NoBackup) {
 
     if (-not $DryRun) {
         Write-Host "Pushing backup tags to origin..." -ForegroundColor Cyan
-        git push origin --tags 2>$null
-        Write-Host "  [OK] Backup tags pushed to origin" -ForegroundColor Green
+        if ($backupTagsToPush.Count -gt 0) {
+            git push origin @backupTagsToPush 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  [OK] Backup tags pushed to origin" -ForegroundColor Green
+            } else {
+                Write-Host "  [ERROR] Failed to push backup tags to origin. Aborting to prevent unrecoverable reset." -ForegroundColor Red
+                Stop-Transcript
+                exit 1
+            }
+        } else {
+            Write-Host "  [SKIP] No new backup tags to push" -ForegroundColor Gray
+        }
         Write-Host "  Summary: $backupCreatedCount created, $backupSkippedCount skipped`n" -ForegroundColor Cyan
     } else {
-        Write-Host "[DRY RUN] git push origin --tags`n" -ForegroundColor Gray
+        Write-Host "[DRY RUN] git push origin <backup-tags>`n" -ForegroundColor Gray
     }
 }
 
@@ -264,11 +360,14 @@ if (-not $NoBackup) {
 # ============================================================================
 # VERIFY PROTECTED BRANCHES EXIST LOCALLY
 # ============================================================================
-# Check that all required branches exist locally before attempting reset
-# If a branch doesn't exist locally, we'll warn the user but continue
 Write-Host "Verifying protected branches exist..." -ForegroundColor Cyan
 
-foreach ($branch in $protectedBranches) {
+# Only verify branches that will actually be operated on
+$branchesToVerify = $protectedBranches
+if ($OnlyDev) { $branchesToVerify = @("dev") }
+elseif ($OnlySit) { $branchesToVerify = @("sit") }
+
+foreach ($branch in $branchesToVerify) {
     if ($localBranches -notcontains $branch) {
         Write-Host "[WARNING] Branch '$branch' does not exist locally" -ForegroundColor Yellow
     }
@@ -277,209 +376,98 @@ foreach ($branch in $protectedBranches) {
 Write-Host ""
 
 # ============================================================================
+# SAVE ORIGINAL BRANCH
+# ============================================================================
+$originalBranch = git rev-parse --abbrev-ref HEAD 2>&1 | Where-Object { $_ -is [string] }
+
+
+# ============================================================================
 # RESET PROTECTED BRANCHES
 # ============================================================================
-# Reset master, dev, and sit branches to match remote state
-# These operations are skipped if -OnlySit parameter is used
+$resetFailed = $false
 
 # Only reset master if not in -OnlySit or -OnlyDev mode
 if (-not $OnlySit -and -not $OnlyDev) {
     # --- MASTER BRANCH: Reset to remote state ---
-    # Update master branch from origin
-    Write-Host "Updating master branch..." -ForegroundColor Cyan
-    if ($DryRun) {
-        Write-Host "[DRY RUN] git checkout master" -ForegroundColor Gray
-        Write-Host "[DRY RUN] git reset --hard origin/master" -ForegroundColor Gray
-        Write-Host "[DRY RUN] git push origin master --force" -ForegroundColor Gray
-        Write-Host "[OK] Master branch would be reset to origin/master`n" -ForegroundColor Green
-    } else {
-        git checkout master
-
-        if ($LASTEXITCODE -eq 0) {
-            git reset --hard origin/master
-
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "[OK] Master branch reset to origin/master" -ForegroundColor Green
-
-                Write-Host "Pushing master to origin..." -ForegroundColor Yellow
-                git push origin master --force
-
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[OK] Master branch pushed to origin`n" -ForegroundColor Green
-                }
-                else {
-                    Write-Host "[ERROR] Failed to push master branch`n" -ForegroundColor Red
-                    Stop-Transcript
-                    exit 1
-                }
-            }
-            else {
-                Write-Host "[ERROR] Failed to reset master branch`n" -ForegroundColor Red
-                Stop-Transcript
-                exit 1
-            }
-        }
-        else {
-            Write-Host "[ERROR] Failed to checkout master branch`n" -ForegroundColor Red
-            Stop-Transcript
-            exit 1
-        }
+    if (-not (Reset-Branch -BranchName "master" -ResetTarget "origin/master" -DryRun:$DryRun)) {
+        $resetFailed = $true
     }
 
     # --- DEV BRANCH: Reset to match master --- (full reset mode)
-    # Update dev branch from master
-    if ($localBranches -contains "dev") {
-        Write-Host "Updating dev branch from master..." -ForegroundColor Cyan
-        if ($DryRun) {
-            Write-Host "[DRY RUN] git checkout dev" -ForegroundColor Gray
-            Write-Host "[DRY RUN] git reset --hard origin/master" -ForegroundColor Gray
-            Write-Host "[DRY RUN] git push origin dev --force" -ForegroundColor Gray
-            Write-Host "[OK] Dev branch would be reset to origin/master`n" -ForegroundColor Green
-        } else {
-            git checkout dev
-
-            if ($LASTEXITCODE -eq 0) {
-                git reset --hard origin/master
-
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[OK] Dev branch reset to origin/master" -ForegroundColor Green
-                    Write-Host "Pushing dev to origin..." -ForegroundColor Yellow
-                    git push origin dev --force
-
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Host "[OK] Dev branch pushed to origin`n" -ForegroundColor Green
-                    }
-                    else {
-                        Write-Host "[ERROR] Failed to push dev branch`n" -ForegroundColor Red
-                        Stop-Transcript
-                        exit 1
-                    }
-                }
-                else {
-                    Write-Host "[ERROR] Failed to reset dev branch`n" -ForegroundColor Red
-                    Stop-Transcript
-                    exit 1
-                }
-            }
-            else {
-                Write-Host "[ERROR] Failed to checkout dev branch`n" -ForegroundColor Red
-                Stop-Transcript
-                exit 1
-            }
+    if (-not $resetFailed -and $localBranches -contains "dev") {
+        if (-not (Reset-Branch -BranchName "dev" -ResetTarget "origin/master" -DryRun:$DryRun)) {
+            $resetFailed = $true
         }
-    }
-    else {
+    } elseif (-not $resetFailed) {
         Write-Host "[WARNING] Dev branch does not exist, skipping...`n" -ForegroundColor Yellow
     }
 } elseif ($OnlyDev) {
     # --- DEV BRANCH (OnlyDev mode): Reset to match master ---
     Write-Host "[SKIPPED] Master branch (--OnlyDev mode)`n" -ForegroundColor Cyan
     if ($localBranches -contains "dev") {
-        Write-Host "Updating dev branch from master..." -ForegroundColor Cyan
-        if ($DryRun) {
-            Write-Host "[DRY RUN] git checkout dev" -ForegroundColor Gray
-            Write-Host "[DRY RUN] git reset --hard origin/master" -ForegroundColor Gray
-            Write-Host "[DRY RUN] git push origin dev --force" -ForegroundColor Gray
-            Write-Host "[OK] Dev branch would be reset to origin/master`n" -ForegroundColor Green
-        } else {
-            git checkout dev
-
-            if ($LASTEXITCODE -eq 0) {
-                git reset --hard origin/master
-
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[OK] Dev branch reset to origin/master" -ForegroundColor Green
-                    Write-Host "Pushing dev to origin..." -ForegroundColor Yellow
-                    git push origin dev --force
-
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Host "[OK] Dev branch pushed to origin`n" -ForegroundColor Green
-                    }
-                    else {
-                        Write-Host "[ERROR] Failed to push dev branch`n" -ForegroundColor Red
-                        Stop-Transcript
-                        exit 1
-                    }
-                }
-                else {
-                    Write-Host "[ERROR] Failed to reset dev branch`n" -ForegroundColor Red
-                    Stop-Transcript
-                    exit 1
-                }
-            }
-            else {
-                Write-Host "[ERROR] Failed to checkout dev branch`n" -ForegroundColor Red
-                Stop-Transcript
-                exit 1
-            }
+        if (-not (Reset-Branch -BranchName "dev" -ResetTarget "origin/master" -DryRun:$DryRun)) {
+            $resetFailed = $true
         }
-    }
-    else {
+    } else {
         Write-Host "[WARNING] Dev branch does not exist, skipping...`n" -ForegroundColor Yellow
     }
 } else {
     Write-Host "[SKIPPED] Master and dev branches (--OnlySit mode)`n" -ForegroundColor Cyan
 }
 
-# --- SIT BRANCH: Reset to match dev ---
-# Update sit branch from dev (skipped in OnlyDev mode)
-if ($OnlyDev) {
-    Write-Host "[SKIPPED] Sit branch (--OnlyDev mode)`n" -ForegroundColor Cyan
-} elseif ($localBranches -contains "sit") {
-    Write-Host "Updating sit branch from dev..." -ForegroundColor Cyan
-    if ($DryRun) {
-        Write-Host "[DRY RUN] git checkout sit" -ForegroundColor Gray
-        Write-Host "[DRY RUN] git reset --hard origin/dev" -ForegroundColor Gray
-        Write-Host "[DRY RUN] git push origin sit --force" -ForegroundColor Gray
-        Write-Host "[OK] Sit branch would be reset to origin/dev`n" -ForegroundColor Green
+# --- SIT BRANCH: Reset to match dev --- (skipped in OnlyDev mode)
+if (-not $resetFailed) {
+    if ($OnlyDev) {
+        Write-Host "[SKIPPED] Sit branch (--OnlyDev mode)`n" -ForegroundColor Cyan
+    } elseif ($localBranches -contains "sit") {
+        if (-not (Reset-Branch -BranchName "sit" -ResetTarget "origin/dev" -DryRun:$DryRun)) {
+            $resetFailed = $true
+        }
     } else {
-        git checkout sit
-
-        if ($LASTEXITCODE -eq 0) {
-            git reset --hard origin/dev
-
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "[OK] Sit branch reset to origin/dev" -ForegroundColor Green
-                Write-Host "Pushing sit to origin..." -ForegroundColor Yellow
-                git push origin sit --force
-
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[OK] Sit branch pushed to origin`n" -ForegroundColor Green
-                }
-                else {
-                    Write-Host "[ERROR] Failed to push sit branch`n" -ForegroundColor Red
-                    Stop-Transcript
-                    exit 1
-                }
-            }
-            else {
-                Write-Host "[ERROR] Failed to reset sit branch`n" -ForegroundColor Red
-                Stop-Transcript
-                exit 1
-            }
-        }
-        else {
-            Write-Host "[ERROR] Failed to checkout sit branch`n" -ForegroundColor Red
-            Stop-Transcript
-            exit 1
-        }
+        Write-Host "[WARNING] Sit branch does not exist, skipping...`n" -ForegroundColor Yellow
     }
-} else {
-    Write-Host "[WARNING] Sit branch does not exist, skipping...`n" -ForegroundColor Yellow
 }
+
+if ($resetFailed) {
+    Stop-Transcript
+    exit 1
+}
+
+
+# ============================================================================
+# RESTORE ORIGINAL BRANCH
+# ============================================================================
+if (-not $DryRun -and $originalBranch) {
+    git checkout $originalBranch 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[OK] Restored original branch: $originalBranch" -ForegroundColor Green
+    } else {
+        Write-Host "[WARNING] Could not restore original branch: $originalBranch" -ForegroundColor Yellow
+    }
+}
+
 
 # ============================================================================
 # SUMMARY AND CLEANUP
 # ============================================================================
-# Display results and cleanup
 
 Write-Host "=============================================================" -ForegroundColor Cyan
-if ($OnlyDev) {
-    Write-Host "[OK] DEV branch has been reset to master state successfully!" -ForegroundColor Cyan
-} elseif ($OnlySit) {
-    Write-Host "[OK] SIT branch has been reset to dev state successfully!" -ForegroundColor Cyan
+if ($DryRun) {
+    if ($OnlyDev) {
+        Write-Host "[DRY RUN] DEV branch reset preview complete - no changes made" -ForegroundColor Cyan
+    } elseif ($OnlySit) {
+        Write-Host "[DRY RUN] SIT branch reset preview complete - no changes made" -ForegroundColor Cyan
+    } else {
+        Write-Host "[DRY RUN] Branch reset preview complete - no changes made" -ForegroundColor Cyan
+    }
 } else {
-    Write-Host "[OK] All branches have been reset successfully!" -ForegroundColor Cyan
+    if ($OnlyDev) {
+        Write-Host "[OK] DEV branch has been reset to master state successfully!" -ForegroundColor Cyan
+    } elseif ($OnlySit) {
+        Write-Host "[OK] SIT branch has been reset to dev state successfully!" -ForegroundColor Cyan
+    } else {
+        Write-Host "[OK] All branches have been reset successfully!" -ForegroundColor Cyan
+    }
 }
 Write-Host "=============================================================" -ForegroundColor Cyan
 
