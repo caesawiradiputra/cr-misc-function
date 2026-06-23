@@ -47,14 +47,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Import shared helpers
+Import-Module (Join-Path $PSScriptRoot "modules\GitScriptHelpers.psm1") -Force
+
 # ============================================================================
 # HELPER FUNCTIONS - Status messages with color coding
 # ============================================================================
 
-function Write-Info($msg)  { Write-Host "[INFO]  $msg" -ForegroundColor Cyan }
-function Write-Warn($msg)  { Write-Host "[WARN]  $msg" -ForegroundColor Yellow }
-function Write-Okay($msg)  { Write-Host "[OK]    $msg" -ForegroundColor Green }
-function Write-Err($msg)   { Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
 function Assert-GitAvailable {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -141,15 +140,15 @@ function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev) {
     Write-Info "Updating local protected branches from remote..."
 
     foreach ($Branch in @($Master, $Dev)) {
-        git show-ref --verify --quiet "refs/heads/$Branch" 2>$null
+        git show-ref --verify --quiet "refs/heads/$Branch" 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
-            $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+            $currentBranch = (git rev-parse --abbrev-ref HEAD 2>&1 | Where-Object { $_ -is [string] }).Trim()
 
             if ($currentBranch -ne $Branch) {
                 $prevErrorAction = $ErrorActionPreference
                 $ErrorActionPreference = 'Continue'
 
-                git checkout "$Branch" 2>$null | Out-Null
+                git checkout "$Branch" 2>&1 | Out-Null
                 $checkoutCode = $LASTEXITCODE
 
                 $ErrorActionPreference = $prevErrorAction
@@ -165,7 +164,7 @@ function Update-LocalBranches([string]$Remote, [string]$Master, [string]$Dev) {
             $prevErrorAction = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
 
-            git pull --ff-only $Remote 2>$null | Out-Null
+            git pull --ff-only $Remote 2>&1 | Out-Null
             $pullCode = $LASTEXITCODE
 
             $ErrorActionPreference = $prevErrorAction
@@ -221,14 +220,14 @@ try {
     $devSynced = Test-MasterInBranch -Remote $Remote -Master $Master -Branch $Dev
 
     if ($devSynced) {
-        Write-Okay "'$Remote/$Dev' has NO code differences from '$Remote/$Master'"
+        Write-Success "'$Remote/$Dev' has NO code differences from '$Remote/$Master'"
     } else {
         Write-Warn "'$Remote/$Dev' HAS code differences from '$Remote/$Master'"
     }
 
     # Step 5: Activate dev if in sync
     if ($devSynced) {
-        Write-Okay "'$Dev' is in sync with '$Master' (same code)."
+        Write-Success "'$Dev' is in sync with '$Master' (same code)."
 
         Write-Host ""
         Write-Host "About to:" -ForegroundColor Cyan
@@ -239,16 +238,7 @@ try {
         Write-Host ""
 
         if (-not $Force) {
-            $confirm = $null
-            while ($true) {
-                $confirm = Read-Host "Proceed with syncing and activating '$Dev'? (y/n)"
-                $confirm = $confirm.Trim().ToLower()
-                if ($confirm -eq 'y' -or $confirm -eq 'n' -or $confirm -eq '') {
-                    break
-                }
-                Write-Warn "Invalid input: '$confirm'. Please enter 'y' or 'n'."
-            }
-            if ($confirm -ne 'y') {
+            if (-not (Confirm-Action -Prompt "Proceed with syncing and activating '$Dev'? (y/n)" -Style YesNo)) {
                 Write-Warn "Sync cancelled by user"
                 exit 3
             }
@@ -263,29 +253,29 @@ try {
         Write-Info "Activating local '$Dev'..."
         Ensure-LocalBranch -Branch $Dev -Remote $Remote | Out-Null
         Checkout-And-FF-Only -Branch $Dev
-        Write-Okay "Active branch is now '$Dev'. You can create new branches from here."
+        Write-Success "Active branch is now '$Dev'. You can create new branches from here."
         exit 0
     } else {
         Display-BranchDiffs -Remote $Remote -Master $Master -Dev $Dev
 
-        Write-Err "Conditions not met: '$Dev' must have no code differences from '$Master'. Aborting."
+        Write-ErrorMsg "Conditions not met: '$Dev' must have no code differences from '$Master'. Aborting."
         Write-Host "Suggested next steps:" -ForegroundColor DarkGray
         Write-Host "  - View differences: git diff $Remote/$Master $Remote/$Dev" -ForegroundColor DarkGray
         Write-Host "  - Sync dev with master: git checkout $Dev; git merge $Remote/$Master" -ForegroundColor DarkGray
 
         # Restore original branch since we didn't succeed
         if ($originalBranch) {
-            git checkout "$originalBranch" 2>$null | Out-Null
+            git checkout "$originalBranch" 2>&1 | Out-Null
         }
         exit 2
     }
 }
 catch {
-    Write-Err $_.Exception.Message
+    Write-ErrorMsg $_.Exception.Message
 
     # Restore original branch on error
     if ($originalBranch) {
-        git checkout "$originalBranch" 2>$null | Out-Null
+        git checkout "$originalBranch" 2>&1 | Out-Null
     }
     exit 1
 }

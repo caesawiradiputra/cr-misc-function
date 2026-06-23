@@ -33,6 +33,9 @@ param(
     [string[]]$ProtectedBranches = @("main", "master", "dev", "sit")
 )
 
+# Import shared helpers
+Import-Module (Join-Path $PSScriptRoot "modules\GitScriptHelpers.psm1") -Force
+
 # ============================================================================
 # SETUP & INITIALIZATION
 # ============================================================================
@@ -45,11 +48,6 @@ if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
 
-# Logging helper functions - Color-coded status messages
-function Write-Info($msg)  { Write-Host "[INFO]  $msg" -ForegroundColor Cyan }
-function Write-Warn($msg)  { Write-Host "[WARN]  $msg" -ForegroundColor Yellow }
-function Write-Okay($msg)  { Write-Host "[OK]    $msg" -ForegroundColor Green }
-function Write-Err($msg)   { Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
 # Initialize operation counters and collections
 $deletedCount = 0              # Branches successfully deleted
@@ -88,9 +86,9 @@ if ($NoUpdate) {
 }
 
 # Validate we are inside a Git repository
-$repoRoot = git rev-parse --show-toplevel 2>$null
+$repoRoot = git rev-parse --show-toplevel 2>&1 | Where-Object { $_ -is [string] }
 if ($LASTEXITCODE -ne 0) {
-    Write-Err "Not inside a Git repository. Please run from within a Git working directory."
+    Write-ErrorMsg "Not inside a Git repository. Please run from within a Git working directory."
     exit 1
 }
 Write-Info "Repository: $repoRoot"
@@ -110,18 +108,7 @@ if (-not $Force) {
     Write-Host "  - Protect: $($ProtectedBranches -join ', ')" -ForegroundColor Red
     Write-Host ""
 
-    $confirm = $null
-    while ($true) {
-        $confirm = Read-Host "Type 'yes' to continue"
-        $confirm = $confirm.Trim().ToLower()
-        if ($confirm -eq 'yes' -or $confirm -eq '') {
-            break
-        }
-        Write-Warn "Invalid input: '$confirm'. Type 'yes' to confirm or press Enter to cancel."
-    }
-
-    if ($confirm -ne 'yes') {
-        Write-Warn "Operation cancelled by user"
+    if (-not (Confirm-Action -Prompt "Type 'yes' to continue" -Style Explicit)) {
         exit 0
     }
 
@@ -143,13 +130,13 @@ if ($DryRun) {
     git fetch origin --prune 2>&1 | Out-Null
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Err "Failed to fetch from origin"
+        Write-ErrorMsg "Failed to fetch from origin"
         Stop-Transcript
         exit 1
     }
 }
 
-Write-Okay "Fetch complete"
+Write-Success "Fetch complete"
 Write-Host ""
 
 # Gather current branch state
@@ -163,7 +150,7 @@ $remoteBranches = git branch -r --format='%(refname:short)' | ForEach-Object {
 
 # Guard: abort if no remote branches found (prevents accidental deletion of all local branches)
 if ($null -eq $remoteBranches -or @($remoteBranches).Count -eq 0) {
-    Write-Err "No remote branches found. Aborting to prevent accidental deletion of all local branches."
+    Write-ErrorMsg "No remote branches found. Aborting to prevent accidental deletion of all local branches."
     Stop-Transcript
     exit 1
 }
@@ -177,7 +164,7 @@ if (-not $NoUpdate -and -not $PurgeOnly) {
     Write-Info "Updating protected branches"
 
     $branchesToUpdate = $ProtectedBranches
-    $originalBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
+    $originalBranch = (git rev-parse --abbrev-ref HEAD 2>&1 | Where-Object { $_ -is [string] })
     if (-not $originalBranch) { $originalBranch = (git branch --show-current).Trim() }
     $branchChanged = $false
 
@@ -196,7 +183,7 @@ if (-not $NoUpdate -and -not $PurgeOnly) {
                     git pull origin $branch 2>&1 | Out-Null
 
                     if ($LASTEXITCODE -eq 0) {
-                        Write-Okay "  Updated '$branch'"
+                        Write-Success "  Updated '$branch'"
                         $updatedCount++
                     }
                     else {
@@ -295,11 +282,11 @@ if ($branchesToDelete.Count -gt 0) {
             git branch -D $branch 2>&1 | Out-Null
 
             if ($LASTEXITCODE -eq 0) {
-                Write-Okay "  Deleted '$branch'"
+                Write-Success "  Deleted '$branch'"
                 $deletedCount++
             }
             else {
-                Write-Err "  Failed to delete '$branch'"
+                Write-ErrorMsg "  Failed to delete '$branch'"
                 $failedCount++
             }
         }
@@ -319,7 +306,7 @@ if ($CleanupBackupTags) {
     Write-Info "Checking for backup tags to cleanup"
 
     # Get all tags matching backup-* pattern
-    $allTags = git tag --list "backup-*" 2>$null | ForEach-Object { $_.Trim() }
+    $allTags = git tag --list "backup-*" 2>&1 | Where-Object { $_ -is [string] } | ForEach-Object { $_.Trim() }
 
     if ($null -eq $allTags -or $allTags.Count -eq 0) {
         Write-Info "No backup tags found"
@@ -353,14 +340,14 @@ if ($CleanupBackupTags) {
                     # Delete remote tag (push empty ref to remote)
                     git push origin ":refs/tags/$tag" 2>&1 | Out-Null
                     if ($LASTEXITCODE -eq 0) {
-                        Write-Okay "  Deleted tag '$tag' (local and remote)"
+                        Write-Success "  Deleted tag '$tag' (local and remote)"
                         $backupTagsDeletedCount++
                     } else {
                         Write-Warn "  Failed to delete remote tag '$tag' (local deleted)"
                         $failedCount++
                     }
                 } else {
-                    Write-Err "  Failed to delete tag '$tag'"
+                    Write-ErrorMsg "  Failed to delete tag '$tag'"
                     $failedCount++
                 }
             }

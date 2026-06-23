@@ -60,34 +60,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Import shared helpers
+Import-Module (Join-Path $PSScriptRoot "modules\GitScriptHelpers.psm1") -Force
+
 # ============================================================================
 # HELPER FUNCTIONS - Status messages and Git utilities
 # ============================================================================
-
-function Write-Step {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Message,
-
-        [string]$Icon = "[*]"
-    )
-    Write-Host "`n$Icon $Message" -ForegroundColor Cyan
-}
-
-function Write-Success {
-    param([Parameter(Mandatory)][string]$Message)
-    Write-Host "[OK] $Message" -ForegroundColor Green
-}
-
-function Write-Info {
-    param([Parameter(Mandatory)][string]$Message)
-    Write-Host "[INFO] $Message" -ForegroundColor Yellow
-}
-
-function Write-Error-Custom {
-    param([Parameter(Mandatory)][string]$Message)
-    Write-Host "[ERROR] $Message" -ForegroundColor Red
-}
 
 function Test-GitRepository {
     git rev-parse --git-dir 2>&1 | Out-Null
@@ -96,7 +74,7 @@ function Test-GitRepository {
 
 function Get-CurrentBranch {
     try {
-        $branch = git branch --show-current 2>$null
+        $branch = git branch --show-current 2>&1 | Where-Object { $_ -is [string] }
     } catch {
         throw "Failed to get current branch"
     }
@@ -120,7 +98,7 @@ function Test-RemoteBranchExists {
 
 function Get-UncommittedChanges {
     try {
-        $status = git status --porcelain 2>$null
+        $status = git status --porcelain 2>&1 | Where-Object { $_ -is [string] }
     } catch {
         return $false
     }
@@ -152,14 +130,14 @@ try {
 
     # Guard: prevent rebasing a branch onto itself
     if ($FeatureBranch -eq $BaseBranch) {
-        Write-Error-Custom "Feature branch '$FeatureBranch' is the same as base branch '$BaseBranch'. Nothing to rebase."
+        Write-ErrorMsg "Feature branch '$FeatureBranch' is the same as base branch '$BaseBranch'. Nothing to rebase."
         exit 1
     }
 
     # Step 1: Check for uncommitted changes
     Write-Step "Checking for uncommitted changes" "[FILES]"
     if (Get-UncommittedChanges) {
-        Write-Error-Custom "You have uncommitted changes. Please commit or stash them first."
+        Write-ErrorMsg "You have uncommitted changes. Please commit or stash them first."
         Write-Host "`nRun one of these commands:"
         Write-Host "  git add . && git commit -m 'Your message'" -ForegroundColor Yellow
         Write-Host "  git stash" -ForegroundColor Yellow
@@ -232,12 +210,12 @@ try {
     Write-Host "  3. May cause conflicts that you'll need to resolve" -ForegroundColor Yellow
     Write-Host ""
     $confirmation = $null
-    while ($confirmation -notin @('y', 'Y', 'n', 'N')) {
+    while ($true) {
         $confirmation = Read-Host "Continue with rebase? (y/N)"
-        if ([string]::IsNullOrWhiteSpace($confirmation)) { $confirmation = 'N' }
-        if ($confirmation -notin @('y', 'Y', 'n', 'N')) {
-            Write-Host "[WARN] Invalid input: '$confirmation'. Please enter 'y' or 'n'." -ForegroundColor Yellow
-        }
+        $confirmation = $confirmation.Trim().ToLower()
+        if ($confirmation -eq 'y' -or $confirmation -eq 'n') { break }
+        if ([string]::IsNullOrWhiteSpace($confirmation)) { $confirmation = 'n'; break }
+        Write-Warn "Invalid input: '$confirmation'. Please enter 'y' or 'n'."
     }
 
     if ($confirmation -eq 'n' -or $confirmation -eq 'N') {
@@ -260,7 +238,7 @@ try {
     git rebase "origin/$BaseBranch" 2>&1 | Tee-Object -Variable rebaseOutput | Out-Null
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Error-Custom "Rebase encountered conflicts!"
+        Write-ErrorMsg "Rebase encountered conflicts!"
         # Show git's error output
         $rebaseOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
         Write-Host "`n[HELP] To resolve conflicts:"
@@ -297,12 +275,12 @@ try {
     # Step 9b: Offer to clean up backup branch
     Write-Host ""
     $cleanupBackup = $null
-    while ($cleanupBackup -notin @('y', 'Y', 'n', 'N')) {
+    while ($true) {
         $cleanupBackup = Read-Host "Rebase verified. Delete backup branch '$backupBranchName'? (y/N)"
-        if ([string]::IsNullOrWhiteSpace($cleanupBackup)) { $cleanupBackup = 'N' }
-        if ($cleanupBackup -notin @('y', 'Y', 'n', 'N')) {
-            Write-Host "[WARN] Invalid input. Please enter 'y' or 'n'." -ForegroundColor Yellow
-        }
+        $cleanupBackup = $cleanupBackup.Trim().ToLower()
+        if ($cleanupBackup -eq 'y' -or $cleanupBackup -eq 'n') { break }
+        if ([string]::IsNullOrWhiteSpace($cleanupBackup)) { $cleanupBackup = 'n'; break }
+        Write-Warn "Invalid input. Please enter 'y' or 'n'."
     }
     if ($cleanupBackup -eq 'y' -or $cleanupBackup -eq 'Y') {
         git branch -D $backupBranchName 2>&1 | Out-Null
@@ -333,12 +311,12 @@ try {
 
 } catch {
     Write-Host "`n" -NoNewline
-    Write-Error-Custom "Script failed: $_"
+    Write-ErrorMsg "Script failed: $_"
     exit 1
 } finally {
     # Detect if a rebase is still in progress (e.g., from Ctrl+C)
     try {
-        $gitDir = git rev-parse --git-dir 2>$null
+        $gitDir = git rev-parse --git-dir 2>&1 | Where-Object { $_ -is [string] }
         $rebaseMergeDir = Join-Path $gitDir "rebase-merge"
         $rebaseApplyDir = Join-Path $gitDir "rebase-apply"
         if ((Test-Path $rebaseMergeDir) -or (Test-Path $rebaseApplyDir)) {

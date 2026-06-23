@@ -1,6 +1,7 @@
 # cr-misc-function
 
-Shared commons library providing reusable database abstraction, utility functions, AI tooling templates, and development scripts for use across multiple projects.
+Shared commons library providing reusable database abstraction, utility functions,
+AI tooling templates, and development scripts for use across multiple projects.
 
 ## Features
 
@@ -76,9 +77,9 @@ DATABASE_POSTGRES_PASSWORD=your_password
 ```
 
 > [!NOTE]
-> Configuration supports two-tier loading: `.env` file (default) and Vault secrets
-> at `/vault/secrets/.env` (Docker/Kubernetes deployments). Vault secrets override
-> local `.env` values.
+> Configuration supports four-tier priority loading: Vault secrets
+> at `/vault/secrets/.env` (Docker/Kubernetes), local `.env` file,
+> environment variables, then built-in defaults. Higher tiers override lower.
 
 ## Quick Start
 
@@ -323,12 +324,52 @@ python scripts/python/dev_generate_env.py --env cr-misc-function-env
 
 ### Git Workflow
 
-PowerShell scripts in `scripts/powershell/`:
+PowerShell scripts in `scripts/powershell/` with a shared helper module
+(`modules/GitScriptHelpers.psm1`) for consistent output, prompts, and git utilities.
 
-- `git-create-clean-branch.ps1` - Create new feature branch
-- `git-clean-branches.ps1` - Clean up merged branches
-- `git-rebase-branch.ps1` - Interactive rebase workflow
-- `chat-Sync-QoderContext.ps1` - Sync Qoder skills to global config
+| Script | Purpose |
+| ------ | ------- |
+| `git-clean-branches.ps1` | Delete local branches gone from remote, update protected branches |
+| `git-check-sync-set-dev.ps1` | Check dev-master sync (diff-based), activate dev if in sync |
+| `git-init-feature.ps1` | Create feature branch with naming convention, auto-push |
+| `git-create-clean-branch.ps1` | Cherry-pick filtered commits to a clean branch |
+| `git-rebase-branch.ps1` | Rebase feature branch onto base for clean merge |
+| `git-reset-branches.ps1` | Reset branches to remote state with backup tags (emergency) |
+| `git-workflow.ps1` | Orchestrator chaining scripts: `prepare`, `start`, `finish`, `recover`, `status` |
+
+Workflow order:
+
+```text
+git-clean-branches  -->  git-check-sync-set-dev  -->  git-init-feature
+    (prune stale)         (sync dev, activate)         (create branch)
+                                                            |
+                                                            v
+git-reset-branches  <--  git-rebase-branch  <--  git-create-clean-branch
+    (emergency)          (rebase onto base)       (cherry-pick filtered)
+```
+
+Quick usage:
+
+```powershell
+# Full prepare: clean + sync
+.\scripts\powershell\git-workflow.ps1 prepare
+
+# Start feature: sync + create branch
+.\scripts\powershell\git-workflow.ps1 start
+
+# Check current state
+.\scripts\powershell\git-workflow.ps1 status
+```
+
+### AI Context Sync
+
+```powershell
+# Sync Qoder skills, agents, and QODER.md to global ~/.qoder/
+.\scripts\powershell\chat-Sync-QoderContext.ps1
+
+# Sync Copilot instructions to global ~/.copilot/
+.\scripts\powershell\chat-Sync-CopilotContext.ps1
+```
 
 ## Further Reading
 

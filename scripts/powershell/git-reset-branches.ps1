@@ -89,11 +89,15 @@ param(
 )
 
 
+# Import shared helpers
+Import-Module (Join-Path $PSScriptRoot "modules\GitScriptHelpers.psm1") -Force
+
+
 # ============================================================================
 # MUTUAL EXCLUSIVITY GUARD
 # ============================================================================
 if ($OnlyDev -and $OnlySit) {
-    Write-Host "[ERROR] -OnlyDev and -OnlySit are mutually exclusive. Please choose one." -ForegroundColor Red
+    Write-ErrorMsg "-OnlyDev and -OnlySit are mutually exclusive. Please choose one."
     exit 1
 }
 
@@ -142,7 +146,7 @@ if ($NoBackup) {
 # ============================================================================
 $null = git rev-parse --is-inside-work-tree 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[ERROR] This script must be run from inside a Git repository" -ForegroundColor Red
+    Write-ErrorMsg "This script must be run from inside a Git repository"
     Stop-Transcript
     exit 1
 }
@@ -154,7 +158,7 @@ if ($LASTEXITCODE -ne 0) {
 $dirtyFiles = git status --porcelain 2>&1
 $dirtyFiles = $dirtyFiles | Where-Object { $_ -is [string] }
 if ($dirtyFiles) {
-    Write-Host "[ERROR] Working directory has uncommitted changes:" -ForegroundColor Red
+    Write-ErrorMsg "Working directory has uncommitted changes:"
     $dirtyFiles | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
     Write-Host "Please commit or stash changes before running this script." -ForegroundColor Yellow
     Stop-Transcript
@@ -191,18 +195,7 @@ if (-not $Force) {
 
     Write-Host ""
 
-    $confirm = $null
-    while ($true) {
-        $confirm = Read-Host "Type 'yes' to continue"
-        $confirm = $confirm.Trim().ToLower()
-        if ($confirm -eq 'yes' -or $confirm -eq '') {
-            break
-        }
-        Write-Host "[WARN] Invalid input: '$confirm'. Type 'yes' to confirm or press Enter to cancel." -ForegroundColor Yellow
-    }
-
-    if ($confirm -ne 'yes') {
-        Write-Host "[CANCELLED] Operation cancelled by user" -ForegroundColor Yellow
+    if (-not (Confirm-Action -Prompt "Type 'yes' to continue" -Style Explicit)) {
         Stop-Transcript
         exit 0
     }
@@ -234,13 +227,13 @@ function Reset-Branch {
 
     git checkout $BranchName 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[ERROR] Failed to checkout $BranchName branch`n" -ForegroundColor Red
+        Write-ErrorMsg "Failed to checkout $BranchName branch`n"
         return $false
     }
 
     git reset --hard $ResetTarget
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[ERROR] Failed to reset $BranchName branch`n" -ForegroundColor Red
+        Write-ErrorMsg "Failed to reset $BranchName branch`n"
         return $false
     }
 
@@ -252,7 +245,7 @@ function Reset-Branch {
         Write-Host "[OK] $BranchName branch pushed to origin`n" -ForegroundColor Green
         return $true
     } else {
-        Write-Host "[ERROR] Failed to push $BranchName branch`n" -ForegroundColor Red
+        Write-ErrorMsg "Failed to push $BranchName branch`n"
         return $false
     }
 }
@@ -268,7 +261,7 @@ if ($DryRun) {
     git fetch origin --prune 2>&1 | Out-Null
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[ERROR] Failed to fetch from origin" -ForegroundColor Red
+        Write-ErrorMsg "Failed to fetch from origin"
         Stop-Transcript
         exit 1
     }
@@ -328,11 +321,11 @@ if (-not $NoBackup) {
                     $backupCreatedCount++
                     $backupTagsToPush += $tagName
                 } else {
-                    Write-Host "  [ERROR] Failed to create tag for '$branch'" -ForegroundColor Red
+                    Write-ErrorMsg "Failed to create tag for '$branch'"
                 }
             }
         } else {
-            Write-Host "  [WARNING] Could not get commit ID for 'origin/$branch'" -ForegroundColor Yellow
+            Write-Warn "Could not get commit ID for 'origin/$branch'"
         }
     }
 
@@ -343,7 +336,7 @@ if (-not $NoBackup) {
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "  [OK] Backup tags pushed to origin" -ForegroundColor Green
             } else {
-                Write-Host "  [ERROR] Failed to push backup tags to origin. Aborting to prevent unrecoverable reset." -ForegroundColor Red
+                Write-ErrorMsg "Failed to push backup tags to origin. Aborting to prevent unrecoverable reset."
                 Stop-Transcript
                 exit 1
             }
@@ -369,7 +362,7 @@ elseif ($OnlySit) { $branchesToVerify = @("sit") }
 
 foreach ($branch in $branchesToVerify) {
     if ($localBranches -notcontains $branch) {
-        Write-Host "[WARNING] Branch '$branch' does not exist locally" -ForegroundColor Yellow
+        Write-Warn "Branch '$branch' does not exist locally"
     }
 }
 
@@ -399,32 +392,32 @@ if (-not $OnlySit -and -not $OnlyDev) {
             $resetFailed = $true
         }
     } elseif (-not $resetFailed) {
-        Write-Host "[WARNING] Dev branch does not exist, skipping...`n" -ForegroundColor Yellow
+        Write-Warn "Dev branch does not exist, skipping...`n"
     }
 } elseif ($OnlyDev) {
     # --- DEV BRANCH (OnlyDev mode): Reset to match master ---
-    Write-Host "[SKIPPED] Master branch (--OnlyDev mode)`n" -ForegroundColor Cyan
+    Write-Info "[SKIPPED] Master branch (--OnlyDev mode)`n"
     if ($localBranches -contains "dev") {
         if (-not (Reset-Branch -BranchName "dev" -ResetTarget "origin/master" -DryRun:$DryRun)) {
             $resetFailed = $true
         }
     } else {
-        Write-Host "[WARNING] Dev branch does not exist, skipping...`n" -ForegroundColor Yellow
+        Write-Warn "Dev branch does not exist, skipping...`n"
     }
 } else {
-    Write-Host "[SKIPPED] Master and dev branches (--OnlySit mode)`n" -ForegroundColor Cyan
+    Write-Info "[SKIPPED] Master and dev branches (--OnlySit mode)`n"
 }
 
 # --- SIT BRANCH: Reset to match dev --- (skipped in OnlyDev mode)
 if (-not $resetFailed) {
     if ($OnlyDev) {
-        Write-Host "[SKIPPED] Sit branch (--OnlyDev mode)`n" -ForegroundColor Cyan
+        Write-Info "[SKIPPED] Sit branch (--OnlyDev mode)`n"
     } elseif ($localBranches -contains "sit") {
         if (-not (Reset-Branch -BranchName "sit" -ResetTarget "origin/dev" -DryRun:$DryRun)) {
             $resetFailed = $true
         }
     } else {
-        Write-Host "[WARNING] Sit branch does not exist, skipping...`n" -ForegroundColor Yellow
+        Write-Warn "Sit branch does not exist, skipping...`n"
     }
 }
 
@@ -440,9 +433,9 @@ if ($resetFailed) {
 if (-not $DryRun -and $originalBranch) {
     git checkout $originalBranch 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "[OK] Restored original branch: $originalBranch" -ForegroundColor Green
+        Write-Success "Restored original branch: $originalBranch"
     } else {
-        Write-Host "[WARNING] Could not restore original branch: $originalBranch" -ForegroundColor Yellow
+        Write-Warn "Could not restore original branch: $originalBranch"
     }
 }
 

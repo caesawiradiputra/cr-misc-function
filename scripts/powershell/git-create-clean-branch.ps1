@@ -84,39 +84,8 @@ param(
     [switch]$SkipFetch
 )
 
-# ============================================================================
-# HELPER FUNCTIONS - Status messages with color coding
-# ============================================================================
-
-function Write-Step {
-    param([string]$Message, [string]$Prefix = "[STEP]")
-    Write-Host "`n$Prefix " -ForegroundColor Cyan -NoNewline
-    Write-Host $Message -ForegroundColor White
-}
-
-function Write-Success {
-    param([string]$Message)
-    Write-Host "[OK] " -ForegroundColor Green -NoNewline
-    Write-Host $Message -ForegroundColor White
-}
-
-function Write-Info {
-    param([string]$Message)
-    Write-Host "[INFO] " -ForegroundColor Blue -NoNewline
-    Write-Host $Message -ForegroundColor White
-}
-
-function Write-Warn {
-    param([string]$Message)
-    Write-Host "[WARN] " -ForegroundColor Yellow -NoNewline
-    Write-Host $Message -ForegroundColor White
-}
-
-function Write-ErrorMsg {
-    param([string]$Message)
-    Write-Host "[ERROR] " -ForegroundColor Red -NoNewline
-    Write-Host $Message -ForegroundColor White
-}
+# Import shared helpers
+Import-Module (Join-Path $PSScriptRoot "modules\GitScriptHelpers.psm1") -Force
 
 # ============================================================================
 # MAIN LOGIC
@@ -124,7 +93,7 @@ function Write-ErrorMsg {
 
 # Step 1: Validate we're in a git repository
 Write-Step "Checking git repository" "[CHECK]"
-$isGitRepo = git rev-parse --is-inside-work-tree 2>$null
+$isGitRepo = git rev-parse --is-inside-work-tree 2>&1 | Where-Object { $_ -is [string] }
 if (-not $isGitRepo) {
     Write-ErrorMsg "Not a git repository. Please run this script from inside a git repo."
     exit 1
@@ -159,13 +128,13 @@ if (-not $SkipFetch) {
 # Step 4: Validate branches exist
 Write-Step "Validating branches" "[VALIDATE]"
 
-$featureExists = git rev-parse --verify "$FeatureBranch" 2>$null
+$featureExists = git rev-parse --verify "$FeatureBranch" 2>&1 | Where-Object { $_ -is [string] }
 if (-not $featureExists) {
     Write-ErrorMsg "Branch '$FeatureBranch' does not exist"
     exit 1
 }
 
-$baseExists = git rev-parse --verify "origin/$BaseBranch" 2>$null
+$baseExists = git rev-parse --verify "origin/$BaseBranch" 2>&1 | Where-Object { $_ -is [string] }
 if (-not $baseExists) {
     Write-ErrorMsg "Remote branch 'origin/$BaseBranch' does not exist"
     exit 1
@@ -284,15 +253,13 @@ Write-Host ""
 $cleanBranchName = "$FeatureBranch-clean"
 Write-Host "This will create branch '$cleanBranchName' and cherry-pick $commitsToCherry commit(s)" -ForegroundColor Yellow
 Write-Host ""
-$confirmation = Read-Host "Continue? (y/N)"
-
-if ($confirmation -ne 'y' -and $confirmation -ne 'Y') {
+if (-not (Confirm-Action -Prompt "Continue? (y/N)" -Style YesNo)) {
     Write-Info "Operation cancelled. No changes made."
     exit 0
 }
 
 # Step 7b: Check for uncommitted changes
-$dirtyFiles = git status --porcelain 2>$null
+$dirtyFiles = git status --porcelain 2>&1 | Where-Object { $_ -is [string] }
 if (-not [string]::IsNullOrWhiteSpace($dirtyFiles)) {
     Write-ErrorMsg "You have uncommitted changes. Please commit or stash them first."
     Write-Host "`nUncommitted files:" -ForegroundColor Yellow
@@ -304,14 +271,14 @@ if (-not [string]::IsNullOrWhiteSpace($dirtyFiles)) {
 Write-Step "Creating clean branch: $cleanBranchName" "[CREATE]"
 
 # Check if clean branch already exists locally
-$cleanBranchExists = git rev-parse --verify "$cleanBranchName" 2>$null
+$cleanBranchExists = git rev-parse --verify "$cleanBranchName" 2>&1 | Where-Object { $_ -is [string] }
 if ($cleanBranchExists) {
     Write-ErrorMsg "Branch '$cleanBranchName' already exists locally. Please delete it first or use a different name."
     exit 1
 }
 
 # Check if clean branch exists remotely
-$remoteBranchExists = git ls-remote --heads origin "$cleanBranchName" 2>$null
+$remoteBranchExists = git ls-remote --heads origin "$cleanBranchName" 2>&1 | Where-Object { $_ -is [string] }
 if ($remoteBranchExists) {
     Write-ErrorMsg "Branch '$cleanBranchName' already exists on remote. Please delete it first or use a different name."
     Write-Info "To delete remote branch: git push origin --delete $cleanBranchName"
@@ -319,7 +286,7 @@ if ($remoteBranchExists) {
 }
 
 # Create new branch from base
-$originalBranch = git rev-parse --abbrev-ref HEAD 2>$null
+$originalBranch = git rev-parse --abbrev-ref HEAD 2>&1 | Where-Object { $_ -is [string] }
 git checkout -b "$cleanBranchName" "origin/$BaseBranch" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-ErrorMsg "Failed to create branch '$cleanBranchName'"
@@ -387,17 +354,7 @@ Write-Host ""
 Write-Host "This will push '$cleanBranchName' to origin and set up tracking." -ForegroundColor Yellow
 Write-Host "IMPORTANT: This creates a NEW branch on remote, does NOT push to $BaseBranch" -ForegroundColor Yellow
 Write-Host ""
-$pushConfirm = $null
-while ($true) {
-    $pushConfirm = Read-Host "Push branch to remote? (y/N)"
-    $pushConfirm = $pushConfirm.Trim().ToLower()
-    if ($pushConfirm -eq 'y' -or $pushConfirm -eq 'n' -or $pushConfirm -eq '') {
-        break
-    }
-    Write-Warn "Invalid input: '$pushConfirm'. Please enter 'y' or 'n'."
-}
-
-if ($pushConfirm -eq 'y') {
+if (Confirm-Action -Prompt "Push branch to remote? (y/N)" -Style YesNo) {
     git push origin "$cleanBranchName" 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-ErrorMsg "Failed to push branch to remote"
