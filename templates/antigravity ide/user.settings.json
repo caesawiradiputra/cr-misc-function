@@ -1,0 +1,93 @@
+{
+    // =====================================================
+    // Python Core
+    // NOTE: keep "Default" language server — Antigravity is a
+    // non-Microsoft fork and cannot use Pylance. Type checking
+    // is provided by the installed meta.pyrefly extension.
+    // =====================================================
+    "python.languageServer": "Default",
+    "python.useEnvironmentsExtension": true,
+    "python-envs.defaultEnvManager": "ms-python.python:venv",
+    "python-envs.defaultPackageManager": "ms-python.python:pip",
+    "python-envs.workspaceSearchPaths": [
+        "./venv",
+        "./.venv",
+        "./env"
+    ],
+    "python.terminal.activateEnvironment": true,
+    "python-envs.terminal.autoActivationType": "command",
+    "python-envs.alwaysUseUv": true,
+    "python-envs.terminal.showActivateButton": true,
+    // =====================================================
+    // Editor / Files
+    // =====================================================
+    "git.autofetch": false,
+    "extensions.ignoreRecommendations": true,
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "editor.rulers": [
+        88
+    ],
+    "editor.renderWhitespace": "boundary",
+    "diffEditor.ignoreTrimWhitespace": false,
+    "[python]": {
+        "diffEditor.ignoreTrimWhitespace": true
+    },
+    "files.associations": {
+        "*.odps": "sql"
+    },
+    "files.watcherExclude": {
+        ".venv/**": true
+    },
+    "workbench.editor.empty.hint": "hidden",
+    "workbench.iconTheme": "material-icon-theme",
+    "json.schemaDownload.trustedDomains": {
+        "https://developer.microsoft.com/json-schemas/": true,
+        "https://json-schema.org/": true,
+        "https://json.schemastore.org/": true,
+        "https://raw.githubusercontent.com/DavidAnson/markdownlint/v0.40.0/schema/markdownlint-config-schema.json": true,
+        "https://raw.githubusercontent.com/devcontainers/spec/": true,
+        "https://raw.githubusercontent.com/microsoft/vscode/": true,
+        "https://schemastore.azurewebsites.net/": true,
+        "https://www.schemastore.org/": true
+    },
+    // =====================================================
+    // Formatting & Code Actions (manual trigger only)
+    // Use Shift+Alt+F to format when ready.
+    // =====================================================
+    "editor.formatOnSave": false,
+    "editor.formatOnPaste": false,
+    "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit",
+        "source.fixAll.ruff": "explicit",
+        "source.organizeImports": "explicit"
+    },
+    // =====================================================
+    // Ruff (charliermarsh.ruff)
+    // =====================================================
+    "ruff.enable": true,
+    "ruff.fixAll": true,
+    "ruff.organizeImports": true,
+    // =====================================================
+    // Jupyter (ms-toolsai.jupyter)
+    // =====================================================
+    "jupyter.askForKernelRestart": false,
+    "jupyter.interactiveWindow.creationMode": "perFile",
+    // =====================================================
+    // Markdown (davidanson.vscode-markdownlint)
+    // =====================================================
+    "markdownlint.config": {
+        "MD024": false
+    },
+    // =====================================================
+    // Project Manager (alefragnani.project-manager)
+    // =====================================================
+    "projectManager.git.baseFolders": [
+        "C:\\Users\\203715\\Documents\\Repo"
+    ],
+    // =====================================================
+    // Claude Code extension (anthropic.claude-code)
+    // =====================================================
+    "claudeCode.preferredLocation": "sidebar",
+    "claudeCode.useCtrlEnterToSend": true
+}
