@@ -57,3 +57,8 @@ line-ending = "auto"
 "tests/**/*.py" = ["S101", "D"]
 
 "app/configs/*_39.py" = ["UP007", "UP045"]
+
+# DataWorks PyODPS nodes execute on the platform's pinned Python 3.7 runtime,
+# not this repo's target-version — builtin generic subscripting (list[str],
+# tuple[...]) raises TypeError there, so typing.List/Dict/Tuple must stay.
+"temp/pyODPS/*.py" = ["UP006", "UP035"]
