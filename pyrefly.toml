@@ -1,0 +1,14 @@
+project-excludes = [
+    "**/.venv/",
+    "**/.conda/",
+    "**/build/",
+    "**/dist/",
+]
+python-version = "3.11.0"
+preset = "legacy"
+ignore-missing-imports = ["*"]
+check-unannotated-defs = false
+infer-return-types = "never"
+
+[errors]
+redundant-cast = "warn"
