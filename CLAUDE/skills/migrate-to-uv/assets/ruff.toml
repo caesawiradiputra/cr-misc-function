@@ -1,0 +1,46 @@
+# ============================
+# Core Ruff Configuration
+# ============================
+# Copy to project root as ruff.toml
+# Adjust target-version to match your pyproject.toml python requirement
+
+line-length = 88
+target-version = "py311"  # py39 | py310 | py311 | py312
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "C90"]
+
+ignore = [
+  "E501",  # line length handled by formatter
+  "B008",  # function calls in defaults (common in SQLAlchemy / FastAPI)
+  "B905",  # zip(strict=) – noisy, low value
+  "C901",  # complexity handled manually
+]
+
+[lint.isort]
+known-third-party = [
+  "pandas",
+  "sqlalchemy",
+  "psycopg2",
+  "kafka",
+  "confluent_kafka",
+]
+
+# ============================
+# Formatting
+# ============================
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+# ============================
+# Per-file ignores
+# ============================
+# Uncomment and adjust as needed
+
+[lint.per-file-ignores]
+# "app/**/etl*.py" = ["F841"]          # pandas scripts with temp vars
+# "app/**/models/*.py" = ["F401", "B008"]  # SQLAlchemy declarative models
+"tests/**/*.py" = ["S101", "D"]        # tests don't need assert or docstrings

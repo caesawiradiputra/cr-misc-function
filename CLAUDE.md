@@ -60,6 +60,17 @@ Used for sharing DataFrames between Airflow/Kubernetes DAG tasks without repeate
 
 Standalone utility functions (e.g., `data_cleaner.py`) — not tied to the app package, usable independently.
 
+### Dev Scripts (`scripts/powershell/`, `scripts/bash/`)
+
+Git workflow, template-sync, and environment-management scripts ship in two
+parallel forms: `scripts/powershell/*.ps1` for native Windows sessions, and
+`scripts/bash/*.sh` for sessions where Claude Code or the IDE actually runs
+inside WSL2/Linux instead. Same script names, same flags, same behavior —
+pick whichever matches the shell actually running the session (see the
+global `~/.claude/CLAUDE.md` "Environment" section). See
+`scripts/powershell/README.md` / `scripts/bash/README.md` for the full
+script overview and risk levels.
+
 ## Key Conventions
 
 - **Placeholder**: MSSQL/MySQL/Hive use `?`; PostgreSQL/Trino use `%s` — `BaseRepository._placeholder()` handles this automatically

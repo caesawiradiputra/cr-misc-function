@@ -1,3 +1,7 @@
+---
+model: opus
+---
+
 # Refactor Repositories
 
 Apply mandatory structure and patterns to files in the `repositories/` folder. These rules supplement `/refactor-python` with repository-specific standards.

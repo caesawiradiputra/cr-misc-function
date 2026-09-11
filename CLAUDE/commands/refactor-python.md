@@ -1,3 +1,7 @@
+---
+model: opus
+---
+
 # Refactor Python Code
 
 Systematically improve Python code quality while **guaranteeing identical behavior**. Supports whole project, folder, single module, or single function scope.

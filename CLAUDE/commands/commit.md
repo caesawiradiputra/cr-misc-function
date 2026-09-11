@@ -280,3 +280,4 @@ Refs DA-6789
 7. **Ticket footer** (`Refs`/`Closes DA-XXXX`) whenever the branch name carries a ticket ID
 8. **`BREAKING CHANGE:` footer** whenever behavior or interfaces break
 9. **Never commit with inline `-m`** — always `git commit -F` from a UTF-8 file (Phase 5)
+10. **Only run `git commit` when the user has explicitly said to** — either by invoking `/commit` themselves or by explicitly telling you to commit. Finishing an implementation, staging files, or reaching a natural stopping point is never itself permission to commit; if in doubt, stage the changes and stop, and wait for `/commit` or an explicit instruction.

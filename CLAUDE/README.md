@@ -4,17 +4,25 @@ This folder contains global configuration for [Claude Code](https://claude.ai/co
 
 ## Installation
 
-Copy the contents to your global Claude config folder:
+Copy the contents to your global Claude config folder — use whichever
+matches the shell actually running your Claude Code session (native Windows
+vs. WSL2/Linux; see `CLAUDE.md`'s "Environment" section for how to tell).
+`scripts/powershell/chat-Sync-ClaudeContext.ps1` / `scripts/bash/chat-sync-claude-context.sh`
+automate exactly this and are the preferred way to keep the two in sync —
+the manual commands below are the one-off/no-script fallback:
 
 ```powershell
-# Create global commands folder if it doesn't exist
+# Windows/PowerShell
 New-Item -ItemType Directory -Path "$env:USERPROFILE\.claude\commands" -Force
-
-# Copy global instructions
 Copy-Item -Path ".\CLAUDE\CLAUDE.md" -Destination "$env:USERPROFILE\.claude\CLAUDE.md"
-
-# Copy all slash commands
 Copy-Item -Path ".\CLAUDE\commands\*" -Destination "$env:USERPROFILE\.claude\commands\" -Recurse
+```
+
+```bash
+# Linux/WSL/bash
+mkdir -p ~/.claude/commands
+cp ./CLAUDE/CLAUDE.md ~/.claude/CLAUDE.md
+cp -r ./CLAUDE/commands/. ~/.claude/commands/
 ```
 
 After copying, the commands are available in **every project** on this machine.
@@ -26,20 +34,60 @@ After copying, the commands are available in **every project** on this machine.
 ```text
 CLAUDE/
 ├── README.md                       ← This file
-├── CLAUDE.md                       ← Global always-on instructions
-└── commands/
-    ├── commit.md                   ← /commit
-    ├── clean-gone.md               ← /clean-gone
-    ├── generate-pr-message.md      ← /generate-pr-message
-    ├── refactor-python.md          ← /refactor-python
-    ├── refactor-repositories.md    ← /refactor-repositories
-    ├── validate-lint-config.md     ← /validate-lint-config
-    ├── create-readme.md            ← /create-readme
-    ├── create-confluence-docs.md   ← /create-confluence-docs
-    ├── generate-cde.md             ← /generate-cde
-    ├── update-cde.md               ← /update-cde
-    └── generate-cde-spreadsheet.md ← /generate-cde-spreadsheet
+├── CLAUDE.md                       ← Global always-on instructions (shared — one file,
+│                                       branches internally on Windows vs Linux/WSL, since
+│                                       it's prose Claude reads, not something that has to
+│                                       run as one shell or the other)
+├── commands/                       ← Slash commands (shared — plain markdown, no OS-specific content)
+│   ├── commit.md                   ← /commit
+│   ├── clean-gone.md               ← /clean-gone
+│   ├── generate-pr-message.md      ← /generate-pr-message
+│   ├── refactor-python.md          ← /refactor-python
+│   ├── refactor-repositories.md    ← /refactor-repositories
+│   ├── validate-lint-config.md     ← /validate-lint-config
+│   ├── create-readme.md            ← /create-readme
+│   ├── create-confluence-docs.md   ← /create-confluence-docs
+│   ├── generate-cde.md             ← /generate-cde
+│   ├── update-cde.md               ← /update-cde
+│   └── generate-cde-spreadsheet.md ← /generate-cde-spreadsheet
+├── skills/                         ← Global skills (shared — identical on both OSes)
+├── statusline-command.sh           ← Shared — identical on both OSes
+├── mcp-servers.json                ← Shared — just the mcpServers key, never the full .claude.json
+├── windows/                        ← Only the parts that actually differ on native Windows
+│   ├── settings.json                 (hooks call powershell.exe + the .ps1 scripts below)
+│   └── hooks/                        (session-start-context.ps1, user-prompt-repo-focus.ps1, _repo-context-lib.ps1)
+└── linux-wsl/                      ← Only the parts that actually differ on WSL2/Linux
+    ├── settings.json                 (hooks call bash + the .sh scripts below)
+    └── hooks/                        (session-start-context.sh, user-prompt-repo-focus.sh, _repo-context-lib.sh)
 ```
+
+Everything here is a **point-in-time reference for setting up (or restoring)
+this global config on a device** — not something that gets auto-synced like
+`CLAUDE.md`/`commands/` do. Re-copy from the live `~/.claude/` on either side
+whenever you want an updated snapshot. `settings.json` and `hooks/` are
+genuinely OS-specific (different hook commands, `.ps1` vs `.sh`
+implementations of the same three scripts); everything else (`skills/`,
+`statusline-command.sh`, `mcpServers`) was identical on both OSes at capture
+time, so it's kept as one shared copy instead of duplicated per OS.
+
+**Windows paths are placeholders, not this machine's literal path.**
+`windows/settings.json`'s hook file paths use `C:\Users\<WINDOWS_USERNAME>\...`
+— replace `<WINDOWS_USERNAME>` with the actual Windows account name on
+whatever device you're setting this up on; don't copy the placeholder
+literally. (An earlier capture of this reference had the original machine's
+real username baked into both `settings.json` and one skill file — sanitized
+before committing, since a working reference for a *different* future device
+shouldn't hardcode one specific machine's path.)
+
+Excluded from every file here: `.credentials.json`, OAuth account info,
+`sessions/`/`session-env/`/`projects/` (conversation transcripts),
+`telemetry/`, `history.jsonl`, caches, and everything else in
+`~/.claude.json`/`~/.claude/` beyond the config surface listed above —
+nothing here should ever include secrets or usage data. Also excluded from
+`skills/`: three Windows-only `*-workspace` scratch directories
+(`documentation_auditor-workspace`, `jira-ticket-kickoff-workspace`,
+`migrate-to-uv-workspace`) that are skill-eval/benchmark output, not
+actual skills.
 
 ---
 
@@ -49,9 +97,13 @@ CLAUDE/
 
 Claude reads `~/.claude/CLAUDE.md` at the start of every session. This file contains:
 
-- Windows PowerShell environment rules (use PS syntax, not bash)
-- `uv` package manager commands
+- Environment detection: Windows/PowerShell vs. Linux/WSL2/bash — determined
+  from the session's own reported `Platform`/`Shell`, not assumed
+- `uv` package manager commands (identical on both platforms)
 - Project standards (docstrings, naming, commit format)
+- Execution-discipline rules accumulated from real incidents (state-before-write,
+  sweeping stale claims after a correction, multi-root workspace focus, etc.)
+- Markdown/comment style rules
 - Index of available slash commands
 
 No action needed — it applies automatically.

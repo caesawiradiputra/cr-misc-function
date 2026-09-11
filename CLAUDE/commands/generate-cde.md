@@ -1,3 +1,7 @@
+---
+model: opus
+---
+
 # Generate CDE (Mode A — Initial Setup)
 
 Build an enterprise CDE (Common Data Element) data model from scratch. Use this for creating a master CDE registry when none exists yet.

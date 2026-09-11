@@ -1,3 +1,7 @@
+---
+model: opus
+---
+
 # Update CDE (Mode B — Incremental Enhancement)
 
 Perform surgical incremental updates to an **existing** CDE data model. Use this when a master registry already exists and you need to add CDEs, pipelines, consumers, or update transformations.

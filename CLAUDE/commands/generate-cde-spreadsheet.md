@@ -1,3 +1,7 @@
+---
+model: opus
+---
+
 # Generate CDE Spreadsheet
 
 Generate a unified CDE spreadsheet covering: Master Registry + Business-Context-Specific Lineage Flows + CDE Usage patterns. Produces TSV files ready for Excel or Google Sheets.

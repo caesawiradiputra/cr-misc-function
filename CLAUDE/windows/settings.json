@@ -1,0 +1,124 @@
+{
+  "permissions": {
+    "allow": [],
+    "deny": [
+      "Read(**/.env)",
+      "Edit(**/.env)",
+      "Read(**/.env.dev)",
+      "Edit(**/.env.dev)",
+      "Read(**/.env.prod)",
+      "Edit(**/.env.prod)",
+      "Read(**/token.json)",
+      "Edit(**/token.json)",
+      "Read(**/*.pem)",
+      "Edit(**/*.pem)",
+      "Read(**/*.ppk)",
+      "Edit(**/*.ppk)",
+      "Read(**/id_rsa*)",
+      "Edit(**/id_rsa*)",
+      "Read(**/id_ed25519*)",
+      "Edit(**/id_ed25519*)",
+      "Read(**/.aws/credentials)",
+      "Edit(**/.aws/credentials)",
+      "Read(**/.npmrc)",
+      "Edit(**/.npmrc)",
+      "Read(**/.netrc)",
+      "Edit(**/.netrc)"
+    ],
+    "ask": [
+      "Edit(C:/Windows/**)",
+      "Edit(C:/Program Files/**)",
+      "Edit(C:/Program Files (x86)/**)",
+      "Edit(**/.ssh/**)",
+      "Edit(**/.git/**)",
+      "Edit(**/*.pfx)",
+      "Edit(**/*.p12)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "C:\\Users\\<WINDOWS_USERNAME>\\.claude\\hooks\\session-start-context.ps1"
+            ],
+            "timeout": 15,
+            "statusMessage": "Resolving session root/git/venv context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "C:\\Users\\<WINDOWS_USERNAME>\\.claude\\hooks\\user-prompt-repo-focus.ps1"
+            ],
+            "timeout": 10,
+            "statusMessage": "Checking for @-mentioned repo focus"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-Command",
+              "$env:VIRTUAL_ENV=$null; $i=[Console]::In.ReadToEnd()|ConvertFrom-Json; $f=$i.tool_input.file_path; if($f -like '*.py' -and (Test-Path $f)){ Set-Location (Split-Path $f); uv run --no-sync ruff format $f; uv run --no-sync ruff check --fix $f }; exit 0"
+            ],
+            "timeout": 60,
+            "statusMessage": "ruff format + lint"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "sh ~/.claude/statusline-command.sh"
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": false,
+    "context7@claude-plugins-official": false,
+    "code-simplifier@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "github@claude-plugins-official": false,
+    "feature-dev@claude-plugins-official": true,
+    "atlassian@claude-plugins-official": true,
+    "remember@claude-plugins-official": false
+  },
+  "effortLevel": "high",
+  "autoUpdatesChannel": "latest",
+  "theme": "auto",
+  "switchModelsOnFlag": true,
+  "autoMode": {
+    "soft_deny": [
+      "$defaults",
+      "Disk / Volume Destruction: Formatting, partitioning, or wiping local disks or volumes — e.g. `format`, `diskpart` (clean, delete partition, format, convert), `Clear-Disk`, `Remove-Partition`, `Initialize-Disk -Confirm:$false`, or `Format-Volume` — without the user naming the exact disk or volume letter to act on."
+    ]
+  },
+  "remoteControlAtStartup": false
+}
