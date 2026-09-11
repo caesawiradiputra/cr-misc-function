@@ -2,6 +2,12 @@
 
 This folder contains PowerShell scripts for streamlining Git workflow, template synchronization, and environment management.
 
+> Running Claude Code / your IDE inside WSL2 or another Linux shell instead of
+> native Windows? Every script here has a bash port in
+> [`../bash/`](../bash/README.md) with the same name, flags, and behavior —
+> use whichever matches the shell actually running the session (see the
+> global `~/.claude/CLAUDE.md` "Environment" section for how to tell).
+
 ## Overview
 
 | Script | Purpose | Risk Level |
