@@ -38,6 +38,12 @@
 .NOTES
     Author: Development Team
     Naming convention: fea/<TICKET>-<description> (e.g., fea/DA-1234-add-caching)
+
+    Related git commands (manual equivalent):
+      git fetch origin --prune
+      git diff origin/master origin/dev          # sync check (dev vs master)
+      git checkout -b <branch-name> origin/<base-branch>
+      git push -u origin <branch-name>
 #>
 
 [CmdletBinding()]

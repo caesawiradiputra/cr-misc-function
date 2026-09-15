@@ -41,6 +41,16 @@
     4. Verifies commits that will be merged
     5. Provides instructions for completing the merge
 
+    Related git commands (manual equivalent):
+      git fetch origin --prune
+      git checkout <feature-branch>
+      git branch backup/<feature-branch>-<timestamp>   # safety backup
+      git rebase origin/<base-branch>
+      git add <resolved-files> && git rebase --continue   # on conflict
+      git rebase --abort                                  # to bail out
+      git reset --hard backup/<feature-branch>-<timestamp>  # restore from backup
+      git push --force-with-lease origin <feature-branch>   # after a successful rebase
+
 .LINK
     https://git-scm.com/docs/git-rebase
 #>

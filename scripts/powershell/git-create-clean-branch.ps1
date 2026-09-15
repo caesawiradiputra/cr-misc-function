@@ -65,6 +65,13 @@
        - git cherry-pick --abort
        - git checkout <feature-branch>
        - git branch -D <feature-branch-clean>
+
+    Related git commands (manual equivalent):
+      git fetch origin
+      git log --oneline origin/<base-branch>..<feature-branch> -- <paths...>
+      git checkout -b <feature-branch>-clean origin/<base-branch>
+      git cherry-pick <commit-hash>       # oldest to newest
+      git push origin <feature-branch>-clean
 #>
 
 [CmdletBinding()]

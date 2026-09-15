@@ -23,6 +23,14 @@
 
 .PARAMETER ProtectedBranches
     Branches that should never be deleted. Default: main, master, dev, sit
+
+.NOTES
+    Related git commands (manual equivalent):
+      git fetch origin --prune
+      git checkout <protected-branch> && git pull origin <protected-branch>
+      git branch -D <branch>                    # delete a local branch whose remote is gone
+      git branch -vv | Select-String ': gone]'  # spot orphaned branches yourself first
+      git tag -d <tag> && git push origin :refs/tags/<tag>   # with -CleanupBackupTags
 #>
 param(
     [switch]$DryRun = $false,

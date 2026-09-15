@@ -8,6 +8,12 @@
 #
 # Workflow position: runs after git-check-sync-set-dev.sh and before
 # development work.
+#
+# Related git commands (manual equivalent):
+#   git fetch origin --prune
+#   git diff origin/master origin/dev          # sync check (dev vs master)
+#   git checkout -b <branch-name> origin/<base-branch>
+#   git push -u origin <branch-name>
 set -uo pipefail
 
 usage() {

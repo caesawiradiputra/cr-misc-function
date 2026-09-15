@@ -16,6 +16,13 @@
 # against master/dev only, with --force instead. This port follows the real
 # .ps1 source, not the stale README description.
 #
+# Related git commands (manual equivalent):
+#   git fetch origin --prune
+#   git diff origin/master origin/dev            # sync check
+#   git checkout -b dev --track origin/dev       # if local dev is missing
+#   git checkout dev && git pull --ff-only       # activate + fast-forward
+#   git checkout dev && git merge origin/master  # to sync dev when NOT in sync
+#
 # Usage:
 #   ./scripts/bash/git-check-sync-set-dev.sh [options]
 #

@@ -6,6 +6,13 @@
 # repository. Can optionally update protected branches first, and remove
 # backup tags created by git-reset-branches.sh.
 #
+# Related git commands (manual equivalent):
+#   git fetch origin --prune
+#   git checkout <protected-branch> && git pull origin <protected-branch>
+#   git branch -D <branch>                    # delete a local branch whose remote is gone
+#   git branch -vv | grep ': gone]'           # spot orphaned branches yourself first
+#   git tag -d <tag> && git push origin :refs/tags/<tag>   # with --cleanup-backup-tags
+#
 # Usage:
 #   ./scripts/bash/git-clean-branches.sh [options]
 #

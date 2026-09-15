@@ -12,6 +12,14 @@
 #       (emergency)          (rebase onto base)       (cherry-pick filtered)
 #
 # Requires all git-*.sh scripts to be in the same directory.
+#
+# Related git commands: this script only dispatches to the other git-*.sh
+# scripts (see each one's own header for its underlying git commands),
+# except for the `status` action, which runs directly:
+#   git rev-parse --abbrev-ref HEAD
+#   git status --porcelain
+#   git rev-list --count <upstream>..HEAD / HEAD..<upstream>
+#   git diff origin/master origin/dev --stat
 set -uo pipefail
 
 usage() {

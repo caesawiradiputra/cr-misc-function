@@ -33,6 +33,13 @@
 .NOTES
     Requires Git to be installed and the script to be run inside a Git repository.
     Checks sync by comparing code diffs, not commit history.
+
+    Related git commands (manual equivalent):
+      git fetch origin --prune
+      git diff origin/master origin/dev            # sync check
+      git checkout -b dev --track origin/dev       # if local dev is missing
+      git checkout dev && git pull --ff-only       # activate + fast-forward
+      git checkout dev && git merge origin/master  # to sync dev when NOT in sync
 #>
 
 [CmdletBinding()]

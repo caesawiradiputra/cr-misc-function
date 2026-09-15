@@ -79,6 +79,22 @@ LastModified: April 2026
 
 The script creates timestamped log files in the .\logs\ directory for audit purposes.
 All backup tags are pushed to origin for remote recovery capability.
+
+Related git commands (what this script runs under the hood, per branch):
+  git fetch origin --prune
+  git tag backup-<branch>-<sha8>-<timestamp> origin/<branch>   # backup, unless -NoBackup
+  git checkout <branch>
+  git reset --hard <target>                                    # e.g. origin/master
+  git push origin <branch> --force-with-lease
+
+IMPORTANT for anyone else with a local copy of master/dev/sit: since this script
+force-resets and force-pushes those branches, their remote history is rewritten.
+A plain `git pull` on another clone/machine will then fail or diverge - pull a
+hard reset to local instead, once you have confirmed the rewritten remote state
+is what you want:
+  git fetch origin
+  git checkout <branch>              # master, dev, or sit
+  git reset --hard origin/<branch>
 #>
 param(
     [switch]$DryRun = $false,
@@ -468,6 +484,15 @@ if ($DryRun) {
     Write-Host ""
     Write-Host "[DRY RUN] This was a DRY RUN - no changes were made" -ForegroundColor Yellow
     Write-Host "[DRY RUN] Run without -DryRun parameter to execute" -ForegroundColor Yellow
+} else {
+    # The branches above were force-reset and force-pushed, rewriting their
+    # remote history - a plain `git pull` on any other local clone of this
+    # repo will now fail or diverge. Print the manual git command to pull a
+    # hard reset to local so other clones/machines can be brought back in
+    # sync with the rewritten remote.
+    Write-Host ""
+    Write-Host "[NOTE] Other local clones of master/dev/sit are now behind rewritten history." -ForegroundColor Yellow
+    Write-Host "  To sync another clone: git fetch origin && git checkout <branch> && git reset --hard origin/<branch>" -ForegroundColor Yellow
 }
 
 Write-Host ""

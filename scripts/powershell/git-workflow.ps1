@@ -44,6 +44,14 @@
 .NOTES
     Author: Development Team
     Requires all git-*.ps1 scripts to be in the same directory.
+
+    Related git commands: this script only dispatches to the other git-*.ps1
+    scripts (see each one's own .NOTES for its underlying git commands),
+    except for the `status` action, which runs directly:
+      git rev-parse --abbrev-ref HEAD
+      git status --porcelain
+      git rev-list --count <upstream>..HEAD / HEAD..<upstream>
+      git diff origin/master origin/dev --stat
 #>
 
 [CmdletBinding()]

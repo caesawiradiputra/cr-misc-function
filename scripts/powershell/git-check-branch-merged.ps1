@@ -52,6 +52,13 @@
     Exit codes:
       0 - Scan completed (see output for per-branch results; nothing was deleted)
       1 - Error (not a repo, fetch failed, missing base branch, git failure)
+
+    Related git commands (manual equivalent, read-only):
+      git fetch origin --prune
+      git merge-base origin/<base-branch> origin/<branch>
+      git diff --name-only <merge-base> origin/<branch>                 # touched files
+      git diff origin/<base-branch> origin/<branch> -- <touched-files>  # scoped diff
+      git push origin --delete <branch>       # delete on remote once confirmed safe
 #>
 
 [CmdletBinding()]

@@ -16,6 +16,22 @@
 #      then sit -> origin/dev
 #   4. Force-push each reset branch back to origin (--force-with-lease)
 #
+# Related git commands (what this script runs under the hood, per branch):
+#   git fetch origin --prune
+#   git tag backup-<branch>-<sha8>-<timestamp> origin/<branch>   # backup, unless --no-backup
+#   git checkout <branch>
+#   git reset --hard <target>                                    # e.g. origin/master
+#   git push origin <branch> --force-with-lease
+#
+# IMPORTANT for anyone else with a local copy of master/dev/sit: since this
+# script force-resets and force-pushes those branches, their remote history
+# is rewritten. A plain `git pull` on another clone/machine will then fail
+# or diverge — pull a hard reset to local instead, once you have confirmed
+# the rewritten remote state is what you want:
+#   git fetch origin
+#   git checkout <branch>              # master, dev, or sit
+#   git reset --hard origin/<branch>
+#
 # Usage:
 #   ./scripts/bash/git-reset-branches.sh [options]
 #
@@ -500,6 +516,15 @@ if [ "$dry_run" = true ]; then
     echo ""
     write_color "[DRY RUN] This was a DRY RUN - no changes were made" "$YELLOW"
     write_color "[DRY RUN] Run without --dry-run to execute" "$YELLOW"
+else
+    # The branches above were force-reset and force-pushed, rewriting their
+    # remote history — a plain `git pull` on any other local clone of this
+    # repo will now fail or diverge. Print the manual git command to pull a
+    # hard reset to local so other clones/machines can be brought back in
+    # sync with the rewritten remote.
+    echo ""
+    write_color "[NOTE] Other local clones of master/dev/sit are now behind rewritten history." "$YELLOW"
+    write_color "  To sync another clone: git fetch origin && git checkout <branch> && git reset --hard origin/<branch>" "$YELLOW"
 fi
 
 echo ""
