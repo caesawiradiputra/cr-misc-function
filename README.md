@@ -377,5 +377,6 @@ Quick usage:
 - [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) - Production deployment
 - [Migration Guide](docs/deployment/MIGRATION_CONDA_TO_UV.md) - Conda to UV migration
 - [Bootstrap Guide](docs/bootstrap.md) - New project setup from this library
+- [Claude Code WSL 2 Setup](docs/claude-code-wsl-setup.md) - Installing Claude Code CLI via nvm in WSL 2/Ubuntu
 - [Logging Configuration](docs/logging-configuration.md) - Structured logging setup
 - [GitHub Workflow Guide](docs/guidelines/GITHUB-WORKFLOW-CONSOLIDATED.md) - Branch and PR conventions
