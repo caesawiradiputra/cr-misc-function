@@ -1,40 +1,45 @@
 #!/usr/bin/env bash
-# Validate and prepare environment for Poetry + Conda -> uv migration.
+# Validate and prepare environment for Poetry (+ optional Conda) -> uv migration.
 #
 # Bash port of dev-migrate-conda-poetry-to-uv.ps1 (PowerShell) — for when
 # Claude Code + your editor actually run on the Linux/WSL side of the
-# machine. Two adaptations from the .ps1 version beyond syntax:
-#   - Template paths (templates/README_LEGACY.template.md and
-#     README_MIGRATION.template.md) are resolved relative to this script's
-#     own location instead of the .ps1's hardcoded
-#     C:\Users\203715\Documents\Repo\cr-misc-function\cr-misc-function\templates\...
-#   - The Conda-export step now actually runs: the .ps1 guards it with
-#     `if ($CondaCommand -and $CondaPrefix)`, but $CondaCommand is never
-#     assigned anywhere in that script, so that condition is always false
-#     and the block is dead code. This port uses the evidently-intended
-#     check instead: `command -v conda` + a non-empty $CONDA_PREFIX.
+# machine. Adaptations from the .ps1 version beyond syntax:
+#   - Conda is NOT assumed. A WSL checkout usually has no Conda at all, so the
+#     generated guides use Linux-specific templates
+#     (templates/README_MIGRATION.linux.template.md and
+#     README_LEGACY.linux.template.md) where uv installs and manages the
+#     Python interpreter itself (`uv python install`). The shared
+#     README_*.template.md files stay Windows/Conda-oriented for the .ps1.
+#   - Template paths are resolved relative to this script's own location
+#     instead of the .ps1's hardcoded C:\Users\203715\... path.
+#   - pyproject.toml is parsed with tomllib, not regex, so both PEP 621
+#     `dependencies = [...]` lists and classic Poetry
+#     `[tool.poetry.dependencies]` tables (caret/tilde constraints converted
+#     to PEP 440) produce `uv add` commands. The target Python version is
+#     taken from requires-python / tool.poetry.dependencies.python.
+#   - The Conda-export step runs whenever Conda is actually active
+#     (`command -v conda` + non-empty $CONDA_PREFIX); the .ps1's equivalent
+#     guard checks a never-assigned $CondaCommand and is dead code. Without
+#     Conda it is skipped and README_LEGACY.md describes a uv-based rollback.
 #
-# Requires: python3 (only for the same regex-based dependency-list
-# extraction the .ps1 does via `-match` with a DOTALL-style pattern — no
-# TOML library is used, this mirrors the original regex approach exactly).
-#
-# This script performs pre-migration checks and creates a safe rollback
-# archive for migrating from Poetry/Conda to the uv package manager.
+# Requires: python3 with tomllib (3.11+). If the system python3 is older
+# (e.g. Ubuntu 22.04 ships 3.10), the script falls back to running the
+# parser through `uv run --python 3.11`.
 #
 # It:
-#   1. Validates pyproject.toml exists and parses the Python version requirement
-#   2. Checks Conda environment status
-#   3. Creates backup archives in legacy/ (poetry.lock, pyproject.toml, Conda exports)
-#   4. Extracts dependencies from pyproject.toml for uv add commands
-#   5. Generates a migration guide (legacy/README_MIGRATION.md) and a
+#   1. Validates pyproject.toml exists and detects the target Python version
+#   2. Creates backup archives in legacy/ (pyproject.toml, *.lock, requirements.txt,
+#      Dockerfile, and a Conda export only if Conda is active)
+#   3. Extracts dependencies from pyproject.toml for uv add commands
+#   4. Generates a migration guide (legacy/README_MIGRATION.md) and a
 #      rollback guide (legacy/README_LEGACY.md)
-#   6. Optionally removes Poetry artifacts (poetry.lock and pyproject.toml)
+#   5. Optionally removes the Poetry artifacts (poetry.lock and pyproject.toml)
 #
 # Output files in legacy/:
 #   - poetry.lock, *.lock (backups of previous lock files, except uv.lock)
 #   - pyproject.poetry.toml (backup of original pyproject.toml)
 #   - requirements.txt, Dockerfile (backups, if present)
-#   - conda-env.yml, conda-explicit-lock.txt (Conda environment export, if active)
+#   - conda-env.yml, conda-explicit-lock.txt (only if a Conda env was active)
 #   - README_LEGACY.md (rollback guide)
 #   - README_MIGRATION.md (step-by-step migration guide with uv add commands)
 #
@@ -43,9 +48,11 @@
 #
 # Options:
 #   --force                          Overwrite existing backup files without prompting.
-#   --remove-poetry-artifacts        Delete poetry.lock and pyproject.toml (after
-#                                    backing them up to legacy/). Permanent — backups
-#                                    are created first, so restore from legacy/ if needed.
+#   --remove-poetry-artifacts        After backing up, delete poetry.lock and the Poetry
+#                                    pyproject.toml from the project root (asks for 'yes'
+#                                    unless --force). A file is only deleted when its
+#                                    legacy/ backup is byte-identical. Otherwise the guide's
+#                                    Step 2 removes them before `uv init`.
 #   --generate-migration-guide-only  Only (re)generate legacy/README_MIGRATION.md,
 #                                    skipping validation/backup. Does not require
 #                                    pyproject.toml or an active Conda environment.
@@ -59,21 +66,24 @@
 #   ./scripts/bash/dev-migrate-conda-poetry-to-uv.sh --remove-poetry-artifacts
 #   ./scripts/bash/dev-migrate-conda-poetry-to-uv.sh --remove-poetry-artifacts --force
 #   ./scripts/bash/dev-migrate-conda-poetry-to-uv.sh --generate-migration-guide-only
-#   ./scripts/bash/dev-migrate-conda-poetry-to-uv.sh --project-root /projects/other-app
+#   ./scripts/bash/dev-migrate-conda-poetry-to-uv.sh --project-root ~/repo/other-app/other-app
 #
 # After running this script, follow the migration guide in legacy/README_MIGRATION.md:
-#   1. Activate Conda (py311 or py39)
-#   2. Run: uv init && uv venv
-#   3. Run: uv add [dependencies] (auto-generated commands in the guide)
-#   4. Update .vscode/settings.json (template in the guide)
-#   5. Verify: python --version & uv --version
+#   1. uv python install <version>
+#   2. Remove the Poetry pyproject.toml/poetry.lock, then: uv init --bare && uv venv
+#   3. uv add [dependencies] (auto-generated commands in the guide)
+#   4. Copy ruff.toml / mypy.ini (targets set to <version>), update
+#      .vscode/settings.json (.venv/bin/python)
+#   5. Verify: uv run python --version, then commit
 set -uo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 
+## Print the leading comment block (everything after the shebang up to the
+## first non-comment line), so --help never drifts from the header.
 usage() {
-    sed -n '2,58p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]}"
 }
 
 CYAN=$'\033[36m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; RED=$'\033[31m'; RESET=$'\033[0m'
@@ -104,74 +114,226 @@ while [ $# -gt 0 ]; do
         --force) force=true; shift ;;
         --remove-poetry-artifacts) remove_poetry_artifacts=true; shift ;;
         --generate-migration-guide-only) generate_migration_guide_only=true; shift ;;
-        --project-root) project_root="$2"; shift 2 ;;
+        --project-root)
+            [ $# -ge 2 ] || fail "--project-root requires a path"
+            project_root="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) fail "Unknown option: $1" ;;
     esac
 done
 
 # ----------------------------------------------------------------------------
-# DEPENDENCY-STRING FORMATTING
-#   Input:  pandas (==2.2.3)  or  xgboost>=3.0.5,<4.0.0  or  pandas==2.2.3
-#   Output: pandas==2.2.3     or  'xgboost>=3.0.5,<4.0.0' (quoted if it has a comma/space)
+# PYTHON HELPER (pyproject parsing + template rendering)
 # ----------------------------------------------------------------------------
-format_dependency() {
-    local dep="$1"
-    dep="${dep//\"/}"
-    dep="${dep//\'/}"
-    # shellcheck disable=SC2001  # trim via sed for portability of leading/trailing spaces
-    dep="$(printf '%s' "$dep" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
-    if [[ "$dep" =~ ^([a-zA-Z0-9._-]+)[[:space:]]*\((.+)\)$ ]]; then
-        local pkg_name="${BASH_REMATCH[1]}"
-        local version_spec="${BASH_REMATCH[2]}"
-        version_spec="$(printf '%s' "$version_spec" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        if [[ "$version_spec" =~ [,[:space:]] ]]; then
-            printf "'%s%s'" "$pkg_name" "$version_spec"
-        else
-            printf '%s%s' "$pkg_name" "$version_spec"
-        fi
-    elif [[ "$dep" =~ ^([a-zA-Z0-9._-]+)([\<\>=!].*)$ ]]; then
-        local pkg_name="${BASH_REMATCH[1]}"
-        local version_spec="${BASH_REMATCH[2]}"
-        if [[ "$version_spec" == *,* ]]; then
-            printf "'%s%s'" "$pkg_name" "$version_spec"
-        else
-            printf '%s%s' "$pkg_name" "$version_spec"
-        fi
-    else
-        printf '%s' "$dep"
-    fi
-}
+## tomllib is stdlib only from Python 3.11; fall back to a uv-managed 3.11.
+py_cmd=()
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import tomllib' 2>/dev/null; then
+    py_cmd=(python3)
+elif command -v uv >/dev/null 2>&1; then
+    py_cmd=(uv run --quiet --no-project --python 3.11 python)
+else
+    fail "Need python3 >= 3.11 (for tomllib) or uv on PATH to parse pyproject.toml"
+fi
 
-# extract_toml_list_section <pyproject-file> <mode: deps|dev-deps>
-# Prints one raw dependency entry per line (quotes stripped, trimmed), mirroring
-# the PowerShell regex extraction (same two patterns, same comma-before-newline
-# split so a version spec like ">=3.0.5,<4.0.0" isn't split mid-spec).
-extract_toml_list_section() {
-    local file="$1" mode="$2"
-    python3 - "$file" "$mode" <<'PY'
+# py_helper <command> [args...]
+#   python-version <pyproject|"">       -> prints X.Y (defaults to 3.11)
+#   uv-add-section <pyproject|"">       -> prints the Markdown for guide Step 3
+#   render <template> <output> <flags>  -> substitutes PH_* env vars into
+#                                          {Placeholders} and keeps only the
+#                                          <!-- IF:flag --> blocks listed in
+#                                          <flags> (comma-separated)
+py_helper() {
+    "${py_cmd[@]}" - "$@" <<'PY'
+import os
 import re
 import sys
+import tomllib
 
-path, mode = sys.argv[1], sys.argv[2]
-with open(path, encoding="utf-8") as f:
-    content = f.read()
+DEFAULT_PYTHON = "3.11"
+DEFAULT_DEV_TOOLS = ["mypy", "ruff"]
+_VERSION = re.compile(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?")
+_PEP621_PAREN = re.compile(r"^([A-Za-z0-9._-]+(?:\[[^\]]*\])?)\s*\((.+)\)\s*(;.*)?$")
+_NAME = re.compile(r"^([A-Za-z0-9._-]+)")
 
-if mode == "deps":
-    m = re.search(r"dependencies\s*=\s*\[(.*?)\]", content, re.DOTALL)
-else:
-    m = re.search(
-        r"\[project\.optional-dependencies\].*?dev\s*=\s*\[(.*?)\]", content, re.DOTALL
+
+def load(path):
+    if not path or not os.path.isfile(path):
+        return None
+    with open(path, "rb") as f:
+        return tomllib.load(f)
+
+
+def poetry_table(data, *keys):
+    node = data.get("tool", {}).get("poetry", {})
+    for key in keys:
+        node = node.get(key, {}) if isinstance(node, dict) else {}
+    return node if isinstance(node, dict) else {}
+
+
+def python_version(data):
+    """Lowest X.Y allowed by requires-python (or Poetry's python constraint)."""
+    spec = None
+    if data:
+        spec = data.get("project", {}).get("requires-python") or poetry_table(
+            data, "dependencies"
+        ).get("python")
+    if isinstance(spec, str):
+        for part in spec.replace("||", ",").split(","):
+            part = part.strip()
+            if part.startswith(("<", "!")):
+                continue
+            m = _VERSION.search(part)
+            if m and m.group(2) is not None:
+                return f"{m.group(1)}.{m.group(2)}"
+    return DEFAULT_PYTHON
+
+
+def _bump(version, level):
+    """Upper bound for a caret/tilde range: increment component `level`."""
+    m = _VERSION.fullmatch(version)
+    if not m:
+        return None
+    parts = [int(p) for p in m.groups() if p is not None]
+    upper = parts[: level + 1]
+    upper[-1] += 1
+    return f">={version},<{'.'.join(map(str, upper))}"
+
+
+def poetry_constraint(spec):
+    """Convert a Poetry constraint (^, ~, bare version, *) to PEP 440."""
+    out = []
+    for part in spec.split(","):
+        part = part.strip()
+        if part in ("", "*"):
+            continue
+        if part.startswith("^"):
+            v = part[1:].strip()
+            m = _VERSION.fullmatch(v)
+            nums = [int(p) for p in m.groups() if p is not None] if m else []
+            level = next((i for i, n in enumerate(nums) if n != 0), len(nums) - 1)
+            out.append(_bump(v, level) or part)
+        elif part.startswith("~") and not part.startswith("~="):
+            v = part[1:].strip()
+            m = _VERSION.fullmatch(v)
+            level = 0 if m and m.group(2) is None else 1
+            out.append(_bump(v, level) or part)
+        elif part[0].isdigit():
+            out.append("==" + part)
+        else:
+            out.append(part)
+    return ",".join(out)
+
+
+def from_table(table, manual):
+    deps = []
+    for name, value in table.items():
+        if name == "python":
+            continue
+        if isinstance(value, str):
+            deps.append(name + poetry_constraint(value))
+        elif isinstance(value, dict) and "version" in value:
+            extras = value.get("extras") or []
+            extra = f"[{','.join(extras)}]" if extras else ""
+            deps.append(name + extra + poetry_constraint(str(value["version"])))
+        else:
+            ## git/path/url sources and multiple-constraint lists need a human.
+            manual.append(f"{name} = {value!r}")
+    return deps
+
+
+def from_pep621(entries):
+    deps = []
+    for entry in entries:
+        entry = entry.strip()
+        m = _PEP621_PAREN.match(entry)
+        if m:
+            entry = m.group(1) + m.group(2).strip() + (m.group(3) or "")
+        deps.append(entry)
+    return deps
+
+
+def collect(data):
+    manual = []
+    project = data.get("project", {})
+    if project.get("dependencies"):
+        main = from_pep621(project["dependencies"])
+    else:
+        main = from_table(poetry_table(data, "dependencies"), manual)
+
+    groups = data.get("dependency-groups", {})
+    optional = project.get("optional-dependencies", {})
+    if isinstance(groups.get("dev"), list) and groups["dev"]:
+        dev = from_pep621(g for g in groups["dev"] if isinstance(g, str))
+    elif optional.get("dev"):
+        dev = from_pep621(optional["dev"])
+    elif poetry_table(data, "group", "dev", "dependencies"):
+        dev = from_table(poetry_table(data, "group", "dev", "dependencies"), manual)
+    else:
+        dev = from_table(poetry_table(data, "dev-dependencies"), manual)
+
+    ## Always include mypy and ruff in dev tools (deduplicated by package name).
+    names = {_NAME.match(d).group(1).lower() for d in dev if _NAME.match(d)}
+    dev += [tool for tool in DEFAULT_DEV_TOOLS if tool not in names]
+    return main, dev, manual
+
+
+def shell_quote(dep):
+    ## Anything beyond a bare name contains shell syntax (<, >, [, *, ;, ...).
+    return dep if re.fullmatch(r"[A-Za-z0-9._-]+", dep) else "'" + dep.replace("'", "") + "'"
+
+
+def uv_add_section(data):
+    if not data:
+        return (
+            "> pyproject.toml was not found, so no dependencies could be extracted.\n"
+            "> Add them manually with `uv add <package>` and `uv add --dev <package>`."
+        )
+    main, dev, manual = collect(data)
+    lines = []
+    if main:
+        lines.append("uv add " + " ".join(shell_quote(d) for d in main))
+    lines.append("uv add --dev " + " ".join(shell_quote(d) for d in dev))
+    text = (
+        "Run these commands (adjust versions as needed):\n\n```bash\n"
+        + "\n".join(lines)
+        + "\n```"
     )
+    if manual:
+        text += (
+            "\n\n> **Manual:** these dependencies use a git/path/url source or a"
+            " multi-constraint list and were not converted. Add each one yourself:\n>\n"
+            + "\n".join(f"> - `{m}`" for m in manual)
+        )
+    return text
 
-if not m:
-    sys.exit(0)
 
-for entry in re.split(r",\s*\n", m.group(1)):
-    dep = entry.replace('"', "").replace("'", "").strip()
-    if dep:
-        print(dep)
+def render(template, output, flags):
+    with open(template, encoding="utf-8") as f:
+        content = f.read()
+    enabled = {f for f in flags.split(",") if f}
+    content = re.sub(
+        r"<!-- IF:([\w-]+) -->\n?(.*?)<!-- ENDIF:\1 -->\n?",
+        lambda m: m.group(2) if m.group(1) in enabled else "",
+        content,
+        flags=re.DOTALL,
+    )
+    for key, value in os.environ.items():
+        if key.startswith("PH_"):
+            content = content.replace("{" + key[3:] + "}", value)
+    with open(output, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+cmd, args = sys.argv[1], sys.argv[2:]
+if cmd == "python-version":
+    print(python_version(load(args[0])))
+elif cmd == "uv-add-section":
+    print(uv_add_section(load(args[0])))
+elif cmd == "render":
+    render(*args)
+else:
+    sys.exit(f"unknown helper command: {cmd}")
 PY
 }
 
@@ -179,89 +341,57 @@ PY
 # README GENERATION
 # ----------------------------------------------------------------------------
 
-# generate_legacy_readme <legacy-readme-path> <project-name>
+# generate_legacy_readme <legacy-readme-path> <project-name> <python-version>
 generate_legacy_readme() {
-    local legacy_readme_path="$1" project_name="$2"
-    local template_file="$repo_root/templates/README_LEGACY.template.md"
+    local legacy_readme_path="$1" project_name="$2" python_version="$3"
+    local template_file="$repo_root/templates/README_LEGACY.linux.template.md"
+    local legacy_dir flags="no-conda"
 
     if [ ! -f "$template_file" ]; then
         printf '%s[!] Template not found: %s%s\n' "$YELLOW" "$template_file" "$RESET"
-        return 0
+        return 1
     fi
 
-    local timestamp
-    timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-    sed -e "s/{ProjectName}/$project_name/g" -e "s/{Timestamp}/$timestamp/g" \
-        "$template_file" > "$legacy_readme_path"
+    legacy_dir="$(dirname "$legacy_readme_path")"
+    if [ -f "$legacy_dir/conda-env.yml" ] || [ -f "$legacy_dir/conda-explicit-lock.txt" ]; then
+        flags="conda"
+    fi
+
+    PH_ProjectName="$project_name" \
+    PH_Timestamp="$(date '+%Y-%m-%d %H:%M:%S')" \
+    PH_PythonVersion="$python_version" \
+        py_helper render "$template_file" "$legacy_readme_path" "$flags"
 }
 
-# generate_migration_readme <project-folder-name> <migration-readme-path> <deps-file> <dev-deps-file>
-# deps-file/dev-deps-file: one dependency string per line (may be empty files).
+# generate_migration_readme <project-folder-name> <migration-readme-path> <pyproject-or-empty> <python-version>
 generate_migration_readme() {
-    local project_folder_name="$1" migration_readme_path="$2" deps_file="$3" dev_deps_file="$4"
-    local template_file="$repo_root/templates/README_MIGRATION.template.md"
+    local project_folder_name="$1" migration_readme_path="$2" source_toml="$3" python_version="$4"
+    local template_file="$repo_root/templates/README_MIGRATION.linux.template.md"
+    local uv_add_section flags=""
+
+    ## mypy 2.x runs on / type-checks Python >= 3.10 only; flag older targets
+    ## so the guide explains why `uv add --dev mypy` resolves an old mypy.
+    if [ "${python_version%%.*}" -eq 3 ] && [ "${python_version#*.}" -lt 10 ]; then
+        flags="old-mypy"
+    fi
 
     if [ ! -f "$template_file" ]; then
         printf '%s[!] Template not found: %s%s\n' "$YELLOW" "$template_file" "$RESET"
-        return 0
+        return 1
     fi
 
-    local uv_add_lines=()
-
-    if [ -s "$deps_file" ]; then
-        local formatted_deps=()
-        while IFS= read -r dep; do
-            [ -n "$dep" ] && formatted_deps+=("$(format_dependency "$dep")")
-        done < "$deps_file"
-        if [ "${#formatted_deps[@]}" -gt 0 ]; then
-            uv_add_lines+=("uv add $(IFS=' '; echo "${formatted_deps[*]}")")
-        fi
+    if ! uv_add_section="$(py_helper uv-add-section "$source_toml")"; then
+        printf '%s[!] Warning: Could not parse dependencies from %s%s\n' "$YELLOW" "$source_toml" "$RESET"
+        uv_add_section="> Dependency parsing failed — add them manually with \`uv add <package>\`."
     fi
 
-    # Always include mypy and ruff in dev tools (deduplicated, order-preserving).
-    local all_dev_deps=()
-    declare -A seen_dev=()
-    if [ -f "$dev_deps_file" ]; then
-        while IFS= read -r dep; do
-            [ -n "$dep" ] || continue
-            if [ -z "${seen_dev[$dep]:-}" ]; then
-                all_dev_deps+=("$dep")
-                seen_dev[$dep]=1
-            fi
-        done < "$dev_deps_file"
-    fi
-    for extra in mypy ruff; do
-        if [ -z "${seen_dev[$extra]:-}" ]; then
-            all_dev_deps+=("$extra")
-            seen_dev[$extra]=1
-        fi
-    done
-
-    if [ "${#all_dev_deps[@]}" -gt 0 ]; then
-        local formatted_dev_deps=()
-        for dep in "${all_dev_deps[@]}"; do
-            formatted_dev_deps+=("$(format_dependency "$dep")")
-        done
-        uv_add_lines+=("uv add --dev $(IFS=' '; echo "${formatted_dev_deps[*]}")")
-    fi
-
-    local uv_add_section=""
-    if [ "${#uv_add_lines[@]}" -gt 0 ]; then
-        uv_add_section=$(
-            printf '\nRun these commands (or adjust versions as needed):\n\n```bash\n'
-            printf '%s\n' "${uv_add_lines[@]}"
-            printf '```\n\n> **Config files:** Copy `mypy.ini` and `ruff.toml` from the shared templates folder into your project root.\n> Template source: `cr-misc-function/templates/mypy.ini` and `cr-misc-function/templates/ruff.toml`\n'
-        )
-    fi
-
-    local timestamp
-    timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-
-    # Substitute placeholders. {UvAddDependencies} may contain '&' and
-    # newlines, so it's swapped in via a temp file + awk rather than sed.
-    local tmp_content
-    tmp_content="$(sed -e "s/{ProjectName}/$project_folder_name/g" -e "s/{Timestamp}/$timestamp/g" "$template_file")"
-    awk -v repl="$uv_add_section" '{ gsub(/\{UvAddDependencies\}/, repl); print }' <<<"$tmp_content" > "$migration_readme_path"
+    PH_ProjectName="$project_folder_name" \
+    PH_Timestamp="$(date '+%Y-%m-%d %H:%M:%S')" \
+    PH_PythonVersion="$python_version" \
+    PH_UvAddDependencies="$uv_add_section" \
+    PH_TemplatesDir="$repo_root/templates" \
+    PH_RuffTarget="py${python_version//./}" \
+        py_helper render "$template_file" "$migration_readme_path" "$flags"
 }
 
 # backup_file <source> <destination>
@@ -287,16 +417,39 @@ fi
 
 [ -d "$project_root" ] || fail "Project root does not exist: $project_root"
 project_root="$(cd "$project_root" && pwd)"
-cd "$project_root"
+cd "$project_root" || fail "Cannot enter project root: $project_root"
 
-write_section "Migration Utility - Poetry + Conda -> uv"
+write_section "Migration Utility - Poetry (+ Conda) -> uv"
 echo "Project root: $project_root"
 
 # ----------------------------------------------------------------------------
-# DETECT PROJECT FOLDER NAME
+# DETECT PROJECT FOLDER NAME + SOURCE PYPROJECT + TARGET PYTHON
 # ----------------------------------------------------------------------------
 project_folder_name="$(basename "$project_root")"
 echo "[+] Detected project folder: $project_folder_name"
+
+legacy_path="$project_root/legacy"
+pyproject_path="$project_root/pyproject.toml"
+pyproject_backup_path="$legacy_path/pyproject.poetry.toml"
+
+## Prefer the live pyproject.toml; fall back to the legacy/ backup when the
+## Poetry file was already removed (e.g. re-running after guide Step 2).
+source_toml=""
+if [ -f "$pyproject_path" ]; then
+    source_toml="$pyproject_path"
+elif [ -f "$pyproject_backup_path" ]; then
+    printf '%s[~] pyproject.toml not in project root - using legacy/pyproject.poetry.toml%s\n' "$YELLOW" "$RESET"
+    source_toml="$pyproject_backup_path"
+else
+    printf '%s[!] pyproject.toml not found - guide will have a placeholder for dependencies%s\n' "$YELLOW" "$RESET"
+fi
+
+python_version="$(py_helper python-version "$source_toml")" || python_version="3.11"
+echo "[+] Target Python version: $python_version"
+
+if [ -n "$source_toml" ] && grep -q "poetry" "$source_toml"; then
+    printf '%s[!] Poetry configuration detected.%s\n' "$YELLOW" "$RESET"
+fi
 
 # ----------------------------------------------------------------------------
 # MIGRATION GUIDE GENERATION ONLY MODE
@@ -305,62 +458,14 @@ if [ "$generate_migration_guide_only" = true ]; then
     echo ""
     printf '%s[*] Generating migration guide only...%s\n' "$CYAN" "$RESET"
 
-    pyproject_path="$project_root/pyproject.toml"
-    pyproject_backup_path="$project_root/legacy/pyproject.poetry.toml"
-
-    source_toml=""
-    if [ -f "$pyproject_path" ]; then
-        source_toml="$pyproject_path"
-    elif [ -f "$pyproject_backup_path" ]; then
-        printf '%s[~] Using backed-up pyproject.toml from legacy/%s\n' "$YELLOW" "$RESET"
-        source_toml="$pyproject_backup_path"
-    else
-        printf '%s[!] pyproject.toml not found - will generate guide with placeholder%s\n' "$YELLOW" "$RESET"
-    fi
-
-    deps_file="$(mktemp)"
-    dev_deps_file="$(mktemp)"
-    trap 'rm -f "$deps_file" "$dev_deps_file"' EXIT
-
-    if [ -n "$source_toml" ]; then
-        if ! extract_toml_list_section "$source_toml" deps > "$deps_file"; then
-            printf '%s[!] Warning: Could not parse dependencies from pyproject.toml%s\n' "$YELLOW" "$RESET"
-        fi
-        extract_toml_list_section "$source_toml" dev-deps > "$dev_deps_file" || true
-    fi
-
-    legacy_path="$project_root/legacy"
     mkdir -p "$legacy_path"
+    generate_migration_readme "$project_folder_name" "$legacy_path/README_MIGRATION.md" "$source_toml" "$python_version" \
+        || fail "Could not generate README_MIGRATION.md"
 
-    migration_guide_path="$legacy_path/README_MIGRATION.md"
-    generate_migration_readme "$project_folder_name" "$migration_guide_path" "$deps_file" "$dev_deps_file"
-
-    printf '%s[+] Generated migration guide: README_MIGRATION.md%s\n' "$GREEN" "$RESET"
+    printf '%s[+] Generated migration guide: legacy/README_MIGRATION.md%s\n' "$GREEN" "$RESET"
     echo ""
     printf '%sNext: Open legacy/README_MIGRATION.md and follow the steps%s\n' "$GREEN" "$RESET"
     exit 0
-fi
-
-# ----------------------------------------------------------------------------
-# VALIDATE PYPROJECT.TOML
-# ----------------------------------------------------------------------------
-pyproject_path="$project_root/pyproject.toml"
-
-if [ ! -f "$pyproject_path" ]; then
-    printf '%s[!] pyproject.toml not found in project root - skipping dependency parsing%s\n' "$YELLOW" "$RESET"
-else
-    echo "[+] Found pyproject.toml"
-
-    requires_python="$(grep -oP '(?<=requires-python\s=\s")[^"]*' "$pyproject_path" 2>/dev/null | head -n1 || true)"
-    if [ -n "$requires_python" ]; then
-        echo "[+] requires-python: $requires_python"
-    else
-        printf '%s[!] requires-python not found in pyproject.toml%s\n' "$YELLOW" "$RESET"
-    fi
-
-    if grep -q "poetry.core" "$pyproject_path"; then
-        printf '%s[!] Poetry backend detected.%s\n' "$YELLOW" "$RESET"
-    fi
 fi
 
 # ----------------------------------------------------------------------------
@@ -368,14 +473,18 @@ fi
 # ----------------------------------------------------------------------------
 write_section "Creating Legacy Backup"
 
-legacy_path="$project_root/legacy"
-
 if [ ! -d "$legacy_path" ]; then
     mkdir -p "$legacy_path"
     echo "[+] Created legacy folder"
 fi
 
-backup_file "$project_root/pyproject.toml" "$legacy_path/pyproject.poetry.toml"
+## Only a Poetry pyproject.toml is backed up: re-running with --force after
+## `uv init` must not overwrite the Poetry backup with the new uv file.
+if [ -f "$pyproject_path" ] && ! grep -q "poetry" "$pyproject_path"; then
+    echo "  [~] Skipped pyproject.toml: no Poetry configuration (already migrated?)"
+else
+    backup_file "$pyproject_path" "$pyproject_backup_path"
+fi
 
 requirements_path="$project_root/requirements.txt"
 [ -f "$requirements_path" ] && backup_file "$requirements_path" "$legacy_path/requirements.txt"
@@ -390,10 +499,8 @@ done < <(find "$project_root" -maxdepth 1 -type f -name "*.lock" -print0)
 dockerfile_path="$project_root/Dockerfile"
 [ -f "$dockerfile_path" ] && backup_file "$dockerfile_path" "$legacy_path/Dockerfile"
 
-# Export Conda environment (if active). The .ps1 guards this with
-# `$CondaCommand -and $CondaPrefix`, but $CondaCommand is never assigned in
-# that script so the block is unreachable dead code there — this port uses
-# the evidently-intended check instead.
+# Export Conda environment only if one is actually active. On a typical WSL
+# checkout there is no Conda, and the uv-based guides don't need it.
 if command -v conda >/dev/null 2>&1 && [ -n "${CONDA_PREFIX:-}" ]; then
     echo ""
     echo "Exporting Conda environment..."
@@ -422,6 +529,8 @@ if command -v conda >/dev/null 2>&1 && [ -n "${CONDA_PREFIX:-}" ]; then
     else
         echo "  [~] Skipped existing: conda-explicit-lock.txt"
     fi
+else
+    echo "  [~] No active Conda environment - skipping Conda export (uv manages Python)"
 fi
 
 # ----------------------------------------------------------------------------
@@ -430,29 +539,15 @@ fi
 write_section "Generating README Files"
 
 # --- STEP 2: Generate README_LEGACY.md (Restoration & Rollback) ---
-legacy_readme_path="$legacy_path/README_LEGACY.md"
-generate_legacy_readme "$legacy_readme_path" "$project_folder_name"
-echo "[+] Created legacy/README_LEGACY.md"
+generate_legacy_readme "$legacy_path/README_LEGACY.md" "$project_folder_name" "$python_version" \
+    && echo "[+] Created legacy/README_LEGACY.md"
 
 # --- STEP 3: Parse dependencies from the BACKED-UP pyproject.toml and generate the migration readme ---
-pyproject_backup_path="$legacy_path/pyproject.poetry.toml"
-
-deps_file="$(mktemp)"
-dev_deps_file="$(mktemp)"
-trap 'rm -f "$deps_file" "$dev_deps_file"' EXIT
-
-if [ -f "$pyproject_backup_path" ]; then
-    if ! extract_toml_list_section "$pyproject_backup_path" deps > "$deps_file"; then
-        printf '%s[!] Warning: Could not parse dependencies from backed-up pyproject.toml%s\n' "$YELLOW" "$RESET"
-    fi
-    extract_toml_list_section "$pyproject_backup_path" dev-deps > "$dev_deps_file" || true
-else
-    printf '%s[!] Backed-up pyproject.toml not found - migration guide will have placeholder%s\n' "$YELLOW" "$RESET"
-fi
-
-migration_readme_path="$legacy_path/README_MIGRATION.md"
-generate_migration_readme "$project_folder_name" "$migration_readme_path" "$deps_file" "$dev_deps_file"
-echo "[+] Created legacy/README_MIGRATION.md"
+[ -f "$pyproject_backup_path" ] || printf '%s[!] Backed-up pyproject.toml not found - migration guide will have placeholder%s\n' "$YELLOW" "$RESET"
+backup_toml=""
+[ -f "$pyproject_backup_path" ] && backup_toml="$pyproject_backup_path"
+generate_migration_readme "$project_folder_name" "$legacy_path/README_MIGRATION.md" "$backup_toml" "$python_version" \
+    && echo "[+] Created legacy/README_MIGRATION.md"
 
 write_section "Migration Check Complete"
 
@@ -464,20 +559,63 @@ echo "   - legacy/README_MIGRATION.md     - Step-by-step migration guide"
 echo ""
 printf '%sNext steps:%s\n' "$GREEN" "$RESET"
 echo "  1. Open: legacy/README_MIGRATION.md"
-echo "  2. Follow the 7-step migration walkthrough"
-echo "  3. Copy config templates to your project root (if not already present):"
-printf '%s       cr-misc-function/templates/mypy.ini  -> <project>/mypy.ini%s\n' "$YELLOW" "$RESET"
-printf '%s       cr-misc-function/templates/ruff.toml -> <project>/ruff.toml%s\n' "$YELLOW" "$RESET"
-echo "  4. When done, commit your changes:"
-echo "     git add pyproject.toml uv.lock .vscode/settings.json mypy.ini ruff.toml"
-echo 'git commit -m "chore: migrate from Poetry to uv"'
+echo "  2. Follow the 8-step migration walkthrough (uv installs Python $python_version - no Conda needed)"
+echo "  3. When done, commit your changes:"
+echo "     git add pyproject.toml uv.lock ruff.toml mypy.ini && git add -f .python-version"
+echo '     git commit -m "chore: migrate from Poetry to uv"'
 echo ""
 
+# ----------------------------------------------------------------------------
+# REMOVE POETRY ARTIFACTS (optional, --remove-poetry-artifacts)
+# ----------------------------------------------------------------------------
+
+# remove_poetry_artifact <file> <backup>
+## Deletes <file> only when <backup> is byte-identical to it. backup_file keeps
+## an existing backup unless --force, so a stale backup must never become the
+## only copy of a file that changed since.
+remove_poetry_artifact() {
+    local file="$1" backup="$2"
+    local name
+    name="$(basename "$file")"
+
+    if [ ! -f "$file" ]; then
+        echo "  [~] Not present: $name"
+        return 0
+    fi
+    if ! cmp -s "$file" "$backup"; then
+        printf '%s  [!] Kept %s: legacy/%s is missing or differs (re-run with --force to refresh the backup)%s\n' \
+            "$YELLOW" "$name" "$(basename "$backup")" "$RESET"
+        return 1
+    fi
+    rm -f "$file"
+    echo "  [-] Removed: $name (backup: legacy/$(basename "$backup"))"
+}
+
 if [ "$remove_poetry_artifacts" = true ]; then
-    printf '%s[BACKUP] Backups created (in legacy/):%s\n' "$YELLOW" "$RESET"
-    echo "     - poetry.lock -> Backed up automatically"
-    echo "     - pyproject.toml -> Backed up as pyproject.poetry.toml"
-    echo ""
-    printf '%sUse README_LEGACY.md to restore if needed%s\n' "$YELLOW" "$RESET"
+    write_section "Removing Poetry Artifacts"
+
+    proceed=true
+    if [ "$force" = false ]; then
+        if [ -t 0 ]; then
+            read -r -p "Delete pyproject.toml and poetry.lock from $project_root? Type 'yes' to confirm (Enter cancels): " answer
+            [ "$answer" = "yes" ] || proceed=false
+        else
+            printf '%s[!] No terminal to confirm on - pass --force to remove without a prompt%s\n' "$YELLOW" "$RESET"
+            proceed=false
+        fi
+    fi
+
+    if [ "$proceed" = true ]; then
+        if [ -f "$pyproject_path" ] && ! grep -q "poetry" "$pyproject_path"; then
+            printf '%s  [!] Kept pyproject.toml: it has no Poetry configuration (already migrated?)%s\n' "$YELLOW" "$RESET"
+        else
+            remove_poetry_artifact "$pyproject_path" "$pyproject_backup_path"
+        fi
+        remove_poetry_artifact "$project_root/poetry.lock" "$legacy_path/poetry.lock"
+        echo ""
+        printf '%sUse legacy/README_LEGACY.md to restore if needed%s\n' "$YELLOW" "$RESET"
+    else
+        echo "[~] Removal cancelled - Poetry files left in place"
+    fi
     echo ""
 fi

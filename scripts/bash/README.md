@@ -42,7 +42,7 @@ that depend on the shared helpers module — the bash equivalent of
 | `conda-py311-init-env.sh` | Initialize/activate the project's Python 3.11 conda env | ✅ Safe |
 | `conda-py39-init-env.sh` | Initialize/activate the project's Python 3.9 conda env | ✅ Safe |
 | `dev-remove-base-only-packages.sh` | Display conda removal command for base-only packages | ✅ Safe |
-| `dev-migrate-conda-poetry-to-uv.sh` | Migrate a conda/poetry project to uv | ⚠️ Caution |
+| `dev-migrate-conda-poetry-to-uv.sh` | Back up a Poetry (+ optional conda) project and generate uv-only migration/rollback guides (no conda needed) | ⚠️ Caution |
 
 ---
 
@@ -62,3 +62,11 @@ that depend on the shared helpers module — the bash equivalent of
   rewritten or "improved" in translation. `git-reset-branches.sh` in
   particular preserves every safeguard from the destructive original
   line-for-line (see its header comment for the full list).
+- **Intentional exception:** `dev-migrate-conda-poetry-to-uv.sh` does *not*
+  mirror the `.ps1`'s generated docs. A WSL checkout usually has no Conda, so
+  the script renders `templates/README_MIGRATION.linux.template.md` and
+  `README_LEGACY.linux.template.md`, where uv manages Python itself
+  (`uv python install`, `uv init --bare`). It also parses `pyproject.toml`
+  with `tomllib`, so classic `[tool.poetry.dependencies]` tables produce
+  `uv add` commands as well. The shared `README_*.template.md` files remain
+  the Windows/Conda guides used by the `.ps1`.
