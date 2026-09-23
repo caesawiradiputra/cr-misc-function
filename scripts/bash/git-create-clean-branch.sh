@@ -7,10 +7,15 @@
 # from the base branch and cherry-picks those commits, oldest to newest.
 # After cherry-picking, offers to push the new clean branch to the remote.
 #
-# CONFLICT HANDLING: if cherry-pick fails mid-process, the script exits with
-# instructions. The clean branch keeps the commits picked so far. You cannot
-# re-run the script as-is because the -clean branch already exists. Options:
-#   1. Resolve manually: fix conflicts, git add <files>, git cherry-pick --continue
+# CONFLICT HANDLING: all queued commits are passed to a single `git
+# cherry-pick <hash1> <hash2> ...` call, so git's own sequencer keeps track
+# of the remaining commits when one conflicts. The clean branch keeps the
+# commits picked so far. You cannot re-run the script as-is because the
+# -clean branch already exists. Options:
+#   1. Resolve manually: fix conflicts, git add <files>, git cherry-pick
+#      --continue -- this resumes git's sequencer, which automatically
+#      proceeds through the rest of the originally queued commits, not just
+#      the one that conflicted.
 #   2. Start fresh (recommended): git cherry-pick --abort; git checkout <feature-branch>;
 #      git branch -D <feature-branch-clean>; re-run
 #   3. Abort and clean up: git cherry-pick --abort; git checkout <feature-branch>;
@@ -20,7 +25,7 @@
 #   git fetch origin
 #   git log --oneline origin/<base-branch>..<feature-branch> -- <paths...>
 #   git checkout -b <feature-branch>-clean origin/<base-branch>
-#   git cherry-pick <commit-hash>       # oldest to newest
+#   git cherry-pick <commit-hash-1> <commit-hash-2> ...   # oldest to newest, one call
 #   git push origin <feature-branch>-clean
 #
 # Usage:
@@ -246,33 +251,36 @@ if [ "$commits_to_cherry" -lt "$total_hashes" ]; then
     write_info "Skipping first $start_index commit(s), cherry-picking last $commits_to_cherry"
 fi
 
-success_count=0
-
-for ((i = start_index; i < total_hashes; i++)); do
-    hash="${commit_hashes[$i]}"
-    printf 'Cherry-picking %s...\n' "$hash"
-    if git cherry-pick "$hash" >/dev/null 2>&1; then
-        success_count=$((success_count + 1))
-        printf '  [OK] Successfully picked %s\n' "$hash"
-    else
-        printf '  [ERROR] Failed to pick %s\n' "$hash"
-        printf '  Conflict detected. Resolve conflicts and run:\n'
-        printf '    git cherry-pick --continue\n'
-        printf '  Or skip this commit:\n'
-        printf '    git cherry-pick --skip\n'
-        printf '  Or abort and clean up:\n'
-        printf '    git cherry-pick --abort\n'
-        printf '    git checkout %s\n' "$original_branch"
-        printf '    git branch -D %s\n' "$clean_branch_name"
-        write_info "Successfully picked $success_count of $((total_hashes - start_index)) commits before failure."
-        exit 1
-    fi
-done
-
+pick_hashes=("${commit_hashes[@]:start_index}")
+printf 'Cherry-picking %s commit(s):\n' "${#pick_hashes[@]}"
+for h in "${pick_hashes[@]}"; do printf '  %s\n' "$h"; done
 printf '\n'
-write_success "Cherry-pick complete: $success_count commit(s) picked"
-write_success "New clean branch created: $clean_branch_name"
-printf '\n'
+
+# Pass every hash to a single `git cherry-pick` invocation (not one call per
+# commit) so git's own sequencer retains the remaining queue on conflict.
+# That way `git cherry-pick --continue` after a manual conflict resolution
+# automatically proceeds through the rest of the commits instead of leaving
+# them unpicked once this script has exited.
+if git cherry-pick "${pick_hashes[@]}"; then
+    printf '\n'
+    write_success "Cherry-pick complete: ${#pick_hashes[@]} commit(s) picked"
+    write_success "New clean branch created: $clean_branch_name"
+    printf '\n'
+else
+    picked_so_far=$(git rev-list --count "origin/$base_branch..HEAD")
+    printf '\n  [ERROR] Cherry-pick stopped due to a conflict.\n'
+    printf '  Resolve conflicts and run:\n'
+    printf '    git cherry-pick --continue\n'
+    printf '  Git will then automatically continue through the remaining queued commits.\n'
+    printf '  Or skip this commit:\n'
+    printf '    git cherry-pick --skip\n'
+    printf '  Or abort and clean up:\n'
+    printf '    git cherry-pick --abort\n'
+    printf '    git checkout %s\n' "$original_branch"
+    printf '    git branch -D %s\n' "$clean_branch_name"
+    write_info "Successfully picked $picked_so_far of ${#pick_hashes[@]} commits before conflict."
+    exit 1
+fi
 
 # Step 10: Push clean branch to remote
 write_step "Pushing clean branch to remote" "[PUSH]"

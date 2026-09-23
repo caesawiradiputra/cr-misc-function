@@ -44,16 +44,19 @@
     Purpose: Create clean branch by cherry-picking commits filtered by specific files/paths
 
     CONFLICT HANDLING:
-    If cherry-pick fails mid-process, the script exits with instructions. The clean branch
-    remains with successfully picked commits. You CANNOT re-run the script as-is because
-    the -clean branch already exists (prevents duplicate commits).
+    All queued commits are passed to a single `git cherry-pick <hash1> <hash2> ...`
+    call, so git's own sequencer keeps track of the remaining commits when one
+    conflicts. If cherry-pick fails mid-process, the script exits with instructions.
+    The clean branch remains with successfully picked commits. You CANNOT re-run the
+    script as-is because the -clean branch already exists (prevents duplicate commits).
 
     Your options after a conflict:
     1. Resolve manually and continue:
        - Fix conflicts in the files
        - git add <resolved-files>
        - git cherry-pick --continue
-       - Manually cherry-pick remaining commits or re-run script logic
+       - This resumes git's sequencer, which automatically proceeds through the
+         rest of the originally queued commits, not just the one that conflicted.
 
     2. Start fresh (recommended):
        - git cherry-pick --abort (if in middle of conflict)
@@ -70,7 +73,7 @@
       git fetch origin
       git log --oneline origin/<base-branch>..<feature-branch> -- <paths...>
       git checkout -b <feature-branch>-clean origin/<base-branch>
-      git cherry-pick <commit-hash>       # oldest to newest
+      git cherry-pick <commit-hash-1> <commit-hash-2> ...   # oldest to newest, one call
       git push origin <feature-branch>-clean
 #>
 
@@ -325,35 +328,39 @@ if ($commitsToCherry -lt $totalHashes) {
     Write-Info "Skipping first $startIndex commit(s), cherry-picking last $commitsToCherry"
 }
 
-$successCount = 0
+$pickHashes = $commitHashes[$startIndex..($commitHashes.Count - 1)]
+Write-Host "Cherry-picking $($pickHashes.Count) commit(s):" -ForegroundColor Cyan
+foreach ($h in $pickHashes) { Write-Host "  $h" -ForegroundColor Cyan }
+Write-Host ""
 
-for ($i = $startIndex; $i -lt $commitHashes.Count; $i++) {
-    $hash = $commitHashes[$i]
-    Write-Host "Cherry-picking $hash..." -ForegroundColor Cyan
-    git cherry-pick $hash 2>&1 | Out-Null
+# Pass every hash to a single `git cherry-pick` invocation (not one call per
+# commit) so git's own sequencer retains the remaining queue on conflict.
+# That way `git cherry-pick --continue` after a manual conflict resolution
+# automatically proceeds through the rest of the commits instead of leaving
+# them unpicked once this script has exited.
+git cherry-pick @pickHashes
 
-    if ($LASTEXITCODE -eq 0) {
-        $successCount++
-        Write-Host "  [OK] Successfully picked $hash" -ForegroundColor Green
-    } else {
-        Write-Host "  [ERROR] Failed to pick $hash" -ForegroundColor Red
-        Write-Host "  Conflict detected. Resolve conflicts and run:" -ForegroundColor Yellow
-        Write-Host "    git cherry-pick --continue" -ForegroundColor Yellow
-        Write-Host "  Or skip this commit:" -ForegroundColor Yellow
-        Write-Host "    git cherry-pick --skip" -ForegroundColor Yellow
-        Write-Host "  Or abort and clean up:" -ForegroundColor Yellow
-        Write-Host "    git cherry-pick --abort" -ForegroundColor Yellow
-        Write-Host "    git checkout $originalBranch" -ForegroundColor Yellow
-        Write-Host "    git branch -D $cleanBranchName" -ForegroundColor Yellow
-        Write-Info "Successfully picked $successCount of $($commitHashes.Count - $startIndex) commits before failure."
-        exit 1
-    }
+if ($LASTEXITCODE -eq 0) {
+    Write-Host ""
+    Write-Success "Cherry-pick complete: $($pickHashes.Count) commit(s) picked"
+    Write-Success "New clean branch created: $cleanBranchName"
+    Write-Host ""
+} else {
+    $pickedSoFar = [int](git rev-list --count "origin/$BaseBranch..HEAD")
+    Write-Host ""
+    Write-Host "  [ERROR] Cherry-pick stopped due to a conflict." -ForegroundColor Red
+    Write-Host "  Resolve conflicts and run:" -ForegroundColor Yellow
+    Write-Host "    git cherry-pick --continue" -ForegroundColor Yellow
+    Write-Host "  Git will then automatically continue through the remaining queued commits." -ForegroundColor Yellow
+    Write-Host "  Or skip this commit:" -ForegroundColor Yellow
+    Write-Host "    git cherry-pick --skip" -ForegroundColor Yellow
+    Write-Host "  Or abort and clean up:" -ForegroundColor Yellow
+    Write-Host "    git cherry-pick --abort" -ForegroundColor Yellow
+    Write-Host "    git checkout $originalBranch" -ForegroundColor Yellow
+    Write-Host "    git branch -D $cleanBranchName" -ForegroundColor Yellow
+    Write-Info "Successfully picked $pickedSoFar of $($pickHashes.Count) commits before conflict."
+    exit 1
 }
-
-Write-Host ""
-Write-Success "Cherry-pick complete: $successCount commit(s) picked"
-Write-Success "New clean branch created: $cleanBranchName"
-Write-Host ""
 
 # Step 10: Push clean branch to remote
 Write-Step "Pushing clean branch to remote" "[PUSH]"
