@@ -30,6 +30,11 @@ Example: .\dev-migrate-conda-poetry-to-uv.ps1 -Force
 .PARAMETER RemovePoetryArtifacts
 Switch parameter. Deletes poetry.lock and pyproject.toml (after backing up to legacy/).
 Run this to clean up old Poetry files after verifying backups are safe.
+Asks you to type 'yes' first unless -Force is also given.
+
+Safeguards: a file is only deleted when its legacy/ backup is byte-identical
+(a stale backup kept from an earlier run without -Force blocks deletion), and
+pyproject.toml is only deleted if it still contains Poetry configuration.
 
 ⚠️  WARNING: This permanently removes poetry.lock and original pyproject.toml from project root.
 Backups are created first, so you can restore from legacy/ if needed.
@@ -219,8 +224,8 @@ ${backtick}bash
 $($UvAddLines -join "`n")
 ${backtick}
 
-> **Config files:** Copy `mypy.ini` and `ruff.toml` from the shared templates folder into your project root.
-> Template source: `cr-misc-function/templates/mypy.ini` and `cr-misc-function/templates/ruff.toml`
+> **Config files:** Copy ``mypy.ini`` and ``ruff.toml`` from the shared templates folder into your project root.
+> Template source: ``cr-misc-function/templates/mypy.ini`` and ``cr-misc-function/templates/ruff.toml``
 "@
     } else {
         ""
@@ -410,9 +415,14 @@ function Backup-File {
     Write-Host "  [+] Backed up: $(Split-Path $Destination -Leaf)"
 }
 
-Backup-File `
-    (Join-Path $ProjectRoot "pyproject.toml") `
-    (Join-Path $LegacyPath "pyproject.poetry.toml")
+## Only a Poetry pyproject.toml is backed up: re-running with -Force after
+## `uv init` must not overwrite the Poetry backup with the new uv file.
+$PyProjectRootFile = Join-Path $ProjectRoot "pyproject.toml"
+if ((Test-Path $PyProjectRootFile) -and -not (Select-String -Path $PyProjectRootFile -Pattern "poetry" -Quiet)) {
+    Write-Host "  [~] Skipped pyproject.toml: no Poetry configuration (already migrated?)"
+} else {
+    Backup-File $PyProjectRootFile (Join-Path $LegacyPath "pyproject.poetry.toml")
+}
 
 # Backup requirements.txt if it exists
 $RequirementsPath = Join-Path $ProjectRoot "requirements.txt"
@@ -545,11 +555,54 @@ Write-Host "     git add pyproject.toml uv.lock .vscode/settings.json mypy.ini r
 Write-Host 'git commit -m "chore: migrate from Poetry to uv"'
 Write-Host ""
 
+# ============================================================================
+# REMOVE POETRY ARTIFACTS (optional, -RemovePoetryArtifacts)
+# ============================================================================
+
+function Remove-PoetryArtifact {
+    ## Deletes $File only when $Backup is byte-identical to it. Backup-File keeps
+    ## an existing backup unless -Force, so a stale backup must never become the
+    ## only copy of a file that changed since.
+    param (
+        [string]$File,
+        [string]$Backup
+    )
+
+    $name = Split-Path $File -Leaf
+    if (-not (Test-Path $File)) {
+        Write-Host "  [~] Not present: $name"
+        return
+    }
+    if (-not (Test-Path $Backup) -or
+        (Get-FileHash $File).Hash -ne (Get-FileHash $Backup).Hash) {
+        Write-Host "  [!] Kept ${name}: legacy/$(Split-Path $Backup -Leaf) is missing or differs (re-run with -Force to refresh the backup)" -ForegroundColor Yellow
+        return
+    }
+    Remove-Item $File -Force
+    Write-Host "  [-] Removed: $name (backup: legacy/$(Split-Path $Backup -Leaf))"
+}
+
 if ($RemovePoetryArtifacts) {
-    Write-Host "[BACKUP] Backups created (in legacy/):" -ForegroundColor Yellow
-    Write-Host "     • poetry.lock -> Backed up automatically"
-    Write-Host "     • pyproject.toml -> Backed up as pyproject.poetry.toml"
-    Write-Host ""
-    Write-Host "Use README_LEGACY.md to restore if needed" -ForegroundColor Yellow
+    Write-Section "Removing Poetry Artifacts"
+
+    $proceed = $true
+    if (-not $Force) {
+        $answer = Read-Host "Delete pyproject.toml and poetry.lock from ${ProjectRoot}? Type 'yes' to confirm (Enter cancels)"
+        $proceed = ($answer.Trim().ToLower() -eq "yes")
+    }
+
+    if ($proceed) {
+        $PyProjectFile = Join-Path $ProjectRoot "pyproject.toml"
+        if ((Test-Path $PyProjectFile) -and -not (Select-String -Path $PyProjectFile -Pattern "poetry" -Quiet)) {
+            Write-Host "  [!] Kept pyproject.toml: it has no Poetry configuration (already migrated?)" -ForegroundColor Yellow
+        } else {
+            Remove-PoetryArtifact $PyProjectFile (Join-Path $LegacyPath "pyproject.poetry.toml")
+        }
+        Remove-PoetryArtifact (Join-Path $ProjectRoot "poetry.lock") (Join-Path $LegacyPath "poetry.lock")
+        Write-Host ""
+        Write-Host "Use legacy/README_LEGACY.md to restore if needed" -ForegroundColor Yellow
+    } else {
+        Write-Host "[~] Removal cancelled - Poetry files left in place"
+    }
     Write-Host ""
 }

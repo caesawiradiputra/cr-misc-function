@@ -124,6 +124,11 @@ After verifying backups are safe, removes:
 - `poetry.lock` (backed up first)
 - `pyproject.toml` (backed up as `pyproject.poetry.toml`)
 
+Asks you to type `yes` unless `-Force` is given (the bash port, `--remove-poetry-artifacts`, behaves the same). Safeguards:
+
+- A file is deleted only if its `legacy/` backup is byte-identical. A stale backup kept from an earlier run without `-Force` blocks the delete.
+- `pyproject.toml` is backed up and deleted only while it still contains Poetry configuration. A uv `pyproject.toml` created after migration is never deleted, and never overwrites `pyproject.poetry.toml`.
+
 ---
 
 ## Output Structure
