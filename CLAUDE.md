@@ -8,7 +8,7 @@ The workspace root (`cr-misc-function\`) is **not** the git repo — the repo li
 
 ## Commands
 
-```powershell
+```shell
 uv sync                   # Install / sync all dependencies
 uv run ruff check .       # Lint
 uv run ruff format .      # Format
@@ -70,6 +70,13 @@ pick whichever matches the shell actually running the session (see the
 global `~/.claude/CLAUDE.md` "Environment" section). See
 `scripts/powershell/README.md` / `scripts/bash/README.md` for the full
 script overview and risk levels.
+
+### New Machine Setup
+
+`docs/dev-machine-setup.md` is the end-to-end checklist for a fresh Windows or
+WSL/Ubuntu device: Claude Code, the global config from `CLAUDE/`, and VS Code
+or Antigravity. Keep it in sync when the `CLAUDE/` template, the sync scripts,
+or the IDE templates change.
 
 ## Key Conventions
 

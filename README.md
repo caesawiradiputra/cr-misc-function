@@ -10,9 +10,9 @@ AI tooling templates, and development scripts for use across multiple projects.
 - **Repository Pattern**: Type-safe, auto-generated CRUD with domain-specific business logic
 - **Three-Tier Configuration**: Vault secrets, `.env` files, and environment variables with Pydantic validation
 - **Utility Functions**: Copy-paste ready helpers for data I/O, dates, files, and SQL operations
-- **AI Tooling**: 12 Qoder skills, 2 custom agents, Claude Code commands, and Copilot instructions
-- **Reusable Templates**: Conda, Poetry, VS Code, ruff, mypy, and AI agent configs
-- **Development Scripts**: Git workflows, environment management, and lint validation
+- **AI Tooling**: Global Claude Code config (commands, skills, hooks, settings), 12 Qoder skills, 2 custom agents, and Copilot instructions
+- **Reusable Templates**: VS Code, Antigravity IDE, ruff, mypy, uv migration guides, Conda, and AI agent configs
+- **Development Scripts**: Git workflows, environment management, and AI context sync, in PowerShell (Windows) and bash (WSL/Linux)
 
 ## Supported Databases
 
@@ -28,27 +28,21 @@ AI tooling templates, and development scripts for use across multiple projects.
 
 ## Prerequisites
 
-- Python 3.11 or higher
-- Conda (recommended for environment management)
-- Poetry 2.0+ for dependency management
-- Database driver requirements (see [Installation](#installation))
+- [uv](https://docs.astral.sh/uv/) (installs and manages Python 3.11 itself)
+- System libraries for database drivers that build from source, e.g. `unixodbc-dev` for `pyodbc` on Linux/WSL
+- Setting up a new machine? Follow [docs/dev-machine-setup.md](docs/dev-machine-setup.md)
 
 ## Installation
 
-### Step 1: Create Conda Environment
+### Step 1: Install Dependencies with uv
 
 ```bash
-conda env create -f environment.yml
-conda activate cr-misc-function-env
+uv sync
 ```
 
-### Step 2: Install Dependencies with Poetry
-
-```bash
-poetry install
-```
-
-This installs all required packages including:
+This creates `.venv/` from `pyproject.toml` + `uv.lock`, downloading Python
+3.11 if needed. Run anything inside it with `uv run`, e.g. `uv run python -m app.main`.
+It installs all required packages including:
 
 - SQLAlchemy for database abstraction
 - Pandas for data processing
@@ -56,7 +50,7 @@ This installs all required packages including:
 - Database drivers (pyodbc, psycopg2, mysql-connector, trino, pyhive, pyodps)
 - Loguru for structured logging
 
-### Step 3: Configure Environment Variables
+### Step 2: Configure Environment Variables
 
 Create a `.env` file in the project root:
 
@@ -265,6 +259,29 @@ Copy-paste ready utilities in `app/utils/`:
 
 ## AI Tooling
 
+### Claude Code (`CLAUDE/`)
+
+A snapshot of the global `~/.claude` config, installed per machine (see
+[docs/dev-machine-setup.md](docs/dev-machine-setup.md)) and documented in
+[CLAUDE/README.md](CLAUDE/README.md):
+
+| Part | Contents |
+| --- | --- |
+| `CLAUDE.md` | Always-on instructions: environment detection (Windows vs WSL), uv, branch strategy, execution-discipline rules |
+| `commands/` | 21 slash commands: `/commit`, `/generate-pr-message`, `/clean-gone`, `/refactor-python`, CDE commands, `/setup-workspace`, and "runs on Opus" wrappers such as `/brainstorming` and `/systematic-debugging` |
+| `skills/` | `migrate-to-uv`, `upgrade-python-version`, `jira-ticket-kickoff`, `bast-generator`, `bast-learn`, `confluence-ops-docs`, auditors, and more |
+| `windows/`, `linux-wsl/` | Per-OS `settings.json` (deny rules, hooks, plugins) and the SessionStart / UserPromptSubmit hooks |
+
+Sync `CLAUDE.md` + commands to the global folder after changes:
+
+```powershell
+.\scripts\powershell\chat-Sync-ClaudeContext.ps1 -GlobalClaudePath "$env:USERPROFILE\.claude"   # Windows
+```
+
+```bash
+./scripts/bash/chat-sync-claude-context.sh                                                     # WSL/Linux
+```
+
 ### Qoder Skills (`QODER/skills/`)
 
 12 slash-command skills for common development workflows:
@@ -292,7 +309,6 @@ Sync skills to global `~/.qoder/`:
 
 ### Other AI Configs
 
-- **Claude Code**: Commands in `CLAUDE/commands/`, context in `CLAUDE/CLAUDE.md`
 - **GitHub Copilot**: Instructions in `.github/copilot-instructions.md`
 - **Templates**: Reusable AI configs in `templates/ai/` (Qoder, Claude, Copilot)
 
@@ -302,30 +318,41 @@ Reusable project scaffolding in `templates/`:
 
 ```text
 templates/
-+-- ai/              - AI agent configs (Qoder, Claude Code, Copilot)
-+-- conda/py311/     - Conda environment.yml (Python 3.11)
-+-- conda/py39/      - Conda environment.yml (Python 3.9)
-+-- vscode/          - VS Code extensions.json and settings.json
-+-- ruff.toml        - Linting and formatting config
-+-- mypy.ini         - Type checking config
++-- ai/                               - AI agent configs (Qoder, Claude Code, Copilot)
++-- antigravity ide/                  - Antigravity IDE extensions.json and user settings (Open VSX, pyrefly)
++-- vscode/                           - VS Code extensions.json and settings.json
++-- conda/py311/, conda/py39/         - Conda environment.yml (legacy projects)
++-- README_MIGRATION.template.md      - Poetry/Conda -> uv guide, Windows + Conda (used by the .ps1)
++-- README_MIGRATION.linux.template.md- Poetry -> uv guide, WSL/Linux, no Conda (used by the .sh)
++-- README_LEGACY*.template.md        - Rollback guides for the same two scripts
++-- ruff.toml                         - Linting and formatting config
++-- mypy.ini                          - Type checking config
 ```
 
 ## Development Scripts
 
+Every script ships twice: `scripts/powershell/*.ps1` for native Windows and
+`scripts/bash/*.sh` for WSL/Linux, with the same names, flags (`-Force` →
+`--force`) and behavior. Use the one matching the shell your session runs in.
+See [scripts/powershell/README.md](scripts/powershell/README.md) and
+[scripts/bash/README.md](scripts/bash/README.md).
+
 ### Environment Management
 
-```powershell
-# Detect undeclared packages
-python scripts/python/dev_detect_undeclared_packages.py --env cr-misc-function-env
+```bash
+# Migrate a Poetry/Conda project to uv: backs up to legacy/ and writes a step-by-step guide
+./scripts/bash/dev-migrate-conda-poetry-to-uv.sh --project-root <path>          # WSL/Linux, no Conda needed
+.\scripts\powershell\dev-migrate-conda-poetry-to-uv.ps1 -ProjectRoot <path>     # Windows
 
-# Generate environment file from Conda
-python scripts/python/dev_generate_env.py --env cr-misc-function-env
+# Conda-era helpers (legacy environments)
+python scripts/python/dev_detect_undeclared_packages.py --env <conda-env>
+python scripts/python/dev_generate_env.py --env <conda-env>
 ```
 
 ### Git Workflow
 
-PowerShell scripts in `scripts/powershell/` with a shared helper module
-(`modules/GitScriptHelpers.psm1`) for consistent output, prompts, and git utilities.
+Git scripts share a helper module (`modules/GitScriptHelpers.psm1` /
+`modules/git-script-helpers.sh`) for consistent output, prompts, and git utilities.
 
 | Script | Purpose |
 | ------ | ------- |
@@ -364,19 +391,26 @@ Quick usage:
 ### AI Context Sync
 
 ```powershell
-# Sync Qoder skills, agents, and QODER.md to global ~/.qoder/
+# Windows: sync CLAUDE.md + commands, Qoder, and Copilot context to the global folders
+.\scripts\powershell\chat-Sync-ClaudeContext.ps1 -GlobalClaudePath "$env:USERPROFILE\.claude"
 .\scripts\powershell\chat-Sync-QoderContext.ps1
-
-# Sync Copilot instructions to global ~/.copilot/
 .\scripts\powershell\chat-Sync-CopilotContext.ps1
+```
+
+```bash
+# WSL/Linux equivalents
+./scripts/bash/chat-sync-claude-context.sh
+./scripts/bash/chat-sync-qoder-context.sh
+./scripts/bash/chat-sync-copilot-context.sh
 ```
 
 ## Further Reading
 
+- [New Device Setup](docs/dev-machine-setup.md) - Claude Code, global config, and VS Code / Antigravity on Windows or WSL/Ubuntu
 - [Database Setup Guide](docs/database/SETUP_GUIDE.md) - Database-specific configuration
 - [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) - Production deployment
 - [Migration Guide](docs/deployment/MIGRATION_CONDA_TO_UV.md) - Conda to UV migration
 - [Bootstrap Guide](docs/bootstrap.md) - New project setup from this library
-- [Claude Code WSL 2 Setup](docs/claude-code-wsl-setup.md) - Installing Claude Code CLI via nvm in WSL 2/Ubuntu
+- [Claude Code WSL 2 Setup](docs/claude-code-wsl-setup.md) - WSL deep-dive: nvm/npm install route, proxies, troubleshooting
 - [Logging Configuration](docs/logging-configuration.md) - Structured logging setup
 - [GitHub Workflow Guide](docs/guidelines/GITHUB-WORKFLOW-CONSOLIDATED.md) - Branch and PR conventions

@@ -188,6 +188,14 @@ v24.21.0
 
 ## 8. Install Claude Code
 
+> **Recommended instead: the native installer.** Anthropic now recommends
+> `curl -fsSL https://claude.ai/install.sh | bash`. It needs no Node.js,
+> installs to `~/.local/bin/claude`, and auto-updates. If you use it, skip
+> sections 4–7 and 9 (nvm, Node.js, npm config, npm install scripts). The
+> end-to-end new-machine checklist is
+> [dev-machine-setup.md](dev-machine-setup.md). The npm route below still
+> works and is kept for machines that already manage Claude Code through nvm.
+
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```

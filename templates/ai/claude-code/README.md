@@ -1,42 +1,58 @@
 # Claude Code Configuration — Quick Reference
 
-Claude Code is Anthropic's CLI-based AI coding assistant. This reference documents how Claude Code is configured in this project.
+Claude Code is Anthropic's AI coding assistant (CLI, plus IDE extensions for
+VS Code and forks such as Antigravity). This page explains where it reads
+configuration from and how this repo's templates map onto those places.
+
+- **New machine:** [docs/dev-machine-setup.md](../../../docs/dev-machine-setup.md)
+- **The global config template itself:** [CLAUDE/README.md](../../../CLAUDE/README.md)
 
 ## Configuration File Locations
 
-Claude Code reads configuration from these locations:
+Claude Code reads a **global** (user) layer and a **project** layer:
 
+```text
+~/.claude/                          ← Global: applies to every project on this machine
+├── CLAUDE.md                        ← Always-on instructions
+├── settings.json                    ← Permissions, hooks, plugins, status line, autoMode
+├── commands/*.md                    ← Slash commands (/name)
+├── skills/<name>/SKILL.md           ← Skills (trigger on matching requests)
+├── hooks/                           ← Scripts the settings.json hooks call
+└── statusline-command.sh            ← Status line script
+~/.claude.json                       ← Login state and user-scope MCP servers (managed by `claude mcp`)
+
+<project>/                          ← Project: this repo only, committed
+├── CLAUDE.md                        ← Project instructions
+└── .claude/
+    ├── settings.json                ← Shared permissions/hooks for everyone on the project
+    ├── settings.local.json          ← Your machine-only overrides (gitignored)
+    ├── commands/                    ← Project commands (override global ones of the same name)
+    └── skills/                      ← Project skills
 ```
-[projectWorkspace]/
-├── .claude/
-│   ├── settings.json          ← Permissions, hooks (project-level)
-│   └── settings.local.json   ← Local-only permissions (NOT committed)
-├── CLAUDE/
-│   ├── CLAUDE.md              ← Project instructions (global + project)
-│   └── commands/              ← Slash command definitions
-│       ├── commit.md
-│       ├── generate-pr-message.md
-│       ├── refactor-python.md
-│       └── ... (more commands)
-└── .claude/                   ← Settings directory
-```
+
+In **this** repo, `CLAUDE/` at the root is *not* read by Claude Code. It's
+the template for `~/.claude/`, installed by the sync scripts
+(`chat-Sync-ClaudeContext.ps1` / `chat-sync-claude-context.sh`) and the
+new-machine guide.
+
+Settings precedence, highest first: managed → command line → project local →
+shared project → user. Some keys are user/managed-only: `autoMode` is ignored
+in project settings.
 
 ## settings.json Structure
 
-The `.claude/settings.json` file controls:
-
 ### Permissions
 
-Define what Claude Code is allowed or denied to do:
+Block reads/edits of secrets and legacy snapshots:
 
 ```json
 {
   "permissions": {
     "deny": [
-      "Read(**/.env)",       // Block reading env files
-      "Edit(**/.env)",       // Block editing env files
-      "Edit(legacy/**)",     // Block editing legacy code
-      "Write(legacy/**)"    // Block writing legacy code
+      "Read(**/.env)",
+      "Edit(**/.env)",
+      "Edit(legacy/**)",
+      "Write(legacy/**)"
     ]
   }
 }
@@ -44,7 +60,9 @@ Define what Claude Code is allowed or denied to do:
 
 ### Hooks
 
-Run commands automatically after Claude Code performs actions:
+Run commands automatically around Claude Code's actions. The global WSL/Linux
+template (`CLAUDE/linux-wsl/settings.json`) formats and lints every Python
+file Claude edits:
 
 ```json
 {
@@ -55,10 +73,7 @@ Run commands automatically after Claude Code performs actions:
         "hooks": [
           {
             "type": "command",
-            "command": "powershell.exe",
-            "args": ["-NoProfile", "-Command", "..."],
-            "timeout": 60,
-            "statusMessage": "ruff format + lint"
+            "command": "bash -c 'unset VIRTUAL_ENV; f=$(cat | jq -r \".tool_input.file_path // empty\"); if [ -n \"$f\" ] && [[ \"$f\" == *.py ]] && [ -f \"$f\" ]; then cd \"$(dirname \"$f\")\" || exit 0; uv run --no-sync ruff format \"$f\"; uv run --no-sync ruff check --fix \"$f\"; fi; exit 0'"
           }
         ]
       }
@@ -67,49 +82,37 @@ Run commands automatically after Claude Code performs actions:
 }
 ```
 
-**Common hook patterns:**
-- `PostToolUse` with matcher `Edit|Write` — auto-format Python files after edits
-- `PreToolUse` — validate before an action runs
+The Windows template (`CLAUDE/windows/settings.json`) and this repo's own
+`.claude/settings.json` run the same steps through `powershell.exe`.
+
+Common hook events:
+
+- `SessionStart`: inject context at the start of a session (the global template reports sibling repos)
+- `UserPromptSubmit`: react to each prompt (the global template resolves `@repo/` mentions)
+- `PreToolUse` / `PostToolUse`: validate before, or format after, a tool runs
 
 ## CLAUDE.md Structure
 
-The `CLAUDE/CLAUDE.md` file is Claude Code's primary instruction file:
+`CLAUDE/CLAUDE.md` (installed as `~/.claude/CLAUDE.md`) contains:
 
-- **Environment rules**: Shell type (PowerShell vs bash), path conventions
-- **Project standards**: Package manager, code style, commit format, type hints
-- **Markdown style**: Language fences, table formatting
-- **Available slash commands**: Quick reference table
+- **Environment rules**: detect Windows/PowerShell vs WSL/bash from the session, path conventions
+- **Project standards**: uv, code style, commit format, type hints
+- **Git branch strategy**: `master` / `dev` / `sit` and their merge rules
+- **Execution discipline**: rules learned from real incidents
+- **Markdown and comment style**
+- **Available slash commands**: quick reference table
 
 ## Slash Commands
 
-Commands are defined as Markdown files in `CLAUDE/commands/`. Each file becomes a `/command-name` in Claude Code.
-
-**Available commands in this project:**
-
-| Command | Description |
-| --- | --- |
-| `/commit` | Generate Conventional Commit + gitmoji message |
-| `/generate-pr-message` | Generate PR messages for deployment |
-| `/clean-gone` | Delete local branches with deleted remotes |
-| `/refactor-python` | Refactor Python preserving behavior |
-| `/refactor-repositories` | Refactor repository classes |
-| `/validate-lint-config` | Validate ruff.toml + mypy.ini |
-| `/create-readme` | Create/update README.md |
-| `/create-confluence-docs` | Generate Confluence documentation |
-| `/generate-cde` | Build enterprise CDE registry |
-| `/update-cde` | Incremental CDE registry update |
-| `/generate-cde-spreadsheet` | Generate CDE spreadsheet |
-| `/setup-workspace` | Set up workspace configuration |
-
-## settings.local.json
-
-The `.claude/settings.local.json` file stores local-only permission overrides. This file is NOT committed to version control and contains machine-specific allowlists.
+Each `.md` file in `commands/` becomes `/file-name`. The template ships 21;
+the full list with usage is in [CLAUDE/README.md](../../../CLAUDE/README.md#available-commands).
 
 ## Relationship to Other AI Configs
 
 Claude Code's configuration is separate from but parallel to:
 
 - **GitHub Copilot**: `.github/copilot-instructions.md`, `.copilot/`
-- **Qoder AI**: `AGENTS.md`, `.vscode/settings.json`, `.vscode/mcp.json`
+- **Qoder**: `AGENTS.md`, `QODER/`, `.vscode/mcp.json`
 
-The `AGENTS.md` file at the workspace root serves as a shared entry point that all AI agents can read. Claude Code also reads `CLAUDE/CLAUDE.md` for Claude-specific instructions.
+`AGENTS.md` at a workspace root is a shared entry point any agent can read;
+Claude Code reads `CLAUDE.md` for Claude-specific instructions.

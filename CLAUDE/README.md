@@ -4,6 +4,12 @@ This folder contains global configuration for [Claude Code](https://claude.ai/co
 
 ## Installation
 
+> **Setting up a new machine?** Follow
+> [docs/dev-machine-setup.md](../docs/dev-machine-setup.md). It installs
+> *everything* here: settings, hooks, status line, skills, plugins, MCP.
+> The commands below cover only `CLAUDE.md` + `commands/`, the two parts
+> that change often and get re-synced.
+
 Copy the contents to your global Claude config folder — use whichever
 matches the shell actually running your Claude Code session (native Windows
 vs. WSL2/Linux; see `CLAUDE.md`'s "Environment" section for how to tell).
@@ -185,6 +191,51 @@ Some commands accept arguments: `/command-name <argument>`
 | `/generate-cde` | Mode A: Build enterprise CDE registry from scratch | `/generate-cde` |
 | `/update-cde` | Mode B: Incremental CDE registry updates | `/update-cde add payment settlement CDE` |
 | `/generate-cde-spreadsheet` | Generate CDE TSV files (Registry + Lineage + Usage) | `/generate-cde-spreadsheet onboarding` |
+
+### Workspace
+
+| Command | Description | Usage |
+| --- | --- | --- |
+| `/setup-workspace` | Set up or audit the workspace's Claude Code config (settings, permissions, hooks, MCP, skills), split correctly between workspace and global `~/.claude`; also audits IDE extensions and interpreters | `/setup-workspace` |
+
+### Runs on Opus
+
+Thin wrappers (`model: opus`) that invoke a plugin or global skill on the
+strongest model. The underlying skill does the work; the wrapper just pins
+the model.
+
+| Command | Invokes |
+| --- | --- |
+| `/brainstorming` | Explore intent, requirements and design before implementation |
+| `/writing-plans` | Turn a spec into a multi-step implementation plan |
+| `/systematic-debugging` | Root-cause a bug before proposing fixes |
+| `/receiving-code-review` | Evaluate incoming review feedback before implementing it |
+| `/feature-dev-opus` | Guided feature development with architecture focus |
+| `/security-review-opus` | Security review of pending changes on the branch |
+| `/spec-to-backlog` | Confluence spec → Jira Epics and tickets |
+| `/formal-document-review` | Review a contract, policy, or SP/demand letter |
+| `/extract-session-preferences` | Extract durable preferences from the current session |
+
+---
+
+## Skills
+
+Global skills in `skills/` trigger on their own when a request matches their
+description. You can also call them by name.
+
+| Skill | What it does |
+| --- | --- |
+| `migrate-to-uv` | Migrate a Poetry/Conda project to uv end to end (backup, `uv add`, config, verify) |
+| `upgrade-python-version` | Move a project to a newer Python (e.g. 3.8 → 3.11): minimal dependency bumps, syntax-only rewrites, structure check, upgrade guide |
+| `jira-ticket-kickoff` | Start or resume work on a ticket: fetch the requirement, sync `dev`, create the branch + `release/<TICKET>/` folder |
+| `bast-generator` | Create a BAST handover page in Confluence from a ticket and its release folder |
+| `bast-learn` | Learn a repo's BAST conventions from its older pages |
+| `confluence-ops-docs` | Business/ops documentation for Confluence derived from a codebase |
+| `documentation_auditor` | Audit docstrings and comments |
+| `logging_auditor` | Audit logging strategy and log quality |
+| `process-skill-auditor` | Audit how a skill or agent was used in a session |
+| `extract-session-preferences` | Distill durable preferences from a session into memory / `CLAUDE.md` |
+| `formal_document_reviewer` | Review formal documents (EN/ID) for unusual or high-impact terms |
 
 ---
 

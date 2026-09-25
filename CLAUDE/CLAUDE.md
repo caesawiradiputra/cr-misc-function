@@ -301,3 +301,5 @@ Rules VS Code cannot auto-fix — apply these manually when writing or editing M
 | `/generate-cde` | Mode A: Build enterprise CDE registry from scratch |
 | `/update-cde` | Mode B: Incremental CDE registry enhancement |
 | `/generate-cde-spreadsheet` | Generate CDE spreadsheet (Master Registry + Lineage + Usage) |
+| `/setup-workspace` | Set up or audit the workspace's Claude Code config (workspace vs global split) |
+| `/brainstorming`, `/writing-plans`, `/systematic-debugging`, `/receiving-code-review`, `/feature-dev-opus`, `/security-review-opus`, `/spec-to-backlog`, `/formal-document-review`, `/extract-session-preferences` | Wrappers that run the matching skill on Opus |

@@ -13,6 +13,13 @@ Migrate from per-project Conda environment to:
 
 Maintain rollback capability.
 
+> **This is the Windows + Conda walkthrough** (Conda kept as the Python
+> runtime). On **WSL/Linux, or any machine without Conda**, uv installs Python
+> itself: run `scripts/bash/dev-migrate-conda-poetry-to-uv.sh` and follow the
+> `legacy/README_MIGRATION.md` it generates. In Claude Code, the
+> `migrate-to-uv` skill runs the whole migration, and `upgrade-python-version`
+> moves a project to a newer Python afterwards.
+
 ---
 
 ## Phase 0: Safety Snapshot (Legacy Archive)
@@ -32,24 +39,24 @@ conda activate cr-misc-function-env
 From project root, run:
 
 ```powershell
-.\scripts\powershell\dev-backup_legacy.ps1
+.\scripts\powershell\dev-migrate-conda-poetry-to-uv.ps1
 ```
 
 This script automatically:
 
-- Detects the current Conda environment
-- Exports environment spec: `conda env export --from-history`
 - Creates `legacy/` folder if not present
-- Backs up `poetry.lock` (if exists)
-- Backs up `pyproject.toml` (as `pyproject.poetry.toml`)
-- Backs up Conda exports (`conda-env.yml`, `conda-explicit-lock.txt`)
-- Stores exported conda environment as `conda-env-<envname>.yml`
-- Generates `legacy/README.md` documentation
+- Backs up `pyproject.toml` (as `pyproject.poetry.toml`), `poetry.lock` / other `*.lock`, `requirements.txt`, and `Dockerfile`
+- Exports the active Conda environment (`conda-env.yml`, `conda-explicit-lock.txt`)
+- Generates `legacy/README_MIGRATION.md` (step-by-step guide with the `uv add` commands) and `legacy/README_LEGACY.md` (rollback)
 
-Use `-Force` flag to overwrite existing backups:
+Use `-Force` to overwrite existing backups, and `-RemovePoetryArtifacts` to
+delete `poetry.lock` / the Poetry `pyproject.toml` afterwards. It asks for
+`yes` unless `-Force`, and only deletes a file whose `legacy/` backup is
+byte-identical:
 
 ```powershell
-.\scripts\powershell\dev-backup_legacy.ps1 -Force
+.\scripts\powershell\dev-migrate-conda-poetry-to-uv.ps1 -Force
+.\scripts\powershell\dev-migrate-conda-poetry-to-uv.ps1 -RemovePoetryArtifacts
 ```
 
 ### 3. Manual export (Optional)

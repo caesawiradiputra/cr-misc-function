@@ -11,16 +11,26 @@ This folder contains PowerShell scripts for streamlining Git workflow, template 
 ## Overview
 
 | Script | Purpose | Risk Level |
-| -------- | --------- | ----------- |
+| --- | --- | --- |
 | `git-check-sync-set-dev.ps1` | Verify dev/sit sync with master, set active branch | ✅ Safe |
-| `dev-check_python_usage.ps1` | Display top Python processes by CPU | ✅ Safe |
+| `git-init-feature.ps1` | Scaffold a new feature branch off a synced base | ✅ Safe |
 | `git-create-clean-branch.ps1` | Cherry-pick filtered commits to create focused branch | ✅ Safe |
 | `git-rebase-branch.ps1` | Interactive rebase of feature branch onto base | ⚠️ Caution |
 | `git-clean-branches.ps1` | Remove stale local branches, optionally clean backup tags | ⚠️ Caution |
 | `git-reset-branches.ps1` | Force-reset protected branches to remote (discards local) | 🔴 Destructive |
-| `chat-sync-github-instructions.ps1` | Sync .github templates across projects | ✅ Safe |
-| `chat-update-template-from-workspace.ps1` | Update reference template from workspace improvements | ✅ Safe |
+| `git-workflow.ps1` | Orchestrator dispatching to the other `git-*.ps1` scripts | Varies by action |
+| `git-check-branch-merged.ps1` | Read-only scan for branches already merged/safe to delete | ✅ Safe |
+| `chat-Sync-ClaudeContext.ps1` | Sync project `CLAUDE/` (`CLAUDE.md` + `commands/`) → global `~/.claude`. Pass `-GlobalClaudePath "$env:USERPROFILE\.claude"` on a machine with a different account | ✅ Safe |
+| `chat-Sync-CopilotContext.ps1` | Sync project `.copilot/` → global `~/.copilot` | ✅ Safe |
+| `chat-Sync-QoderContext.ps1` | Sync project `QODER.md`/`QODER/` → global `~/.qoder` | ✅ Safe |
+| `chat-sync-github-instructions.ps1` | Sync `.github` templates across projects | ✅ Safe |
+| `chat-update-template-from-workspace.ps1` | Update reference `.github` template from workspace improvements | ✅ Safe |
+| `chat-update-claude-template-from-workspace.ps1` | Update this repo's `CLAUDE/` template from a workspace's global commands | ✅ Safe |
+| `chat-update-qoder-template-from-workspace.ps1` | Update this repo's `QODER/` template from a workspace's global config | ✅ Safe |
+| `conda-py311-init-env.ps1` / `conda-py39-init-env.ps1` | Activate the Conda Python runtime in a terminal (legacy Conda setups) | ✅ Safe |
+| `dev-check_python_usage.ps1` | Display top Python processes by CPU | ✅ Safe |
 | `dev-remove-base-only-packages.ps1` | Display conda removal command for base-only packages | ✅ Safe |
+| `dev-migrate-conda-poetry-to-uv.ps1` | Back up a Poetry/Conda project to `legacy/` and generate the uv migration + rollback guides. `-RemovePoetryArtifacts` deletes `poetry.lock`/`pyproject.toml` only after confirmation and a byte-identical backup check | ⚠️ Caution |
 
 ---
 
