@@ -23,7 +23,11 @@
       "Read(**/.npmrc)",
       "Edit(**/.npmrc)",
       "Read(**/.netrc)",
-      "Edit(**/.netrc)"
+      "Edit(**/.netrc)",
+      "Read(**/*.tfstate)",
+      "Edit(**/*.tfstate)",
+      "Read(**/*.tfstate.backup)",
+      "Edit(**/*.tfstate.backup)"
     ],
     "ask": [
       "Edit(C:/Windows/**)",
@@ -111,6 +115,7 @@
     "remember@claude-plugins-official": false
   },
   "effortLevel": "high",
+  "advisorModel": "opus",
   "autoUpdatesChannel": "latest",
   "theme": "auto",
   "switchModelsOnFlag": true,

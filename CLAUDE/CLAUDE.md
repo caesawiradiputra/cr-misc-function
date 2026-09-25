@@ -90,7 +90,7 @@ Use the path style native to the actual environment — don't force Windows back
 
 ```powershell
 # Windows/PowerShell
-$path = "C:\Users\203715\Documents\Repo\project"
+$path = "C:\Users\<WINDOWS_USERNAME>\Documents\Repo\project"
 ```
 
 ```bash
@@ -126,9 +126,22 @@ git push origin branch_name
 
 ---
 
+## Git Branch Strategy
+
+This branch topology and its merge strategies apply to repos the user created themselves, or any repo that already has `master`/`dev`/`sit` branches present — not universally to every repo. A repo created by someone else may follow a completely different flow (no `sit` branch, a different staging setup, trunk-based, etc.) — check which branches actually exist (`git branch -a` / `git ls-remote --heads`, fetching first) before assuming this structure applies, and defer to whatever convention that repo's own branches/history/CLAUDE.md actually show instead of forcing this pattern onto it. Confirmed explicitly by the user (data-pipeline repo session, 2026-09-24) after first learning the convention repo-by-repo, then clarifying it's cross-repo but not universal.
+
+- **`master`/`main`** — the production state of the repo. Receives **merge commits from `dev`** (a regular merge, not squash) when `dev` is promoted to production.
+- **`dev`/staging** — based/reset from `master`; the pre-production stage and the final check before a PR to `master`. Feature/fix/chore branches PR into `dev` using a **squash merge**, specifically to keep `dev`'s history clean (one commit per ticket, not the working branch's full commit-by-commit history).
+- **`sit`** — based/reset from `dev`; the environment referred to for testing. Receives **merge commits (not squash)** directly from `fea`/`fix`/etc. branches — never from `dev`. Unlike `dev`, `sit` can carry commits from **multiple** feature/fix branches at once, since it exists for shared/simultaneous testing of several in-flight branches before each is individually ready to squash-merge into `dev`.
+- **`fea`/`fix`/`chore`/etc.** — the actual work branches, based off `dev`. PR target is `dev`, not `master`.
+
+**A PR opened against `dev` must be complete and final at the moment it's opened** — since it's expected to be squash-merged, nothing should need to land afterward. Concretely: generate and include the per-ticket release changelog (`release/<TICKET-ID>/CHANGELOG.md`, per the `/generate-pr-message` command) and any other doc updates *before* opening the PR, as part of the same branch, not as a follow-up once `dev` already has the feature merged. If something is missed after the squash-merge has already landed, fix it with a small new branch and a normal follow-up PR back into `dev` — **never** amend and force-push `dev` to fold a missed file into the already-merged commit. `dev`'s tip is shared history the moment a PR merges into it, and rewriting it is destructive even when the fix itself is trivial. (Learned 2026-09-24, a data-pipeline repo PROJ-1841 session: attempted exactly this — amending the just-merged squash commit and force-pushing `dev` to fold in a changelog file — and the user stopped it as destructive before it executed. The changelog shipped instead as a normal follow-up PR into `dev`.)
+
+---
+
 ## Execution Discipline
 
-Rules learned from a real incident (DA-1772 session, 2026-08-03): a Write call
+Rules learned from a real incident (PROJ-1772 session, 2026-08-03): a Write call
 overwrote an untracked, tested SQL file with no recovery path, then a follow-up
 verification pass "confirmed" the reconstruction against a reference that was
 already known to be wrong.
@@ -156,10 +169,10 @@ already known to be wrong.
   retry/fallback policies: changing the value invalidates every comment,
   docstring, configuration description, and runbook line that describes the
   old one. Sweep for those as part of the same change, not as a follow-up.
-  (Broadened 2026-08-12, DA-1768 session: the same rename silently missed a
+  (Broadened 2026-08-12, PROJ-1768 session: the same rename silently missed a
   historical variant node, a final-table column, and a retired-but-not-removed
   column — three separate misses in one session, none of them prose claims.
-  Broadened again 2026-08-21, da-privis pull_data session: making a retry
+  Broadened again 2026-08-21, data-pipeline repo session: making a retry
   count Airflow-Variable-driven left `retries=5` / `~25 min` claims stale in
   four places — two Confluence docs, a docstring, and a comment — none caught
   by the written plan, all caught later by review.)
@@ -178,7 +191,7 @@ already known to be wrong.
   the existing codebase successfully interacts with the same resource or
   operation, and follow that established pattern before inferring behavior
   from external API parameter names or assumptions. (Added 2026-08-21,
-  da-privis session: a new readiness-check script addressed MaxCompute tables
+  data-pipeline repo session: a new readiness-check script addressed MaxCompute tables
   as `schema.table` because the SDK exposed a `schema=` parameter, while the
   pipeline's own SQL in the same repo had been addressing those identical
   tables as `project.table` all along. Three tables silently reported MISSING
@@ -187,12 +200,12 @@ already known to be wrong.
   branch listings can be stale — `git branch -a` only shows what's already
   been fetched, not what actually exists on the remote. Run `git fetch --all
   --prune` (or at least `git fetch <remote>`) before declaring a branch
-  absent or unavailable. (Added 2026-09-04, da-bfi-lakehouse-platform
+  absent or unavailable. (Added 2026-09-04, a lakehouse-platform repo
   session: told the user "there's no develop branch" after checking only
   local refs; `origin/develop` existed the whole time but had never been
   fetched in this clone.)
 - **Stick to the established focus root in a multi-root workspace.** Every
-  folder under `C:\Users\203715\Documents\Repo\` is a non-git umbrella
+  folder under `C:\Users\<WINDOWS_USERNAME>\Documents\Repo\` is a non-git umbrella
   containing the real git repos one level down (each with its own
   `.code-workspace`, and sometimes its own trimming `ruff.toml`/`CLAUDE.md`).
   A Claude Code session's cwd is pinned to the umbrella (`folders[0]`) for
@@ -202,7 +215,7 @@ already known to be wrong.
   keep using that repo directly for file lookups; don't fall back to
   searching sibling repos or the umbrella unless the user asks about a
   different repo or the file genuinely isn't found. (Added 2026-09-09,
-  da-obligor session: user flagged me re-searching the wrong root mid-
+  API repo session: user flagged me re-searching the wrong root mid-
   conversation after focus was already established. A global `SessionStart`
   hook and a `UserPromptSubmit` hook — `~/.claude/hooks/session-start-
   context.ps1` and `user-prompt-repo-focus.ps1` — reinforce this by
@@ -236,7 +249,7 @@ already known to be wrong.
   < /proc/<server-pid>/environ | grep ^PATH=`), which breaks `uv`-dependent
   discovery (`python-envs.alwaysUseUv`) separately from the `pet` binary
   issue — diagnose and fix each independently, don't assume fixing one fixes
-  the other. (Added 2026-09-10, da-lakehouse session: both issues stacked on
+  the other. (Added 2026-09-10, lakehouse repo session: both issues stacked on
   the same Antigravity-IDE-over-WSL session; the PET fix required extracting
   a binary from the official Marketplace VSIX since the repo's own GitHub
   releases ship no binary assets at all.)

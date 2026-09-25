@@ -52,7 +52,7 @@ Parse file headers to determine change type:
 git branch --show-current
 ```
 
-Pattern: `feat/DA-1000-description` → extract `DA-1000`
+Pattern: `feat/PROJ-1000-description` → extract `PROJ-1000`
 
 ### Phase 2: Categorize Changes
 
@@ -129,8 +129,8 @@ Rules:
 
 #### Step 8 — Write footer (when applicable)
 
-- `Refs DA-XXXX` — related ticket
-- `Closes DA-1234` — resolves ticket (GitHub auto-closes on merge)
+- `Refs PROJ-XXXX` — related ticket
+- `Closes PROJ-1234` — resolves ticket (GitHub auto-closes on merge)
 - `BREAKING CHANGE: description`
 
 ### Phase 4: Review & Refine (interactive loop)
@@ -240,7 +240,7 @@ Proceed with this split?
 ```text
 ✨ feat(auth): add two-factor authentication support
 
-Refs DA-1234
+Refs PROJ-1234
 ```
 
 ```text
@@ -249,7 +249,7 @@ Refs DA-1234
 - Add null checks before accessing token properties
 - Handle edge case when token is expired
 
-Closes DA-5678
+Closes PROJ-5678
 ```
 
 ```text
@@ -258,7 +258,7 @@ Closes DA-5678
 - Add updated_at column with server default CURRENT_TIMESTAMP
 - Modernize type hints to Python 3.10+ union syntax
 
-Refs DA-9012
+Refs PROJ-9012
 ```
 
 ```text
@@ -266,7 +266,7 @@ Refs DA-9012
 
 BREAKING CHANGE: `connection_config` dict replaced with `DBConfig` dataclass; migrate before upgrading
 
-Refs DA-6789
+Refs PROJ-6789
 ```
 
 ## Critical Rules
@@ -277,7 +277,7 @@ Refs DA-6789
 4. **Always use imperative mood** — "Add caching layer" not "Added caching layer"
 5. **Subject ≤72 chars**, lowercase except proper nouns, no trailing period
 6. **Secondary changes go in the body**, never in the title
-7. **Ticket footer** (`Refs`/`Closes DA-XXXX`) whenever the branch name carries a ticket ID
+7. **Ticket footer** (`Refs`/`Closes PROJ-XXXX`) whenever the branch name carries a ticket ID
 8. **`BREAKING CHANGE:` footer** whenever behavior or interfaces break
 9. **Never commit with inline `-m`** — always `git commit -F` from a UTF-8 file (Phase 5)
 10. **Only run `git commit` when the user has explicitly said to** — either by invoking `/commit` themselves or by explicitly telling you to commit. Finishing an implementation, staging files, or reaching a natural stopping point is never itself permission to commit; if in doubt, stage the changes and stop, and wait for `/commit` or an explicit instruction.

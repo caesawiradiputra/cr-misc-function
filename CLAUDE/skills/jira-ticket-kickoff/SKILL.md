@@ -1,6 +1,6 @@
 ---
 name: jira-ticket-kickoff
-description: Set up or resume a working session for a change, whether or not it has a JIRA ticket. With a ticket ID (e.g. "set up a session for DA-1234", "start work on DA-1234", "resume DA-1234"), fetches and analyzes the requirement via the Atlassian MCP tools, then either syncs dev and creates the fea/fix branch + release/<TICKET-ID>/ folder (fresh) or checks out the existing branch and gives a progress recap (resume, if one already exists). Without a ticket - a quick fix, refactor, tuning, or other own-initiative change, often pasted directly into the prompt as a brief description or spec - skips the JIRA fetch, asks a few targeted clarifying questions to fill the gaps, then does the same branch/release-folder setup keyed by a slug instead of a ticket ID. Use this whenever the user gives a bare ticket ID, asks to start/resume/kick off ticket work, or describes an ad-hoc change (fix/refactor/tuning/etc.) they want to start working on - even without a ticket and even if they don't spell out all the steps.
+description: Set up or resume a working session for a change, whether or not it has a JIRA ticket. With a ticket ID (e.g. "set up a session for PROJ-1234", "start work on PROJ-1234", "resume PROJ-1234"), fetches and analyzes the requirement via the Atlassian MCP tools, then either syncs dev and creates the fea/fix branch + release/<TICKET-ID>/ folder (fresh) or checks out the existing branch and gives a progress recap (resume, if one already exists). Without a ticket - a quick fix, refactor, tuning, or other own-initiative change, often pasted directly into the prompt as a brief description or spec - skips the JIRA fetch, asks a few targeted clarifying questions to fill the gaps, then does the same branch/release-folder setup keyed by a slug instead of a ticket ID. Use this whenever the user gives a bare ticket ID, asks to start/resume/kick off ticket work, or describes an ad-hoc change (fix/refactor/tuning/etc.) they want to start working on - even without a ticket and even if they don't spell out all the steps.
 ---
 
 # JIRA Ticket Kickoff
@@ -9,20 +9,20 @@ Bootstraps or resumes a working session around one change. First decide which of
 
 ## Step 0: Decide the path
 
-- Look for a ticket ID pattern (`[A-Z]+-\d+`, e.g. `DA-1234`) in the user's message.
-  - Phrased as a **recheck** (e.g. "recheck DA-1234", "any requirement updates on DA-1234", "did the IN- ticket change", "re-run the requirement check for DA-1234") → go straight to **Path D: Recheck requirement only** — skip Step 2 and the full fresh/resume flow entirely.
+- Look for a ticket ID pattern (`[A-Z]+-\d+`, e.g. `PROJ-1234`) in the user's message.
+  - Phrased as a **recheck** (e.g. "recheck PROJ-1234", "any requirement updates on PROJ-1234", "did the IN- ticket change", "re-run the requirement check for PROJ-1234") → go straight to **Path D: Recheck requirement only** — skip Step 2 and the full fresh/resume flow entirely.
   - Otherwise, **found** → go to **Step 1: Fetch the JIRA ticket**, then **Step 2** decides Path A (fresh) vs Path B (resume).
   - **Not found**, and the user is instead describing a change directly (a quick fix, refactor, tuning, or other own-initiative work, however brief) → go straight to **Path C: No ticket**.
 - If it's genuinely unclear which of these the user means, ask.
 - If the user pastes a description *alongside* a real ticket ID, still fetch JIRA (it stays authoritative) but carry the pasted text forward as extra context for the brainstorming step.
-- Repeating a plain "resume DA-1234" (no recheck phrasing) re-runs the whole Path A/B flow from scratch every time — the fetch, the branch checkout, the recap. That's harmless (nothing destructive re-triggers — Step 5b already leaves an existing release folder alone) but it's the expensive way to ask "did the requirement change." Use Path D for that instead.
+- Repeating a plain "resume PROJ-1234" (no recheck phrasing) re-runs the whole Path A/B flow from scratch every time — the fetch, the branch checkout, the recap. That's harmless (nothing destructive re-triggers — Step 5b already leaves an existing release folder alone) but it's the expensive way to ask "did the requirement change." Use Path D for that instead.
 
 ## Step 1: Fetch and analyze the JIRA ticket
 
 Do this before any git decision — the branch slug/type in Path A and the acceptance-criteria comparison in Path B both depend on it.
 
 Call `mcp__plugin_atlassian_atlassian__getJiraIssue` with:
-- `cloudId`: `"bfifinance.atlassian.net"` (the site hostname — try this directly first; only fall back to `getAccessibleAtlassianResources` if the call fails)
+- `cloudId`: `"<ATLASSIAN_SITE>.atlassian.net"` (the site hostname — try this directly first; only fall back to `getAccessibleAtlassianResources` if the call fails)
 - `issueIdOrKey`: the ticket ID
 - `fields`: the array `["summary", "description", "issuetype", "status", "priority", "labels", "comment", "issuelinks", "attachment"]` — pass it as an actual array, not a comma-separated string. This tool has no "default fields plus extras" behavior: passing `fields` at all replaces its normal default set entirely, so a typo or a dropped entry here means that field silently isn't in the response — there's no error to catch it.
 - `responseContentFormat`: `"markdown"`
@@ -63,17 +63,23 @@ git branch --list "*<TICKET-ID>*"
 
 - **fea/ vs fix/ vs refactor/ vs perf/**: from `issuetype` (Bug/Defect → `fix/`; Story/Task/Feature/Improvement → `fea/`). Ask if genuinely ambiguous.
 - **Slug**: from the summary — lowercase, non-alphanumeric runs collapsed to single hyphens, trimmed, capped around 40 characters at a word boundary.
-- Resulting branch name: `fea/<TICKET-ID>-<slug>`, e.g. `fea/DA-1234-add-reject-tracking`.
+- Resulting branch name: `fea/<TICKET-ID>-<slug>`, e.g. `fea/PROJ-1234-add-reject-tracking`.
 
 ### Step 4a: Sync the dev branch
 
 Check `git status --porcelain` first. If dirty, stop and ask the user to commit or stash before running the sync script.
 
+Use the counterpart matching the session's actual reported environment (per the global CLAUDE.md's "detect, don't assume" rule) — never assume Windows just because the PowerShell form is listed first:
+
 ```powershell
-powershell -File ".\scripts\powershell\git-check-sync-set-dev.ps1" -Force
+powershell -File "C:\Users\<WINDOWS_USERNAME>\Documents\Repo\cr-misc-function\cr-misc-function\scripts\powershell\git-check-sync-set-dev.ps1" -Force
 ```
 
-Run from the target repo's root. `-Force` is required since this session can't answer the script's interactive confirmation prompt.
+```bash
+bash /home/<user>/repo/cr-misc-function/cr-misc-function/scripts/bash/git-check-sync-set-dev.sh --force
+```
+
+Run from the target repo's root. The force flag is required since this session can't answer the script's interactive confirmation prompt (`-Force` on the PowerShell script, `--force` on the bash port).
 
 - Exit code `0` — `dev` synced and checked out. Continue.
 - Exit code `2` — `dev` has diverged from `master`; script shows the diff and restores the original branch. Stop and show the user the diff summary.
@@ -102,7 +108,7 @@ Only folders — no `CHANGELOG.md` yet (`/generate-pr-message` creates/updates t
 **Type:** <issue type>
 **Status:** <status>
 **Priority:** <priority>
-**JIRA:** https://bfifinance.atlassian.net/browse/<TICKET-ID>
+**JIRA:** https://<ATLASSIAN_SITE>.atlassian.net/browse/<TICKET-ID>
 
 ## Description
 
@@ -176,7 +182,7 @@ Skip any question the pasted description already answers. Fold the answers into 
 
 ### Step 4c: Sync the dev branch
 
-Same as Step 4a: dirty-check first, then run the sync script with `-Force` from the repo root.
+Same as Step 4a: dirty-check first, then run the sync script (PowerShell or bash, matching the session's environment) with its force flag from the repo root.
 
 ### Step 5c: Create the branch
 

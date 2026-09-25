@@ -49,7 +49,7 @@ It also creates or updates a single per-ticket changelog at `release/<TICKET-ID>
 ## ⚠️ Critical Rules
 
 1. **Git diff is the only source of truth.** If it is not in `git diff origin/dev...HEAD`, it does not exist in this PR. Never assume, infer, or invent files, methods, tests, or objectives.
-2. **Never copy requirement text** into the CHANGELOG or PR — whether it comes from the `["requirement text"]` parameter or a requirement doc/PDF in the ticket folder. Use it for context only; reference the ticket instead (`Refs DA-XXXX`).
+2. **Never copy requirement text** into the CHANGELOG or PR — whether it comes from the `["requirement text"]` parameter or a requirement doc/PDF in the ticket folder. Use it for context only; reference the ticket instead (`Refs PROJ-XXXX`).
 3. **No Business Requirements section** — all requirements live in JIRA.
 4. **Description only if the user provided one.** If they did not, do not generate or assume one.
 5. **Testing section only if** test files appear in the diff OR the user explicitly asks. Describe only tests actually present.
@@ -69,7 +69,7 @@ git fetch origin
 git branch --show-current
 ```
 
-- **Extract ticket ID** from branch name — `fea/DA-1079-feature-name` → `DA-1079`. The branch is authoritative.
+- **Extract ticket ID** from branch name — `fea/PROJ-1079-feature-name` → `PROJ-1079`. The branch is authoritative.
 - **Identify type** from branch prefix: `fea/` → Feature, `fix/` → Fix, `refactor/` → Refactor, `perf/` → Perf.
 - **Resolve version:** provided `X.Y.Z` as-is (strip any leading `v`), else use `Unreleased`.
 
@@ -100,7 +100,7 @@ release/<TICKET-ID>/
 └── docs/          # implementation details
 ```
 
-Example: `release/DA-1079/CHANGELOG.md`
+Example: `release/PROJ-1079/CHANGELOG.md`
 
 #### Step 3a — Inventory & read the ticket folder FIRST
 
@@ -150,12 +150,19 @@ Always display both, regardless of which PR is being opened right now:
 
 The file has a **stable header** (ticket-level, written once) followed by one **version section per release**. Re-running the command adds or updates a version section without disturbing the header or older entries.
 
+`{jira-site}` is the Atlassian site name of the user's Jira. Resolve it at run time, don't guess:
+1. Copy it from the `**JIRA:**` link in another `release/*/CHANGELOG.md` in the same repo.
+2. If there are none, use the site returned by the Atlassian connector's `getAccessibleAtlassianResources`.
+3. If neither is available, ask the user.
+
+Never leave the literal `{jira-site}` in the output.
+
 ```markdown
 # Changelog — {Ticket-ID}: {Brief Title}
 
 **Ticket:** {Ticket-ID}
 **Branch:** {branch-name}
-**JIRA:** https://bfifinance.atlassian.net/browse/{Ticket-ID}
+**JIRA:** https://{jira-site}.atlassian.net/browse/{Ticket-ID}
 
 All notable changes for this ticket are documented here. Newest entry on top.
 
@@ -314,7 +321,7 @@ Then open the **Feature → Dev** PR with PR Message 1. Later, when promoting `d
 - [ ] Ticket folder inventoried **before** editing the changelog; `ddl/` `data/` `config/` `docs/` files (incl. requirement PDFs) read and reflected in **Release Artifacts**
 - [ ] Existing changelog **appended/updated** (new version on top, header + older entries preserved) — never overwritten
 - [ ] Both PR messages generated (Feature → Dev full, Dev → Master short)
-- [ ] Requirement text **not copied** anywhere; ticket referenced instead (`Refs DA-XXXX`)
+- [ ] Requirement text **not copied** anywhere; ticket referenced instead (`Refs PROJ-XXXX`)
 - [ ] Description present **only** if user provided one
 - [ ] CHANGELOG is technical-focused; **no Business Requirements section**
 - [ ] Testing section only if test files in diff or explicitly requested

@@ -49,7 +49,14 @@ CLAUDE/
 │   ├── create-confluence-docs.md   ← /create-confluence-docs
 │   ├── generate-cde.md             ← /generate-cde
 │   ├── update-cde.md               ← /update-cde
-│   └── generate-cde-spreadsheet.md ← /generate-cde-spreadsheet
+│   ├── generate-cde-spreadsheet.md ← /generate-cde-spreadsheet
+│   ├── setup-workspace.md          ← /setup-workspace
+│   └── <name>.md (x9)              ← "runs on Opus" wrappers that invoke a skill with
+│                                       model: opus: /brainstorming, /writing-plans,
+│                                       /systematic-debugging, /receiving-code-review,
+│                                       /feature-dev-opus, /security-review-opus,
+│                                       /spec-to-backlog, /formal-document-review,
+│                                       /extract-session-preferences
 ├── skills/                         ← Global skills (shared — identical on both OSes)
 ├── statusline-command.sh           ← Shared — identical on both OSes
 ├── mcp-servers.json                ← Shared — just the mcpServers key, never the full .claude.json
@@ -79,6 +86,26 @@ real username baked into both `settings.json` and one skill file — sanitized
 before committing, since a working reference for a *different* future device
 shouldn't hardcode one specific machine's path.)
 
+**Other placeholders (this repo is public).** Replace these when installing a
+file into `~/.claude/`:
+
+| Placeholder | Where | Replace with |
+| --- | --- | --- |
+| `<WINDOWS_USERNAME>` | `windows/settings.json`, `CLAUDE.md`, `skills/jira-ticket-kickoff` | The Windows account name |
+| `<ATLASSIAN_SITE>` | `skills/jira-ticket-kickoff`, `skills/bast-*` | The Atlassian site name (`<site>.atlassian.net`) |
+| `<BAST_TEMPLATE_PAGE_ID>` | `skills/bast-generator` | The Confluence page ID of your `BAST DATA` template copy |
+| `<COMPANY>` | `skills/bast-generator/references/template-map.md` | The company name used in the BAST Scope checkbox |
+
+Only `CLAUDE.md` and `commands/` are synced automatically
+(`chat-Sync-ClaudeContext`), and neither has a placeholder that code runs:
+`generate-pr-message` resolves `{jira-site}` at run time. Skills are copied
+by hand, so substitute the placeholders at that point. Ticket keys shown as
+`PROJ-1234` and repo names such as "a data-pipeline repo" are illustrative
+only and need no substitution.
+
+`scripts/` is deliberately **not** placeholdered: those scripts actually run
+their `C:\Users\...` paths, so a placeholder would break them.
+
 Excluded from every file here: `.credentials.json`, OAuth account info,
 `sessions/`/`session-env/`/`projects/` (conversation transcripts),
 `telemetry/`, `history.jsonl`, caches, and everything else in
@@ -87,7 +114,17 @@ nothing here should ever include secrets or usage data. Also excluded from
 `skills/`: three Windows-only `*-workspace` scratch directories
 (`documentation_auditor-workspace`, `jira-ticket-kickoff-workspace`,
 `migrate-to-uv-workspace`) that are skill-eval/benchmark output, not
-actual skills.
+actual skills; and `skills/synced/`, which is claude.ai's cache of skills
+synced from the account (UUID-named buckets), not skills authored here.
+
+Also excluded from both `settings.json` files: the live
+`autoMode.environment` block and any extra `autoMode.soft_deny` rules. They
+describe this user's own orgs, repo paths, branch rules, and data
+sensitivity, and this repo is public. Claude Code reads `autoMode` only from
+user (`~/.claude/settings.json`) or managed settings, never from a project's
+`.claude/settings*.json`. So write it per machine, and keep it
+workspace-wide: entries that describe a single repo mislead auto mode in
+every other repo.
 
 ---
 

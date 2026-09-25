@@ -25,7 +25,11 @@
       "Read(**/.netrc)",
       "Edit(**/.netrc)",
       "Read(**/profiles.yml)",
-      "Edit(**/profiles.yml)"
+      "Edit(**/profiles.yml)",
+      "Read(**/*.tfstate)",
+      "Edit(**/*.tfstate)",
+      "Read(**/*.tfstate.backup)",
+      "Edit(**/*.tfstate.backup)"
     ],
     "ask": [
       "Edit(**/.ssh/**)",
@@ -97,14 +101,15 @@
     "remember@claude-plugins-official": false
   },
   "effortLevel": "high",
+  "advisorModel": "opus",
   "autoUpdatesChannel": "latest",
   "theme": "auto",
   "switchModelsOnFlag": true,
+  "remoteControlAtStartup": false,
   "autoMode": {
     "soft_deny": [
       "$defaults",
       "Disk / Volume Destruction: Formatting, partitioning, or wiping local disks or volumes — e.g. `format`, `diskpart` (clean, delete partition, format, convert), `Clear-Disk`, `Remove-Partition`, `Initialize-Disk -Confirm:$false`, or `Format-Volume` — without the user naming the exact disk or volume letter to act on."
     ]
-  },
-  "remoteControlAtStartup": false
+  }
 }

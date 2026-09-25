@@ -10,7 +10,7 @@ If `$ARGUMENTS` specifies a system name, service type, or business context, use 
 
 ## Core Principle
 
-**Every project is part of a larger business system.** A project like `da-obligor-api` is part of the "Obligor" system. Documentation structure always reflects this:
+**Every project is part of a larger business system.** A project like `<project-name>` is part of the "Obligor" system. Documentation structure always reflects this:
 
 - **Parent pages (01, 02)**: Business logic + enterprise architecture (shared by all services in the system)
 - **Service pages (03, 03a-d)**: This project's specific implementation
