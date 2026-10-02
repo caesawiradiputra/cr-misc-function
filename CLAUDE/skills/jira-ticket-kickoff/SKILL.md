@@ -7,6 +7,15 @@ description: Set up or resume a working session for a change, whether or not it 
 
 Bootstraps or resumes a working session around one change. First decide which of three paths applies, then follow it end to end.
 
+## Writing links (applies to everything this skill writes)
+
+Every URL goes out as a Markdown link, `[text](https://full-url)`, never as a bare URL. This covers files (`requirement.md`, notes), Jira descriptions and comments, PR bodies, and messages to the user.
+
+- **Ticket keys are links every time they appear in prose you write**, not only the first time: `[PROJ-1234](https://<ATLASSIAN_SITE>.atlassian.net/browse/PROJ-1234)`. This includes "Cloned from", "Refs", "SRF attachments live on", and any "see also" mention. A plain `IN-3323` in a description is wrong.
+- **Other URLs get descriptive text**, for example `[Customer API contract](https://...)`, not "click here" and not the raw address as the text.
+- **Exceptions:** a URL inside a code block or inline code that is meant to be copied or run (a `curl` example, a `docker run` line) stays as literal text. When the tool returns or requires HTML (for example a description that came back with `appliedContentFormat: html`), use `<a href="https://...">text</a>` instead, since Markdown would not render there.
+- Check before saving or sending: search the text you wrote for `http` and for ticket keys (`[A-Z]+-\d+`), and confirm each one sits inside a link.
+
 ## Step 0: Decide the path
 
 - Look for a ticket ID pattern (`[A-Z]+-\d+`, e.g. `PROJ-1234`) in the user's message.
@@ -27,7 +36,7 @@ Requesters submit an SRF on the Initiation board (`IN`). Once it's approved, the
 3. **Check it's approved.** Look at the `IN-` ticket's status. If it doesn't clearly read as approved (e.g. still awaiting approval, rejected, cancelled), stop and ask the user before creating anything. The user said they clone after approval, so an unapproved status is a signal to double-check, not to proceed silently.
 4. **Create the clone** with `createJiraIssue`, project `PROJ`:
    - `summary`: `SRF - ` followed by the `IN-` summary, trimmed of leading/trailing whitespace (IN summaries sometimes start with a space). E.g. `IN-3322` " Update customer onboarding flow" → `SRF - Update customer onboarding flow`. No "CLONE - " prefix. If the summary already starts with `SRF - `, don't double it.
-   - `description`: the `IN-` description, and end it with a line `Cloned from [IN-3322](https://<ATLASSIAN_SITE>.atlassian.net/browse/IN-3322)` (using the real key).
+   - `description`: the `IN-` description, and end it with a line `Cloned from [IN-3322](https://<ATLASSIAN_SITE>.atlassian.net/browse/IN-3322)` (using the real key). Every other mention of the `IN-` key in text you write into the clone ("Refs IN-3322", "SRF attachments live on IN-3322", a status note) is a link in the same form (see "Writing links" above), never the bare key.
    - Issue type: map from the `IN-` type to the closest `PROJ` type. Use `listJiraProjectIssueTypesMetadata` for `PROJ` if the name doesn't exist there; ask if genuinely ambiguous.
    - `priority` and `labels`: copy when the `PROJ` project accepts them; drop and mention any that are rejected.
    - `assignee`: the current user (the `IN-` ticket's assignee accountId, or `atlassianUserInfo`). `createJiraIssue` silently ignores an assignee argument (verified with IN-3322 → PROJ-1869: the clone came back unassigned), so set it afterwards with `editJiraIssue` `fields: {"assignee": {"accountId": "..."}}`. Also note `createJiraIssue` takes `issueType`, not `issueTypeName`.
@@ -129,7 +138,7 @@ Only folders — no `CHANGELOG.md` yet (`/generate-pr-message` creates/updates t
 **Type:** <issue type>
 **Status:** <status>
 **Priority:** <priority>
-**JIRA:** https://<ATLASSIAN_SITE>.atlassian.net/browse/<TICKET-ID>
+**JIRA:** [<TICKET-ID>](https://<ATLASSIAN_SITE>.atlassian.net/browse/<TICKET-ID>)
 
 ## Description
 
@@ -141,7 +150,7 @@ Only folders — no `CHANGELOG.md` yet (`/generate-pr-message` creates/updates t
 
 ## Related Tickets
 
-<from Step 1b: linked IN- ticket(s) fetched, with a note on whether their content added to / superseded / matched the PROJ- description; other linked tickets listed by key and relationship only. "None linked" if Step 1b found nothing.>
+<from Step 1b: linked IN- ticket(s) fetched, with a note on whether their content added to / superseded / matched the PROJ- description; other linked tickets listed by key and relationship only. Write every ticket key as a link, `[IN-3322](https://<ATLASSIAN_SITE>.atlassian.net/browse/IN-3322)`. "None linked" if Step 1b found nothing.>
 
 ## Attachments
 
@@ -307,4 +316,5 @@ No branch operations, no brainstorming hand-off — this path ends at reporting 
 - [ ] Path B: dev/master untouched; existing `release/<TICKET-ID>/` contents left alone; recap grounded in actual `git log`/`git diff` output; linked `IN-` ticket re-checked for drift since the branch was created
 - [ ] Path C: clarifying questions asked and answered *before* branching; `spec.md` (not `requirement.md`) written from the assembled spec; type/slug confirmed with the user, not assumed
 - [ ] Path D: re-fetched live rather than reasoning from memory; drift (if any) diffed against the existing `requirement.md`, not just re-summarized from scratch; attachment list diffed too, with any count/filename/date change flagged for manual review rather than guessed at; any update appended, original sections left untouched; no git or folder operations performed
+- [ ] Links: every URL and every ticket key in text written to a file, a Jira description or comment, or a PR body is a Markdown link (`[PROJ-1234](https://<ATLASSIAN_SITE>.atlassian.net/browse/PROJ-1234)`); none left bare (see "Writing links")
 - [ ] Session ends at a brainstorming discussion (Path A/C), a progress check-in (Path B), or a drift report (Path D) — never at a plan or code change

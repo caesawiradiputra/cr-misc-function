@@ -20,7 +20,7 @@ Reference file (read when the step says so): `references/what-to-extract.md`.
 
 ## Constants
 
-- Site `cloudId`: `74eaba08-c4fa-40de-a200-a44e70ca5dca` (<ATLASSIAN_SITE>.atlassian.net).
+- Site `cloudId`: `<ATLASSIAN_CLOUD_ID>` (<ATLASSIAN_SITE>.atlassian.net).
 - Search: `searchConfluence` with CQL, for example `title ~ "BAST PROJ-1773" AND type = page`.
 - Read a page with `getConfluenceContent`, `detail: "full"`, `content_format: "markdown"`. Markdown is lossy (it drops images, attachments and inline cards), but learning only needs the text of the engineer-owned cells and the ticked checkboxes, which markdown keeps, and it is several times smaller than HTML. Use `html` only if a cell you need is unreadable in markdown.
 

@@ -99,6 +99,8 @@ file into `~/.claude/`:
 | --- | --- | --- |
 | `<WINDOWS_USERNAME>` | `windows/settings.json`, `CLAUDE.md`, `skills/jira-ticket-kickoff` | The Windows account name |
 | `<ATLASSIAN_SITE>` | `skills/jira-ticket-kickoff`, `skills/bast-*` | The Atlassian site name (`<site>.atlassian.net`) |
+| `<ATLASSIAN_CLOUD_ID>` | `skills/bast-*` | The site's cloud ID (from `getAccessibleAtlassianResources`) |
+| `PROJ` (as in `PROJ-1234`) | `skills/jira-ticket-kickoff`, `skills/bast-*` | Your own Jira project key |
 | `<BAST_TEMPLATE_PAGE_ID>` | `skills/bast-generator` | The Confluence page ID of your `BAST DATA` template copy |
 | `<COMPANY>` | `skills/bast-generator/references/template-map.md` | The company name used in the BAST Scope checkbox |
 

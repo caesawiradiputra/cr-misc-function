@@ -22,7 +22,7 @@ Reference files (read them when the step says so, not up front):
 
 ## Constants
 
-- Site `cloudId`: `74eaba08-c4fa-40de-a200-a44e70ca5dca` (<ATLASSIAN_SITE>.atlassian.net). If a call rejects it, call `getAccessibleAtlassianResources` once.
+- Site `cloudId`: `<ATLASSIAN_CLOUD_ID>` (<ATLASSIAN_SITE>.atlassian.net). If a call rejects it, call `getAccessibleAtlassianResources` once.
 - Template page ID: `<BAST_TEMPLATE_PAGE_ID>` (the user's own copy of the `BAST DATA` template, in their personal space). Read it live on every run so template changes carry over.
 - Destination: the top-level of the user's personal space. Resolve its key with `getConfluencePersonalSpace` (do not hardcode). Use `destinationSpaceKey`, not `parentContentId`.
 - Title: `[BAST] <TICKET> - <Jira summary>`.
