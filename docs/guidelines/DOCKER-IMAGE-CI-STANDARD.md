@@ -88,6 +88,8 @@ The template caches layers in the GitHub Actions cache (`type=gha`). Measured in
 
 Everything built in the Dockerfile was reused in the second run, yet the saving was only about 10 s because pulling the base image and pushing layers dominate and are not cached. The cache therefore pays off only where the apt and dependency-install layers are slow.
 
+**The cache is scoped to the branch.** GitHub lets a run restore only caches created on its own branch or on the repository's default branch (for pull requests, also the base branch). A run on `sit` cannot use a cache written on `dev`, `master` or a feature branch. So the first run on each branch is a cold build that also writes the cache: in `da-negative-list` the first run on `sit` reused no layers, its cache export alone took 71 s, and the run took 144 s against 93 s without a cache. Later runs on the same branch hit the cache as long as the Dockerfile and the lock file are unchanged. A cache shared by all branches would have to live in a registry (`type=registry`); that has not been tried against ACR, which already rejects some OCI manifest types (see rule 10).
+
 To decide for a repository: dispatch twice with the same tag and compare job durations. If the saving is small, delete the `cache-from` and `cache-to` lines; keeping `build-push-action` and the flags above is still worthwhile. A code-only commit rebuilds only the last layers, and a change to the lock file rebuilds the dependency layer.
 
 ## 6. Testing the workflow on a branch
