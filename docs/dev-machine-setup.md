@@ -7,6 +7,10 @@ bottom; each section says which path it applies to.
 > **Deeper WSL details** (nvm, npm config, proxies) are in
 > [claude-code-wsl-setup.md](claude-code-wsl-setup.md). This guide is the
 > end-to-end checklist; that one is the WSL troubleshooting reference.
+> **WSL performance tuning and Docker setup** (`.wslconfig`, memory/CPU caps,
+> network speed, running Docker inside WSL) are in
+> [wsl-performance-and-docker.md](wsl-performance-and-docker.md) — optional,
+> once the base checklist below is working.
 
 ---
 
@@ -105,6 +109,11 @@ git --version && gh --version && jq --version && uv --version
 Some Python drivers build from source on Linux and need system libraries that
 Conda used to provide, e.g. `sudo apt install unixodbc-dev` for `pyodbc`
 (see [section 7](#7-python-projects)).
+
+For `.wslconfig` performance tuning and setting up Docker inside WSL (native
+engine, resource caps, capped/backgrounded builds), see
+[wsl-performance-and-docker.md](wsl-performance-and-docker.md) — do this once
+the base checklist below is working, not before.
 
 ### Both: git identity and GitHub login
 
@@ -450,5 +459,6 @@ through `/mnt/c` without meaning to.
 
 - [CLAUDE/README.md](../CLAUDE/README.md): what each global config file does, placeholders, exclusions
 - [claude-code-wsl-setup.md](claude-code-wsl-setup.md): WSL deep-dive (nvm/npm route, proxies)
+- [wsl-performance-and-docker.md](wsl-performance-and-docker.md): `.wslconfig` tuning, Docker-in-WSL setup, network speed diagnosis
 - [scripts/bash/README.md](../scripts/bash/README.md) / [scripts/powershell/README.md](../scripts/powershell/README.md): script reference
 - Official docs: [Claude Code setup](https://code.claude.com/docs/en/setup), [VS Code extension](https://code.claude.com/docs/en/vs-code)

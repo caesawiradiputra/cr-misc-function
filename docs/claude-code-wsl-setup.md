@@ -497,5 +497,6 @@ git config --global core.autocrlf input
 
 - Global `~/.claude/CLAUDE.md` — "Environment: Windows/PowerShell OR Linux/WSL/bash" section (shell detection rules that apply to every session on this machine, not just this repo)
 - [`scripts/bash/README.md`](../scripts/bash/README.md) / [`scripts/powershell/README.md`](../scripts/powershell/README.md) — this repo's parallel bash/PowerShell dev-script sets
+- [wsl-performance-and-docker.md](wsl-performance-and-docker.md) — `.wslconfig` tuning, Docker-in-WSL setup, network speed diagnosis (once this guide's base setup works)
 - [nvm](https://github.com/nvm-sh/nvm) — Node Version Manager
 - [Claude Code documentation](https://docs.claude.com/en/docs/claude-code)
