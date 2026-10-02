@@ -1,6 +1,12 @@
 {
   "permissions": {
-    "allow": [],
+    "allow": [
+      "Bash(uv run pytest:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(uv run mypy:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv lock:*)"
+    ],
     "deny": [
       "Read(**/.env)",
       "Edit(**/.env)",
@@ -29,15 +35,18 @@
       "Read(**/*.tfstate)",
       "Edit(**/*.tfstate)",
       "Read(**/*.tfstate.backup)",
-      "Edit(**/*.tfstate.backup)"
+      "Edit(**/*.tfstate.backup)",
+      "Edit(**/uv.lock)"
     ],
     "ask": [
       "Edit(**/.ssh/**)",
       "Edit(**/.git/**)",
       "Edit(**/*.pfx)",
-      "Edit(**/*.p12)"
+      "Edit(**/*.p12)",
+      "Edit(**/legacy/**)"
     ]
   },
+  "model": "sonnet",
   "hooks": {
     "SessionStart": [
       {

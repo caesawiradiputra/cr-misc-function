@@ -114,6 +114,62 @@ git push origin branch_name
 
 ---
 
+## Docker and Network Speed in WSL
+
+Facts established 2026-10-02 (a negative-list repo session). Only the facts
+marked "confirmed" were verified; the rest are hypotheses to test.
+
+- **Docker in WSL is a native engine, not Docker Desktop.** Confirmed: Ubuntu
+  24.04 with `systemd=true`, installed with `sudo apt-get install docker.io
+  docker-buildx`. Before that, `docker` on the PATH was the Windows Docker
+  Desktop CLI reached through interop, which fails in WSL with "could not be
+  found in this WSL distro" when WSL integration is off.
+- **Keep the engine off unless needed.** The user's choice, because the corporate
+  security policy blocked pulling images with Docker Desktop on Windows, and
+  Docker can hog resources and crash WSL. Intended pattern: the service is
+  disabled at boot (`sudo systemctl disable docker.service docker.socket`), start
+  it with `sudo systemctl start docker` only for build tests, and stop it
+  afterwards with `sudo systemctl stop docker.service docker.socket`. If
+  `systemctl is-active docker` already shows `active`, say so rather than
+  assuming it is off.
+- **Cap build memory:** `docker build --memory=6g --memory-swap=6g ...`.
+  `.wslconfig` currently gives WSL 16 GB, 8 CPUs and 8 GB swap, i.e. the whole
+  host, so an uncapped build can starve Windows.
+- **Run builds in the background** (`run_in_background`) with output sent to a
+  log file; a base-image pull plus `apt-get` plus ODBC install takes many
+  minutes on this network.
+- **`sudo` needs a password and cannot be entered from a Claude session.** Give
+  the user the exact `! sudo ...` commands to run instead. After
+  `usermod -aG docker`, a new login (or a restarted Claude session) is needed
+  before the group applies.
+- **Downloads in WSL were much slower than on Windows — fixed by `autoProxy=true`.**
+  Confirmed (2026-10-02 session, same-day follow-up): a Docker base image pull
+  from WSL ran at ~0.1 MB/s (40 MB in ~376s) with `autoProxy=false`, NAT
+  networking, DNS tunneling (`nameserver 10.255.255.254`), MTU 1500, WSL
+  2.5.10. After setting `autoProxy=true` in `.wslconfig` and a full `wsl
+  --shutdown`, repeated same-file 25MB `curl` downloads from WSL reached
+  0.5-1.3 MB/s — matching `curl.exe` run both natively in PowerShell and via
+  WSL interop (same range, same run-to-run spread). `autoProxy=true` alone was
+  the fix; `networkingMode=mirrored`/`dnsTunneling=true` were not needed.
+  `autoProxy=true` does not surface as `http_proxy`/`https_proxy` env vars
+  inside the WSL shell — don't use their absence as a signal that it isn't
+  working. The remaining 0.5-1.3 MB/s run-to-run spread is the underlying
+  connection itself, not a WSL-vs-Windows gap: this machine's actual uplink is
+  a mobile/cellular broadband connection (~9.6 Mbps down / ~5.3 Mbps up per
+  Ookla, i.e. ~1.2 MB/s down ceiling) with heavy bufferbloat under load
+  (latency jumps from ~25ms idle to 200-260ms loaded under Ookla's
+  multi-stream test) — normal for mobile broadband, and enough by itself to
+  explain single-stream `curl` numbers varying 2-3x between runs regardless of
+  which OS initiated the request. Before re-chasing a WSL-specific networking
+  cause for a slow transfer on this machine, re-check an independent speed
+  test (e.g. speedtest.net) at that time first.
+- **`.wslconfig` changes only take effect after `wsl --shutdown`,** which kills
+  every running WSL process, including a running Docker build and the Claude
+  session. Never suggest it while a build is running. To compare speeds, download
+  the same large file with `curl.exe` on Windows and `curl` in WSL.
+
+---
+
 ## Project Standards
 
 - **Package manager**: uv (not pip directly). When a repository uses uv/pyproject.toml
@@ -159,6 +215,14 @@ already known to be wrong.
   new content against an existing "reference" (another file, a prior commit,
   a doc), confirm that reference is actually authoritative before diffing
   against it — a convenient reference isn't automatically a correct one.
+  This extends to cross-system technical references too: before treating
+  another system's example as a transferable template, confirm it matches
+  the target's underlying engine, dialect, storage model, and relevant
+  mechanism — a reference can be correct for its own context and still be
+  the wrong template for the target. (Broadened 2026-10-01, a negative-list
+  repo PROJ-1829 session: a Trino-dialect DDL and an `MSCK REPAIR TABLE`
+  partition-refresh pattern from another repo were each initially applied
+  to a MaxCompute/ODPS external table before correction.)
 - **Sweep after correcting a claim, identifier, or behavioral constant.**
   After fixing a factual claim, renaming an identifier, or changing a related
   implementation detail in one location, grep the relevant changeset for stale
