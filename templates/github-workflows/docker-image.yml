@@ -153,7 +153,8 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           BRANCH_TAG_TEXT="${BRANCH_TAG:-none (branch is not master, dev or sit)}"
-          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # tee: print the summary to the job log (real values) and append it to the run Summary tab
+          tee -a "$GITHUB_STEP_SUMMARY" <<EOF
           ### ✅ Docker image built and pushed
 
           | Item | Value |
@@ -169,10 +170,11 @@ jobs:
 
           **Pin an exact image:** \`${IMAGE}@${DIGEST}\`
 
-          **Running locally:**
+          **Running locally** (log in to the registry first):
 
           \`\`\`bash
-          docker run -d -p <host-port>:<container-port> --env-file .env ${IMAGE}:${IMAGE_TAG}
+          docker login ${REGISTRY}
+          docker run -d --name ${IMAGE_NAME} -p <host-port>:<container-port> --env-file .env ${IMAGE}:${IMAGE_TAG}
           \`\`\`
 
           TODO: replace the placeholders above with this app's port, add its health-check path,
