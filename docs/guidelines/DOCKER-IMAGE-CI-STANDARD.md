@@ -50,6 +50,32 @@ Use an explicit `image_tag` (for example `1.4.0`) for anything a deployment will
 - **No `.env` files in the image.** Keep `.env*` in `.dockerignore`.
 - Optional: mirror the base image into the BFI registry. Docker Hub limits anonymous pulls per IP address and GitHub runners share IP addresses. This has not been hit yet.
 
+### 4.1 When to upgrade the pinned `uv` (and the base image digest)
+
+Pinning stops a tool release from silently changing a build, but a pin that is never moved goes stale. The `uv` version in the Dockerfile (`pip install uv==<version>`) is a deliberate choice, changed on purpose, not by accident.
+
+**Upgrade it when:**
+
+| Trigger | What to do |
+| --- | --- |
+| The version that writes `uv.lock` on developer machines is newer than the Dockerfile's. Run `uv --version` and compare it with the Dockerfile pin. | Raise the Dockerfile pin to match. `uv.lock` records a format `version` and `revision` (`da-negative-list` was `version = 1`, `revision = 3`, written by uv 0.12.12). An older uv in the image may fail to read or may rewrite a lock written by a newer one, and `uv sync --frozen` should fail the build loudly. |
+| A security advisory or a bug that affects the build or the lock resolution. | Upgrade promptly. |
+| A uv feature or fix the repository needs. | Upgrade as part of that change. |
+| A scheduled review, for example once a quarter (or when you revisit the base-image digest). | Check the latest release, read the release notes for lock-format or behaviour changes, and decide. If nothing needs it, leave the pin alone. |
+| The base image's Python changes (for example 3.8 to 3.9). | Re-check that the pinned uv still installs on the new Python and re-test the whole build. |
+
+**Do not** upgrade `uv` to the newest release just because it exists. A new release can change resolution, lock format or defaults, and you do not want that mixed into an unrelated change.
+
+**How to upgrade, safely:**
+
+1. Check that the release can be installed on the image's Python: its `requires_python` on PyPI must allow it. This matters most for old Python base images (both `0.12.12` and `0.12.22` allowed `>=3.8` when this was written).
+2. Change the pin in the Dockerfile, and update the version on your developer machines to the same one (`uv self update`, or install the same version).
+3. Run `uv lock --check`. If the lock needs regenerating, do that in the same change and review the diff of `uv.lock`: the runtime package versions must not move unless you intend it.
+4. Build the image, start the container and call its health endpoints (a successful build alone has not been enough: a fresh resolve once produced an image that built but failed on import).
+5. Dispatch the workflow from the branch and check the run (section 6).
+
+Apply the same discipline to the **base image digest**: update it on purpose, after reading what changed in the image (OS release, Python patch version), and re-run the full build and container check.
+
 ## 5. Layer cache (optional)
 
 The template caches layers in the GitHub Actions cache (`type=gha`). Measured in `da-negative-list`:
