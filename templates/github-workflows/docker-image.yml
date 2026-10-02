@@ -153,11 +153,8 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           BRANCH_TAG_TEXT="${BRANCH_TAG:-none (branch is not master, dev or sit)}"
-          # Container name: <image>_<tag>, plus -<env> unless prod (or unknown) or the tag already ends with it
+          # Container name: <image>_<tag> (the image tag as given, no environment added)
           CONTAINER_NAME="${IMAGE_NAME}_${IMAGE_TAG}"
-          if [ "$ENV_TARGET" != "prod" ] && [ "$ENV_TARGET" != "unspecified" ] && [[ "$IMAGE_TAG" != *"-${ENV_TARGET}" ]]; then
-            CONTAINER_NAME="${CONTAINER_NAME}-${ENV_TARGET}"
-          fi
           # tee: print the summary to the job log (real values) and append it to the run Summary tab
           tee -a "$GITHUB_STEP_SUMMARY" <<EOF
           ### ✅ Docker image built and pushed
