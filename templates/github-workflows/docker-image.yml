@@ -1,0 +1,180 @@
+name: Docker Image CI
+
+# STANDARD TEMPLATE — see docs/guidelines/DOCKER-IMAGE-CI-STANDARD.md for the rules behind each choice.
+# Copy to .github/workflows/docker-image.yml in the target repository, then:
+#   1. Set IMAGE_NAME below.
+#   2. Replace the TODO lines in the "Image build summary" step with this app's port, health path and env vars.
+#   3. Make sure the Dockerfile pins its base image (by digest) and tools (see the standard).
+#   4. Optional: delete the cache-from / cache-to lines if the cache does not pay off (see the standard).
+#
+# Required GitHub Repository Configuration:
+#
+# Repository Secrets (Settings > Secrets and variables > Actions > Secrets):
+#   - ALIYUN_REGISTRY_USERNAME: Alibaba Cloud registry username
+#   - ALIYUN_REGISTRY_PASSWORD: Alibaba Cloud registry password
+#
+# Application configuration is not baked into the image — supply it at container run time
+# (Kubernetes ConfigMaps and Secrets, or `docker run --env-file <file>` locally).
+#
+# Tags pushed on every run:
+#   - <image_tag>   the input (or the commit SHA if the run was not started by dispatch)
+#   - <short SHA>   first 7 characters of the commit, for traceability
+#   - branch tag    ONLY for master (latest), dev (dev) and sit (sit). Any other branch
+#                   pushes no mutable tag, so a feature-branch run can never overwrite
+#                   the image that SIT, dev or production is using.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker Image Tag (e.g., 0.1.0, 0.2.0)"
+        required: true
+        default: "latest"
+      environment:
+        description: "Target Environment (informational: labels the run and the summary, it does not change the build)"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - sit
+          - prod
+
+run-name: "Docker Build & Push - Tag: ${{ github.event.inputs.image_tag || github.ref_name }} - Branch: ${{ github.ref_name }} - Environment: ${{ github.event.inputs.environment || 'auto-detected' }}"
+
+# The job only needs to read the repository; it authenticates to the registry with its own secrets.
+permissions:
+  contents: read
+
+# Two runs for the same ref and tag would race on the same registry tags. Queue them, don't cancel.
+concurrency:
+  group: docker-image-${{ github.ref }}-${{ github.event.inputs.image_tag }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      REGISTRY: "registry-intl.ap-southeast-5.aliyuncs.com"
+      REGISTRY_NAMESPACE: "bfi-registry"
+      IMAGE_NAME: "your-image-name"  # TODO: set this repository's image name
+
+    steps:
+      # Note: Using actions/checkout@v5 because v4 uses Node.js 20 which is deprecated.
+      # Node.js 20 will be removed from GitHub Actions runners on Sept 16, 2026.
+      # v5 uses Node.js 24, ensuring compatibility with future runner defaults.
+      # See: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # Inputs go through env: and never directly into the shell script, so a crafted value
+      # cannot inject shell commands.
+      - name: Resolve image tags
+        id: tags
+        env:
+          INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          INPUT_ENVIRONMENT: ${{ github.event.inputs.environment }}
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_TAG="${INPUT_IMAGE_TAG:-$COMMIT_SHA}"
+          if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "::error::image_tag is not a valid Docker tag (letters, digits, '_', '.', '-'; max 128 characters; must not start with '.' or '-')"
+            exit 1
+          fi
+
+          case "$REF_NAME" in
+            master) BRANCH_TAG="latest"; DERIVED_ENV="prod" ;;
+            dev)    BRANCH_TAG="dev";    DERIVED_ENV="dev" ;;
+            sit)    BRANCH_TAG="sit";    DERIVED_ENV="sit" ;;
+            *)      BRANCH_TAG="";       DERIVED_ENV="unspecified" ;;
+          esac
+          ENV_TARGET="${INPUT_ENVIRONMENT:-$DERIVED_ENV}"
+
+          IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/${IMAGE_NAME}"
+          SHORT_SHA="${COMMIT_SHA::7}"
+
+          {
+            echo "tags<<TAGS_EOF"
+            echo "${IMAGE}:${IMAGE_TAG}"
+            echo "${IMAGE}:${SHORT_SHA}"
+            if [ -n "$BRANCH_TAG" ]; then
+              echo "${IMAGE}:${BRANCH_TAG}"
+            fi
+            echo "TAGS_EOF"
+            echo "image=${IMAGE}"
+            echo "image_tag=${IMAGE_TAG}"
+            echo "short_sha=${SHORT_SHA}"
+            echo "branch_tag=${BRANCH_TAG}"
+            echo "env_target=${ENV_TARGET}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Alibaba Cloud Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Layer cache in the GitHub Actions cache. It only pays off where the apt / dependency-install
+      # layers are slow (measured saving in the first repo: ~10 s of 93 s). The base image is still
+      # pulled on every run. `scope` keeps this image's cache separate from any other image built in
+      # the same repository; when a repo builds several images, give each its own scope.
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          ## Alibaba Cloud Container Registry rejects the OCI attestation manifests that
+          ## buildx attaches by default ("unknown manifest class ... oci.empty.v1+json").
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ env.IMAGE_NAME }}
+          cache-to: type=gha,mode=max,scope=${{ env.IMAGE_NAME }}
+
+      - name: Image build summary
+        env:
+          IMAGE: ${{ steps.tags.outputs.image }}
+          IMAGE_TAG: ${{ steps.tags.outputs.image_tag }}
+          SHORT_SHA: ${{ steps.tags.outputs.short_sha }}
+          BRANCH_TAG: ${{ steps.tags.outputs.branch_tag }}
+          ENV_TARGET: ${{ steps.tags.outputs.env_target }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          BRANCH_TAG_TEXT="${BRANCH_TAG:-none (branch is not master, dev or sit)}"
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ### ✅ Docker image built and pushed
+
+          | Item | Value |
+          | --- | --- |
+          | Repository | \`${IMAGE}\` |
+          | Version tag | \`${IMAGE_TAG}\` |
+          | Commit tag | \`${SHORT_SHA}\` |
+          | Branch tag | ${BRANCH_TAG_TEXT} |
+          | Digest | \`${DIGEST}\` |
+          | Target environment (informational) | ${ENV_TARGET} |
+          | Commit | \`${COMMIT_SHA}\` |
+          | Branch | \`${BRANCH_NAME}\` |
+
+          **Pin an exact image:** \`${IMAGE}@${DIGEST}\`
+
+          **Running locally:**
+
+          \`\`\`bash
+          docker run -d -p <host-port>:<container-port> --env-file .env ${IMAGE}:${IMAGE_TAG}
+          \`\`\`
+
+          TODO: replace the placeholders above with this app's port, add its health-check path,
+          and list the variables it needs in \`.env\`.
+          EOF
