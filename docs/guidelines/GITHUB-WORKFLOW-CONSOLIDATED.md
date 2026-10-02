@@ -181,6 +181,12 @@ dev → master
 
 ### 3.1 GitHub Actions Workflow Setup
 
+> **Standard template:** new and updated repositories should start from
+> [`templates/github-workflows/docker-image.yml`](../../templates/github-workflows/docker-image.yml) and follow
+> [DOCKER-IMAGE-CI-STANDARD.md](DOCKER-IMAGE-CI-STANDARD.md) (hardened permissions, validated tags, branch tags only
+> for `master`/`dev`/`sit`, digest-pinned base image, optional layer cache). The older inline example below predates
+> that standard; where they differ, the standard takes precedence.
+
 Create `.github/workflows/docker-image-ci.yml` for automated Docker builds:
 
 ```yaml
