@@ -103,7 +103,9 @@ def entry_from_classic_table(name: str, value) -> str | None:
         version = value.get("version")
         if version:
             return entry_from_classic_table(name, version)
-        return name  # git/path/url dependency - uv add can't infer this; flag as bare name
+        return (
+            name  # git/path/url dependency - uv add can't infer this; flag as bare name
+        )
     return name
 
 
@@ -114,7 +116,9 @@ def collect_dev_deps(data: dict) -> tuple[list[str], str]:
 
     optional = data.get("project", {}).get("optional-dependencies", {})
     if isinstance(optional.get("dev"), list) and optional["dev"]:
-        return [normalize_pep508(d) for d in optional["dev"]], "project.optional-dependencies.dev"
+        return [
+            normalize_pep508(d) for d in optional["dev"]
+        ], "project.optional-dependencies.dev"
 
     poetry = data.get("tool", {}).get("poetry", {})
     group_dev = poetry.get("group", {}).get("dev", {}).get("dependencies", {})
@@ -153,7 +157,11 @@ def quote_if_needed(dep: str) -> str:
 def main() -> None:
     args = sys.argv[1:]
     if not args:
-        print(json.dumps({"error": "usage: parse_pyproject.py <path> [--no-default-devtools]"}))
+        print(
+            json.dumps(
+                {"error": "usage: parse_pyproject.py <path> [--no-default-devtools]"}
+            )
+        )
         sys.exit(1)
 
     path = args[0]
@@ -166,13 +174,17 @@ def main() -> None:
     poetry = data.get("tool", {}).get("poetry", {})
     build_backend = data.get("build-system", {}).get("build-backend", "")
     build_requires = data.get("build-system", {}).get("requires", [])
-    uses_poetry = "poetry" in build_backend or any("poetry" in r for r in build_requires)
+    uses_poetry = "poetry" in build_backend or any(
+        "poetry" in r for r in build_requires
+    )
 
     name = project.get("name") or poetry.get("name") or ""
     requires_python = project.get("requires-python")
     if not requires_python:
         py_spec = poetry.get("dependencies", {}).get("python")
-        if isinstance(py_spec, str) and (py_spec.startswith("^") or py_spec.startswith("~")):
+        if isinstance(py_spec, str) and (
+            py_spec.startswith("^") or py_spec.startswith("~")
+        ):
             requires_python = ">=" + caret_to_range(py_spec).split(",")[0].lstrip(">=")
         elif py_spec:
             requires_python = py_spec
@@ -181,7 +193,10 @@ def main() -> None:
     dev_deps, dev_source = collect_dev_deps(data)
 
     if add_default_devtools:
-        existing_names = {re.split(r"[<>=!~\s]", d, 1)[0].strip("'\"").lower() for d in dev_deps}
+        existing_names = {
+            re.split(r"[<>=!~\s]", d, maxsplit=1)[0].strip("'\"").lower()
+            for d in dev_deps
+        }
         for tool in DEFAULT_DEV_TOOLS:
             if tool not in existing_names:
                 dev_deps.append(tool)
@@ -190,7 +205,9 @@ def main() -> None:
         "uv add " + " ".join(quote_if_needed(d) for d in deps) if deps else ""
     )
     uv_add_dev = (
-        "uv add --dev " + " ".join(quote_if_needed(d) for d in dev_deps) if dev_deps else ""
+        "uv add --dev " + " ".join(quote_if_needed(d) for d in dev_deps)
+        if dev_deps
+        else ""
     )
 
     result = {

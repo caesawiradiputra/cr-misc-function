@@ -217,7 +217,9 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
             logger.error(
                 f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}") from e
+            raise RuntimeError(
+                f"[{self.db_type}] Query execution failed: {str(e)}"
+            ) from e
 
     def execute_non_query(
         self,
@@ -242,7 +244,7 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
                 raise RuntimeError(
                     f"[{self.db_type}] Cursor is not available for non-query execution"
                 )
-            affected_rows = self.cursor.rowcount
+            affected_rows: int = self.cursor.rowcount
             if self._requires_commit():
                 if self.connection:
                     self.connection.commit()
@@ -258,7 +260,9 @@ class RDBMSBaseStrategy(DatabaseStrategy, ABC):
             logger.error(
                 f"[{self.db_type}] Error executing non-query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}") from e
+            raise RuntimeError(
+                f"[{self.db_type}] Non-query execution failed: {str(e)}"
+            ) from e
 
     @timed_operation("Table creation")
     def create_table(

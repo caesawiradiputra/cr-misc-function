@@ -3,7 +3,7 @@
 Provides convenient functions for calculating relative dates and formatting them
 as partition identifiers used in data pipelines and ETL jobs.
 
-All dates are timezone-aware and use the timezone configured in app.configs.config.
+All dates are timezone-aware and use APP_CONFIG.timezone from app.configs.config.
 
 Usage:
     from app.utils.date_util import get_partition, get_bizdate
@@ -18,8 +18,8 @@ Usage:
     bizdate = get_bizdate()  # Returns "2024-01-15"
 
 Date Calculation:
-    - All functions use `now` from app.configs.config (loaded at import time)
-    - `now` is timezone-aware using configured timezone (Asia/Jakarta by default)
+    - All functions compute the current time on each call (not frozen at import)
+    - The time is timezone-aware using APP_CONFIG.timezone (Asia/Jakarta by default)
     - date_add parameter specifies how many days back from now:
       - timedelta(days=1): yesterday (default for partition/bizdate)
       - timedelta(days=0): today
@@ -36,12 +36,19 @@ Template Customization:
     1. Copy this file to your project's app/utils/ directory
     2. Ensure app/configs/config.py is in place and loads correctly
     3. Import functions directly; no additional setup needed
-    4. Customize timezone in config.py if needed for your region
+    4. Customize APP_CONFIG.timezone in config.py if needed for your region
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from app.configs.config import now
+import pytz
+
+from app.configs.config import APP_CONFIG
+
+
+def _now() -> datetime:
+    """Return the current time in the application's configured timezone."""
+    return datetime.now(pytz.timezone(APP_CONFIG.timezone))
 
 
 def get_partition(
@@ -76,7 +83,7 @@ def get_partition(
         >>> get_partition(is_start_month=True)
         '20240101'  # First day of current month
     """
-    yesterday = now - date_add
+    yesterday = _now() - date_add
     if is_start_month:
         yesterday = yesterday.replace(day=1)
 
@@ -86,7 +93,9 @@ def get_partition(
     return yesterday.strftime("%Y%m%d")
 
 
-def get_bizdate(date_add: timedelta = timedelta(days=1), is_datetime: bool = False) -> str:
+def get_bizdate(
+    date_add: timedelta = timedelta(days=1), is_datetime: bool = False
+) -> str:
     """Return the business date string for DataWorks bizdate convention.
 
     DataWorks uses 'bizdate' for pipeline execution dates and scheduling.
@@ -110,7 +119,7 @@ def get_bizdate(date_add: timedelta = timedelta(days=1), is_datetime: bool = Fal
         >>> get_bizdate(timedelta(days=0))  # Today
         '2024-01-16'
     """
-    bizdate = now - date_add
+    bizdate = _now() - date_add
     if is_datetime:
         return bizdate.strftime("%Y-%m-%d 00:00:00")
     return bizdate.strftime("%Y-%m-%d")

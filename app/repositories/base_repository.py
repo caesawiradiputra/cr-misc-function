@@ -45,8 +45,8 @@ class BaseRepository:
     """
 
     DATABASE_TYPE: str = ""
-    SCHEMA: str = ""      # Use for MSSQL, PostgreSQL, Hive
-    DATABASE: str = ""    # Use for MySQL
+    SCHEMA: str = ""  # Use for MSSQL, PostgreSQL, Hive
+    DATABASE: str = ""  # Use for MySQL
     TABLE_NAME: str = ""
     COLUMNS: list[str] = []
 
@@ -83,7 +83,9 @@ class BaseRepository:
         if not is_valid:
             raise ValueError(f"[{self.__class__.__name__}] {msg}")
 
-    def _build_where_clause(self, conditions: dict[str, Any]) -> tuple[str, tuple[Any, ...]]:
+    def _build_where_clause(
+        self, conditions: dict[str, Any]
+    ) -> tuple[str, tuple[Any, ...]]:
         """Build a parameterized WHERE clause from a conditions dict.
 
         Args:

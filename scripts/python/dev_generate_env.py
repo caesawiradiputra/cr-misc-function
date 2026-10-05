@@ -21,6 +21,7 @@ import yaml
 # Utilities
 # --------------------------------------------------
 
+
 def run(cmd: list[str]) -> str:
     result = subprocess.run(
         cmd,
@@ -34,6 +35,7 @@ def run(cmd: list[str]) -> str:
 # --------------------------------------------------
 # Conda Environment Resolution
 # --------------------------------------------------
+
 
 def get_conda_env_python(env_name: str) -> Path:
     info = json.loads(run(["conda", "info", "--json"]))
@@ -53,6 +55,7 @@ def get_conda_env_python(env_name: str) -> Path:
 # --------------------------------------------------
 # Environment Inspection
 # --------------------------------------------------
+
 
 def get_python_version(python_path: Path) -> str:
     output = run([str(python_path), "--version"])
@@ -95,9 +98,7 @@ def remove_duplicates(
 ) -> dict[str, str]:
     conda_set = {pkg.lower() for pkg in conda_packages}
     return {
-        name: version
-        for name, version in pip_packages.items()
-        if name not in conda_set
+        name: version for name, version in pip_packages.items() if name not in conda_set
     }
 
 
@@ -110,6 +111,7 @@ def has_poetry_files(project_path: Path) -> bool:
 # --------------------------------------------------
 # YAML Builder
 # --------------------------------------------------
+
 
 def build_environment_yaml(
     name: str,
@@ -148,6 +150,7 @@ def build_environment_yaml(
 # --------------------------------------------------
 # CLI
 # --------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(

@@ -81,7 +81,9 @@ class ODPSStrategy(DatabaseStrategy):
             logger.error(
                 f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}") from e
+            raise RuntimeError(
+                f"[{self.db_type}] Query execution failed: {str(e)}"
+            ) from e
 
     def execute_non_query(
         self,
@@ -111,12 +113,16 @@ class ODPSStrategy(DatabaseStrategy):
             return 0
         except odps_errors.ODPSError as e:
             logger.error(f"[{self.db_type}] ODPS error: {e}", exc_info=True)
-            raise RuntimeError(f"[{self.db_type}] ODPS non-query failed: {str(e)}") from e
+            raise RuntimeError(
+                f"[{self.db_type}] ODPS non-query failed: {str(e)}"
+            ) from e
         except Exception as e:
             logger.error(
                 f"[{self.db_type}] Error executing non-query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}") from e
+            raise RuntimeError(
+                f"[{self.db_type}] Non-query execution failed: {str(e)}"
+            ) from e
 
     @timed_operation("Table creation")
     def create_table(

@@ -51,7 +51,7 @@ these, only a repository class is needed:
    `OrderRepository.get_pending_orders`'s style: parameterized query, a
    `logger.debug` at entry, and a docstring with an example usage block.
 5. Confirm the target `db_type` is already registered in `database_config`
-   (or `odps_config`) in `app/configs/config.py` — if not, that's Case B.
+   (or is `ODPS`) in `app/configs/config.py` — if not, that's Case B.
 
 ## Case B — new database type (no existing strategy)
 

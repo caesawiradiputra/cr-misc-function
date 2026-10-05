@@ -22,8 +22,10 @@ Every repository class MUST have this structure in exactly this order:
 class OrderRepository:
     """Repository for accessing order data."""
 
-    DATABASE_TYPE: str = "mssql"   # lowercase: "mssql", "postgres", "mysql", "hive", "trino", "odps"
-    SCHEMA: str = "dbo"            # For MSSQL/PostgreSQL/Hive (schema-based)
+    DATABASE_TYPE: str = (
+        "mssql"  # lowercase: "mssql", "postgres", "mysql", "hive", "trino", "odps"
+    )
+    SCHEMA: str = "dbo"  # For MSSQL/PostgreSQL/Hive (schema-based)
     # DATABASE: str = "db_name"    # For MySQL/Hive (database-based) — use instead of SCHEMA
     TABLE_NAME: str = "orders"
     COLUMNS: list[str] = [
@@ -62,14 +64,12 @@ def __enter__(self):
     """Enter context manager."""
     return self
 
+
 def __exit__(self, exc_type, exc_val, exc_tb):
     """Exit context manager and cleanup."""
     if exc_type:
         logger.error(
-            "[%s] Operation failed: %s",
-            self.__class__.__name__,
-            exc_val,
-            exc_info=True
+            "[%s] Operation failed: %s", self.__class__.__name__, exc_val, exc_info=True
         )
     self.strategy.disconnect()
 ```
@@ -81,6 +81,7 @@ def __exit__(self, exc_type, exc_val, exc_tb):
 def get_pending_orders(self, days: int = 30) -> pd.DataFrame | None: ...
 def insert_bulk_orders(self, orders: list[dict]) -> int: ...
 def find_by_customer(self, customer_id: int) -> pd.DataFrame | None: ...
+
 
 # ❌ Bad — generic CRUD (belongs to strategy layer, not repository)
 def execute_query(self, sql: str): ...
@@ -107,13 +108,13 @@ def insert(self, data: dict): ...
 
 ```python
 from app.utils.repo_utils import (
-    read_query_file,        # Load SQL from file with validation
+    read_query_file,  # Load SQL from file with validation
     generate_placeholders,  # Generate ?, ?, ? or %s, %s, %s
-    build_insert_query,     # Build INSERT INTO ... VALUES (?, ...)
-    build_update_query,     # Build UPDATE ... SET ... WHERE ...
-    validate_columns,       # Validate column names against COLUMNS
-    build_select_columns,   # Build SELECT col_list with alias
-    merge_query_params,     # Flatten parameter tuples
+    build_insert_query,  # Build INSERT INTO ... VALUES (?, ...)
+    build_update_query,  # Build UPDATE ... SET ... WHERE ...
+    validate_columns,  # Validate column names against COLUMNS
+    build_select_columns,  # Build SELECT col_list with alias
+    merge_query_params,  # Flatten parameter tuples
 )
 ```
 
@@ -121,11 +122,17 @@ from app.utils.repo_utils import (
 
 ```python
 from app.utils.data_utils import (
-    export_to_csv, import_from_csv,
-    export_to_parquet, import_from_parquet,
-    export_to_json, import_from_json,
-    convert_csv_to_parquet, convert_parquet_to_csv,
-    convert_csv_to_json, convert_json_to_parquet, convert_json_to_csv,
+    export_to_csv,
+    import_from_csv,
+    export_to_parquet,
+    import_from_parquet,
+    export_to_json,
+    import_from_json,
+    convert_csv_to_parquet,
+    convert_parquet_to_csv,
+    convert_csv_to_json,
+    convert_json_to_parquet,
+    convert_json_to_csv,
 )
 ```
 
@@ -192,7 +199,9 @@ def insert_bulk_orders(self, orders: list[dict[str, Any]]) -> int:
     query = build_insert_query(self.SCHEMA, self.TABLE_NAME, list(orders[0].keys()))
     rows_affected = 0
     for order in orders:
-        rows_affected += self.strategy.execute_non_query(query, params=tuple(order.values()))
+        rows_affected += self.strategy.execute_non_query(
+            query, params=tuple(order.values())
+        )
     return rows_affected
 ```
 
