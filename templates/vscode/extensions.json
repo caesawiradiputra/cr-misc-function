@@ -1,0 +1,47 @@
+{
+	// See https://go.microsoft.com/fwlink/?LinkId=827846 to learn about workspace recommendations.
+	// Extension identifier format: ${publisher}.${name}. Example: vscode.csharp
+
+	// List of extensions which should be recommended for users of this workspace.
+	"recommendations": [
+		"aaron-bond.better-comments",
+		"mikestead.dotenv",
+		"usernamehw.errorlens",
+		"donjayamanne.githistory",
+		"GitHub.copilot-chat",
+		"GitHub.copilot",
+		"codezombiech.gitignore",
+		"nhoizey.gremlins",
+		"ms-toolsai.jupyter",
+		"ms-toolsai.vscode-jupyter-cell-tags",
+		"ms-toolsai.jupyter-keymap",
+		"ms-toolsai.jupyter-renderers",
+		"ms-toolsai.vscode-jupyter-slideshow",
+		"DavidAnson.vscode-markdownlint",
+		"PKief.material-icon-theme",
+		"alefragnani.project-manager",
+		"ms-python.vscode-pylance",
+		"ms-python.python",
+		"ms-python.debugpy",
+		"ms-python.vscode-python-envs",
+		"KevinRose.vsc-python-indent",
+		"mechatroner.rainbow-csv",
+		"charliermarsh.ruff",
+		"Gruntfuggly.todo-tree",
+		"ms-python.mypy-type-checker",
+		"ms-python.black-formatter",
+		"mtxr.sqltools",
+		"mtxr.sqltools-driver-pg",
+		"redhat.vscode-yaml",
+		"ms-azuretools.vscode-docker",
+		"yzhang.markdown-all-in-one",
+		"eamodio.gitlens",
+		"IBM.output-colorizer",
+		"RandomFractalsInc.vscode-data-preview",
+		"ms-toolsai.jupyter-variable-explorer"
+	],
+	// List of extensions recommended by VS Code that should not be recommended for users of this workspace.
+	"unwantedRecommendations": [
+		
+	]
+}

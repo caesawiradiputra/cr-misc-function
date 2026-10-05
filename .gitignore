@@ -201,7 +201,29 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Claude Code
+#  settings.local.json holds machine-specific permission overrides and
+#  should not be committed as part of the shared .claude/ template
+.claude/settings.local.json
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# Database backups
+db/backups/*.bak
+db/backups/*.sql.gz
+db/backups/*.dump
+
+# Generated migration files
+db/migrations/*.generated.sql
+
+# Environment-specific configs with secrets
+config/environment/*.local.env
+config/environment/*.secrets.*
+
+# Temporary script outputs
+scripts/**/*.log
+scripts/**/*.tmp

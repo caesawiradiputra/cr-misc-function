@@ -1,0 +1,54 @@
+{
+  "skill_name": "migrate-to-uv",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Hey, can you migrate my invoice-parser project over to uv? It's currently Poetry + Conda (I use a py311 conda env for it, though it's not necessarily active in this shell right now). I want it fully switched over -- new pyproject.toml, deps installed with uv, the works, not just a checklist for me to run later.",
+      "expected_output": "Full end-to-end migration: legacy/ backup of the classic [tool.poetry.dependencies] pyproject.toml and poetry.lock, a new uv-managed pyproject.toml/uv.lock/.venv, mypy.ini/ruff.toml added, .vscode/settings.json merged, docs rendered, and the pre-existing uncommitted git file flagged before proceeding.",
+      "files": [],
+      "expectations": [
+        "legacy/pyproject.poetry.toml exists and contains the original [tool.poetry.dependencies] table content",
+        "legacy/poetry.lock exists (backup of the original lock file)",
+        "The live pyproject.toml no longer has a [tool.poetry] section / poetry backend",
+        "uv.lock and .venv exist in the project root",
+        "New pyproject.toml dependencies include pandas, pdfplumber, requests, and click",
+        "New pyproject.toml dev dependencies include pytest, black, mypy, and ruff",
+        "mypy.ini and ruff.toml exist in the project root",
+        "legacy/README_LEGACY.md and legacy/README_MIGRATION.md both exist",
+        ".vscode/settings.json exists and references the .venv path",
+        "The agent noticed and surfaced the pre-existing uncommitted file (scratch_notes.txt) before proceeding",
+        "No git commit was made automatically"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Can we get sales-etl off poetry? No conda involved, just plain poetry-core. Want it running on uv.",
+      "expected_output": "Full migration of a modern PEP 621-style Poetry project (no active Conda) onto uv, with parenthesized Poetry version specs correctly normalized into valid uv add arguments and no Conda-related errors.",
+      "files": [],
+      "expectations": [
+        "legacy/pyproject.poetry.toml and legacy/poetry.lock both exist",
+        "The live pyproject.toml no longer declares a poetry build-backend",
+        "uv.lock and .venv exist in the project root",
+        "New pyproject.toml dependencies include pandas, sqlalchemy, loguru, and python-dotenv with no literal parentheses left over",
+        "New pyproject.toml dev dependencies include pytest, types-requests, mypy, and ruff",
+        "mypy.ini and ruff.toml exist in the project root",
+        ".vscode/settings.json exists and references the .venv path",
+        "No legacy/conda-env.yml or legacy/conda-explicit-lock.txt was created, and no crash occurred from the absent Conda environment",
+        "legacy/README_MIGRATION.md reflects the actual dependencies/commands used, not placeholder text"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Please migrate the reporting-service project from poetry to uv.",
+      "expected_output": "The agent recognizes the project is already uv-managed (hatchling backend, existing uv.lock, no Poetry markers) and checks with the user or clearly explains the situation instead of blindly re-running the full backup/delete/migrate flow on a project that doesn't need it.",
+      "files": [],
+      "expectations": [
+        "The agent recognized the project already appears to be on uv before taking destructive action",
+        "Original dependencies (fastapi, uvicorn) and dev dependencies (pytest, mypy, ruff) are intact afterward",
+        "No redundant/unnecessary legacy/ backup folder was created without explanation",
+        "The agent did not error out or get stuck on the project not being a git repository",
+        "The final response clearly communicates the already-migrated status rather than silently doing nothing or silently redoing everything"
+      ]
+    }
+  ]
+}
