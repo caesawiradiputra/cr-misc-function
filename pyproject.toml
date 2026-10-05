@@ -34,4 +34,5 @@ dev = [
     "pytest>=9.0.2",
     "mypy>=1.13.0",
     "types-pytz",
+    "ruff>=0.16.10",
 ]
