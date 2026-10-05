@@ -55,7 +55,7 @@ class _Strip(ast.NodeTransformer):
         return node
 
 
-def definitions(tree: ast.AST) -> dict[str, tuple[str, tuple[str, str, str]]]:
+def definitions(tree: ast.Module) -> dict[str, tuple[str, tuple[str, str, str]]]:
     """qualname -> (signature, (stripped body, decorators, bases))."""
     out: dict[str, tuple[str, tuple[str, str, str]]] = {}
 

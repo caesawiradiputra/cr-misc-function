@@ -45,7 +45,7 @@ def get_active_conda_env() -> str:
         raise RuntimeError("❌ Conda not found or not accessible")
 
     data = json.loads(output)
-    active_env = data.get("active_prefix_name")
+    active_env: str | None = data.get("active_prefix_name")
 
     if not active_env:
         raise RuntimeError("❌ Could not detect active conda environment")

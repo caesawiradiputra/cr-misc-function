@@ -69,7 +69,8 @@ def run_ruff(base: list[str], extra: list[str]) -> list[dict]:
     if proc.returncode != 0:
         sys.stderr.write(proc.stderr)
         sys.exit(2)
-    return json.loads(proc.stdout or "[]")
+    result: list[dict] = json.loads(proc.stdout or "[]")
+    return result
 
 
 def _typing_usage(tree: ast.AST) -> tuple[list[ast.ImportFrom], set[str]]:

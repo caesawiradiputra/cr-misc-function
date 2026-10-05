@@ -115,7 +115,7 @@ def _format_location(
         return f"..{truncated}"
 
 
-def _location_filter(record: dict) -> bool:  # type: ignore[misc]
+def _location_filter(record: dict) -> bool:
     """Filter to add formatted location to record extras for use in format string.
 
     This filter calculates the smart-truncated location (name:function:line) and
@@ -195,7 +195,7 @@ def _setup_std_logging_bridge(level: str = "INFO") -> None:
     logging.root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
 
-def _console_json_sink(message: dict) -> None:  # type: ignore[arg-type]
+def _console_json_sink(message: dict) -> None:
     """Output formatted JSON log record to stdout for structured logging.
 
     This custom sink transforms loguru message records into minimal JSON output

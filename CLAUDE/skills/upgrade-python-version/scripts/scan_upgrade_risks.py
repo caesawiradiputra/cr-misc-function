@@ -474,8 +474,8 @@ def main() -> None:
         print(f"\n> Not detectable statically ({always[0][0]}): {always[0][4]}.")
     if errors:
         print("\n### Files that failed to parse\n")
-        for e in errors:
-            print(f"- {e}")
+        for err in errors:
+            print(f"- {err}")
     sys.exit(0)
 
 

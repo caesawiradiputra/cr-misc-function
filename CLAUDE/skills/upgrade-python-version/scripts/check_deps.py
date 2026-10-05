@@ -270,7 +270,8 @@ def pypi(name: str, version: str | None = None) -> dict | None:
     for attempt in range(3):
         try:
             with urllib.request.urlopen(url, timeout=30) as r:
-                return json.load(r)
+                payload: dict = json.load(r)
+                return payload
         except Exception:  # noqa: BLE001 - network is best-effort, retried
             time.sleep(5 * (attempt + 1))
     return None
@@ -442,6 +443,7 @@ def main() -> None:
                     ## Every line for the package (one per marker) gets the pin.
                     for i in by_name[key]:
                         m = _NAME.match(current[i])
+                        assert m is not None  # every line in by_name matched _NAME
                         marker = (
                             current[i].split(";", 1)[1] if ";" in current[i] else ""
                         )
@@ -459,9 +461,8 @@ def main() -> None:
                                     [
                                         reqs[i]
                                         for i in range(len(reqs))
-                                        if _NAME.match(reqs[i])
-                                        and _norm(_NAME.match(reqs[i]).group(1))
-                                        in direct
+                                        if (mm := _NAME.match(reqs[i]))
+                                        and _norm(mm.group(1)) in direct
                                     ],
                                 )
                             )
