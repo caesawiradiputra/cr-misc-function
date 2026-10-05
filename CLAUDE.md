@@ -13,10 +13,11 @@ uv sync                   # Install / sync all dependencies
 uv run ruff check .       # Lint
 uv run ruff format .      # Format
 uv run mypy .             # Type check
+uv run pytest             # Tests (tests/)
 uv run python -m app.main # Run entry point
 ```
 
-No test suite exists yet. CI runs ruff + mypy on pushes to `master`, `dev`, and `sit`.
+CI (`.github/workflows/python-ci.yml`, uv-based) runs ruff check, ruff format --check, mypy and pytest on pushes and pull requests to `master`, `dev`, and `sit`. The test suite is small: import smoke tests plus the config consumers (`create_strategy`, `OSSConnector`, `date_util`).
 
 ## Architecture
 
