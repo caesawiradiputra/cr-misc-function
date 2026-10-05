@@ -1,0 +1,7 @@
+﻿name: cr-misc-function-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+_comment: "Install Python packages using: poetry install"

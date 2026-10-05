@@ -1,0 +1,34 @@
+# WSL 2 global config. Lives at %UserProfile%\.wslconfig on the WINDOWS side
+# (not inside WSL) and applies to every WSL distro on the machine. Changes
+# only take effect after `wsl --shutdown` from PowerShell, which kills every
+# running WSL process (including a mid-flight Docker build or Claude Code
+# session) — never run it while one is in progress. See
+# docs/wsl-performance-and-docker.md for what each setting does and why.
+
+[wsl2]
+# Cap WSL's memory/CPU instead of letting it claim unlimited host resources.
+# The values below assume a host with 32GB+ RAM and 8+ cores; adjust to your
+# own machine — roughly 50-75% of total RAM, most but not all cores, and
+# leave Windows itself enough headroom to stay responsive.
+memory=16GB
+processors=8
+swap=8GB
+
+# Mirrors the Windows host's proxy configuration into WSL automatically.
+# Fixes WSL-side downloads/installs being throttled or misrouted relative to
+# the same transfer run natively on Windows, without hardcoding a proxy
+# address. Requires a reasonably recent WSL version (`wsl --version`).
+autoProxy=true
+
+## Fallback network options (Windows 11 22H2+ only). Leave commented unless
+## autoProxy=true alone doesn't fix a WSL transfer that's consistently and
+## substantially slower than the same transfer on Windows — see the
+## diagnosis steps in docs/wsl-performance-and-docker.md before enabling.
+# networkingMode=mirrored
+# dnsTunneling=true
+
+[experimental]
+# Smaller, reclaimable virtual disk instead of a fixed-size one that only grows.
+sparseVhd=true
+# Hands idle memory back to Windows instead of holding onto the `memory=` cap.
+autoMemoryReclaim=gradual

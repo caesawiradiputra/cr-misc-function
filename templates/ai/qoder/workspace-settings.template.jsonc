@@ -1,0 +1,109 @@
+{
+    // =====================================================
+    // Qoder AI Workspace Settings Template
+    // =====================================================
+    //
+    // This file extends the base VS Code settings template
+    // (templates/vscode/settings.json) with Qoder AI-specific
+    // configurations. Copy both files and merge as needed.
+    //
+    // Place this file at: .vscode/settings.json
+    // (Workspace-level, committed to version control)
+    //
+    // NOTE: User-level (global) settings take precedence
+    // for shared rules. Only put PROJECT-SPECIFIC overrides
+    // here to avoid duplicating global config.
+    // =====================================================
+
+    // =====================================================
+    // Core Editor & UX
+    // (Inherit from templates/vscode/settings.json)
+    // =====================================================
+    // "workbench.iconTheme": "material-icon-theme",
+    // "git.autofetch": false,
+    // "files.trimTrailingWhitespace": true,
+    // "files.insertFinalNewline": true,
+    // "editor.rulers": [88],
+
+    // =====================================================
+    // Qoder AI / Chat Integration
+    // =====================================================
+    // Enable MCP server gallery for discovering community servers
+    "chat.mcp.gallery.enabled": true,
+
+    // Configure how agent tool calls appear in chat
+    "chat.agent.thinking.collapsedTools": "withThinking",
+
+    // =====================================================
+    // Terminal Auto-Approval — PROJECT OVERRIDES ONLY
+    // =====================================================
+    // WARNING: Do NOT duplicate global (user-level) rules here.
+    // Only add commands specific to THIS project that are not
+    // covered by the global auto-approve configuration.
+    //
+    // Global config should cover: universal safe commands,
+    // blocklist (rm, curl, etc.), and default patterns.
+    // This section: project-specific tools only.
+    //
+    // Syntax:
+    //   "command-name": true/false          — exact match
+    //   "/^pattern$/": true/false           — regex match
+    //   "/^pattern$/i": true/false          — case-insensitive regex
+    // =====================================================
+    "chat.tools.terminal.autoApprove": {
+
+        // ---- [PROJECT_TOOL_1]: e.g., Python build/lint/test ----
+        // "/^poetry\\s+(install|lock|show|run)\\b/i": true,
+        // "/^ruff\\s+(check|format)\\b/i": true,
+        // "/^mypy\\b/i": true,
+        // "/^pytest\\b/i": true,
+
+        // ---- [PROJECT_TOOL_2]: e.g., Package manager ----
+        // "/^uv\\s+(sync|add|remove|run)\\b/i": true,
+
+        // ---- [PROJECT_TOOL_3]: e.g., Container runtime (read-only) ----
+        // "/^docker\\s+(ps|images|logs|version)\\b/i": true,
+        // "/^docker\\s+(build|push|run)\\b/": false,
+
+        // ---- [PROJECT_TOOL_4]: e.g., Project scripts ----
+        // "/^\\.(\\\\|/)scripts(\\\\|/)[a-z0-9_-]+\\.ps1\\b/i": true
+    },
+
+    // =====================================================
+    // Python Core (if applicable)
+    // =====================================================
+    // "python.languageServer": "Pylance",
+    // "python.terminal.activateEnvironment": true,
+    // "python.analysis.typeCheckingMode": "basic",
+
+    // =====================================================
+    // Formatting & Code Actions
+    // =====================================================
+    // "editor.formatOnSave": false,
+    // "editor.formatOnPaste": false,
+    // "editor.codeActionsOnSave": {
+    //     "source.fixAll": "explicit",
+    //     "source.organizeImports": "explicit"
+    // },
+
+    // =====================================================
+    // Ruff (if applicable)
+    // =====================================================
+    // "ruff.enable": true,
+    // "ruff.fixAll": true,
+    // "ruff.organizeImports": true,
+
+    // =====================================================
+    // MCP Server Configuration
+    // =====================================================
+    // MCP servers are defined in .vscode/mcp.json, NOT here.
+    // This setting only controls gallery discovery:
+    // "chat.mcp.gallery.enabled": true,
+
+    // =====================================================
+    // Markdown
+    // =====================================================
+    // "markdownlint.config": {
+    //     "MD024": false
+    // }
+}
