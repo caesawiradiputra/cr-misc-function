@@ -322,6 +322,7 @@ templates/
 +-- antigravity ide/                  - Antigravity IDE extensions.json and user settings (Open VSX, pyrefly)
 +-- vscode/                           - VS Code extensions.json and settings.json
 +-- conda/py311/, conda/py39/         - Conda environment.yml (legacy projects)
++-- github-workflows/                 - Standard Docker Image CI workflow (see docs/guidelines/DOCKER-IMAGE-CI-STANDARD.md)
 +-- README_MIGRATION.template.md      - Poetry/Conda -> uv guide, Windows + Conda (used by the .ps1)
 +-- README_MIGRATION.linux.template.md- Poetry -> uv guide, WSL/Linux, no Conda (used by the .sh)
 +-- README_LEGACY*.template.md        - Rollback guides for the same two scripts
@@ -414,3 +415,4 @@ Quick usage:
 - [Claude Code WSL 2 Setup](docs/claude-code-wsl-setup.md) - WSL deep-dive: nvm/npm install route, proxies, troubleshooting
 - [Logging Configuration](docs/logging-configuration.md) - Structured logging setup
 - [GitHub Workflow Guide](docs/guidelines/GITHUB-WORKFLOW-CONSOLIDATED.md) - Branch and PR conventions
+- [Docker Image CI Standard](docs/guidelines/DOCKER-IMAGE-CI-STANDARD.md) - Standard build-and-push workflow, tag policy and Dockerfile rules
