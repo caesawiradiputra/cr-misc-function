@@ -82,7 +82,7 @@ or the IDE templates change.
 
 - **Placeholder**: MSSQL/MySQL/Hive use `?`; PostgreSQL/Trino use `%s` — `BaseRepository._placeholder()` handles this automatically
 - **Config validation** is deferred to connection time, not import time — missing env vars don't fail at startup
-- `odps_config` in `config.py` is a plain dict (not `DatabaseConfig`), mapped separately from `database_config`
+- `ODPS` in `config.py` is an `ODPSConfig` (not `DatabaseConfig`), mapped separately from `database_config`; `create_strategy("odps")` maps its `project` to the strategy's `default_project`. `oss_config` routes OSS connector names to `OSSConfig` objects
 - `hologres` maps to `PostgreSQLStrategy` (shares PostgreSQL wire protocol)
 - Log format defaults to `json` for production (Grafana); set `LOG_FORMAT=text` for local development
 - Python 3.11 union syntax (`X | Y`, `list[str]`) throughout — do not use `Optional` or `Union`

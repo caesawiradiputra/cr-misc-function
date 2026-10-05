@@ -50,7 +50,7 @@ from app.configs.config_schemas import (
 try:
     from app.configs.log_config import logger
 except ImportError:
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)  # type: ignore[assignment]
 
 
 def load_environment() -> None:
@@ -157,6 +157,12 @@ OSS_NEGATIVE_LIST: OSSConfig = OSSConfig(
     endpoint=os.environ.get("OSS_NEGATIVE_LIST_ENDPOINT", ""),
     region=os.environ.get("OSS_NEGATIVE_LIST_REGION", ""),
 )
+
+# OSS router keyed by connector name, used by OSSConnector(db_type).
+# Add other buckets here, e.g. "reports": OSS_REPORTS.
+oss_config: dict[str, OSSConfig] = {
+    "negative_list": OSS_NEGATIVE_LIST,
+}
 
 # ============================================================================
 # PROJECT-SPECIFIC CONFIGURATION (add directly in config.py)

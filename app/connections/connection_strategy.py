@@ -36,7 +36,9 @@ class DBConnectorStrategy:
         self._strategy: DatabaseStrategy = create_strategy(db_type)
         # Thread pool sized by underlying strategy pool size (if present)
         pool_size = getattr(self._strategy.config, "pool_size", 5)
-        self._thread_pool = ThreadPoolExecutor(max_workers=pool_size)
+        self._thread_pool: ThreadPoolExecutor | None = ThreadPoolExecutor(
+            max_workers=pool_size
+        )
 
     @property
     def is_connected(self) -> bool:  # * Backwards compatible property name

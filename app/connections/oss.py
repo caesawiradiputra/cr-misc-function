@@ -20,7 +20,7 @@ Usage:
     success = connector.download_object("remote/file.parquet", "./local/file.parquet")
 
 Configuration:
-    Requires credentials in app.configs.config.oss_config[db_type]:
+    Requires an OSSConfig in app.configs.config.oss_config[db_type] with:
         - access_key_id: Alibaba Cloud Access Key ID
         - access_key_secret: Alibaba Cloud Access Key Secret
         - bucket_name: OSS bucket name
@@ -49,6 +49,7 @@ import oss2
 import pandas as pd
 
 from app.configs.config import oss_config
+from app.configs.config_schemas import OSSConfig
 
 # Try to import logger from log_config; use standard logging if not available
 try:
@@ -56,14 +57,14 @@ try:
 except ImportError:
     import logging
 
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)  # type: ignore[assignment]
 
 
 class OSSConnector:
     """Handles upload/download operations for Alibaba Cloud OSS.
 
     Attributes:
-        config: Configuration dict for the OSS bucket
+        config: OSSConfig for the OSS bucket
         access_key_id: Access Key ID for authentication
         access_key_secret: Access Key Secret for authentication
         bucket_name: Name of the OSS bucket
@@ -91,16 +92,20 @@ class OSSConnector:
                 f"OSS config key not found: {db_type}. Available keys: {list(oss_config.keys())}"
             )
 
-        self.config: dict[str, Any] = oss_config[db_type]
+        self.config: OSSConfig = oss_config[db_type]
+        # Log only non-secret fields: the config also holds the access key secret.
         logger.debug(
-            "Initializing OSSConnector for db_type={}, config={}", db_type, self.config
+            "Initializing OSSConnector for db_type={}, bucket={}, endpoint={}",
+            db_type,
+            self.config.bucket_name,
+            self.config.endpoint,
         )
 
-        self.access_key_id: str = self.config.get("access_key_id", "")
-        self.access_key_secret: str = self.config.get("access_key_secret", "")
-        self.bucket_name: str = self.config.get("bucket_name", "")
-        self.endpoint: str = self.config.get("endpoint", "")
-        self.region: str = self.config.get("region", "")
+        self.access_key_id: str = self.config.access_key_id
+        self.access_key_secret: str = self.config.access_key_secret
+        self.bucket_name: str = self.config.bucket_name
+        self.endpoint: str = self.config.endpoint
+        self.region: str = self.config.region or ""
 
         # Validate credentials presence
         if not self.access_key_id or not self.access_key_secret:

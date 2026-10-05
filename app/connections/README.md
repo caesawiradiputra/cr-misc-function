@@ -340,32 +340,48 @@ ODPS_ENDPOINT=http://service.odps.aliyun.com/api
 
 ### Config Module (`app/configs/config.py`)
 
+Each connection is a Pydantic object from `app/configs/config_schemas.py`.
+`database_config` routes RDBMS `db_type` names to `DatabaseConfig` objects and
+`oss_config` routes OSS connector names to `OSSConfig` objects. `ODPS` is a single
+`ODPSConfig`; `create_strategy("odps")` reads it and maps `project` to the
+strategy's `default_project`.
+
 ```python
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+from app.configs.config_schemas import DatabaseConfig, ODPSConfig, OSSConfig
 
-database_config = {
-    "mssql": {
-        "host": os.getenv("DATABASE_MSSQL_HOST"),
-        "port": int(os.getenv("DATABASE_MSSQL_PORT", 1433)),
-        "user": os.getenv("DATABASE_MSSQL_USER"),
-        "password": os.getenv("DATABASE_MSSQL_PASSWORD"),
-        "database": os.getenv("DATABASE_MSSQL_DATABASE"),
-        "driver": os.getenv("DATABASE_MSSQL_DRIVER"),
-        "pool_size": 5,
-        "max_overflow": 10,
-    },
+DATABASE_MSSQL = DatabaseConfig(
+    host=os.environ.get("DATABASE_MSSQL_HOST", ""),
+    port=os.environ.get("DATABASE_MSSQL_PORT", "1433"),
+    user=os.environ.get("DATABASE_MSSQL_USER", ""),
+    password=os.environ.get("DATABASE_MSSQL_PASSWORD", ""),
+    database=os.environ.get("DATABASE_MSSQL_DATABASE", ""),
+    driver=os.environ.get("DATABASE_MSSQL_DRIVER", "ODBC Driver 17 for SQL Server"),
+    pool_size=int(os.environ.get("DATABASE_MSSQL_POOL_SIZE", "5")),
+    max_overflow=int(os.environ.get("DATABASE_MSSQL_MAX_OVERFLOW", "10")),
+)
+
+database_config: dict[str, DatabaseConfig] = {
+    "mssql": DATABASE_MSSQL,
     # ... other databases
 }
 
-odps_config = {
-    "access_id": os.getenv("ODPS_ACCESS_ID"),
-    "secret_access_key": os.getenv("ODPS_ACCESS_KEY"),
-    "default_project": os.getenv("ODPS_PROJECT"),
-    "endpoint": os.getenv("ODPS_ENDPOINT"),
-}
+ODPS = ODPSConfig(
+    access_id=os.environ.get("ODPS_ACCESS_ID", ""),
+    secret_access_key=os.environ.get("ODPS_ACCESS_KEY", ""),
+    project=os.environ.get("ODPS_PROJECT", ""),
+    endpoint=os.environ.get("ODPS_ENDPOINT", ""),
+)
+
+OSS_NEGATIVE_LIST = OSSConfig(
+    access_key_id=os.environ.get("OSS_NEGATIVE_LIST_ACCESS_KEY_ID", ""),
+    access_key_secret=os.environ.get("OSS_NEGATIVE_LIST_ACCESS_KEY_SECRET", ""),
+    bucket_name=os.environ.get("OSS_NEGATIVE_LIST_BUCKET_NAME", ""),
+    endpoint=os.environ.get("OSS_NEGATIVE_LIST_ENDPOINT", ""),
+)
+
+oss_config: dict[str, OSSConfig] = {"negative_list": OSS_NEGATIVE_LIST}
 ```
 
 ---
