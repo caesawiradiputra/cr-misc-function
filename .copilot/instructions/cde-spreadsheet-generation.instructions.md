@@ -558,10 +558,10 @@ docs/data-lineage/
 ### Validation Script Pattern
 ```python
 # Check lineage_key uniqueness
-assert len(df['lineage_key'].unique()) == len(df['lineage_key'])
+assert len(df["lineage_key"].unique()) == len(df["lineage_key"])
 
 # Validate CDE ID format
-valid_cde_ids = df[df['is_cde'] == 'Yes']['cde_id'].str.match(r'CDE-[A-Z]{3,4}-\d{3}')
+valid_cde_ids = df[df["is_cde"] == "Yes"]["cde_id"].str.match(r"CDE-[A-Z]{3,4}-\d{3}")
 assert valid_cde_ids.all()
 
 # Ensure upstream → downstream consistency

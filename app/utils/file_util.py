@@ -37,6 +37,7 @@ try:
     from app.configs.log_config import logger
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 
@@ -61,7 +62,9 @@ def load_parquet_safe(file_path: str) -> pd.DataFrame:
     try:
         return pd.read_parquet(file_path, engine="pyarrow")  # type: ignore[arg-type]
     except Exception as e:
-        logger.debug("pyarrow engine failed for {}, trying fastparquet: {}", file_path, e)
+        logger.debug(
+            "pyarrow engine failed for {}, trying fastparquet: {}", file_path, e
+        )
         try:
             return pd.read_parquet(file_path, engine="fastparquet")
         except Exception as e2:

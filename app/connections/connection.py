@@ -142,9 +142,24 @@ class DBConnector:
         self._validate_db_type()
         self.config = self._parse_config()  # * Single unified config
 
-        self.connection: Trino_Connection | Psycopg2_Connection | Hive_Connection | Pyodbc_Connection | PooledMySQLConnection | MySQLConnectionAbstract | None = None
+        self.connection: (
+            Trino_Connection
+            | Psycopg2_Connection
+            | Hive_Connection
+            | Pyodbc_Connection
+            | PooledMySQLConnection
+            | MySQLConnectionAbstract
+            | None
+        ) = None
         self.connection_odps: ODPS | None = None
-        self.cursor: Trino_Cursor | Psycopg2_Cursor | Hive_Cursor | Pyodbc_Cursor | MySQLCursorAbstract | None = None
+        self.cursor: (
+            Trino_Cursor
+            | Psycopg2_Cursor
+            | Hive_Cursor
+            | Pyodbc_Cursor
+            | MySQLCursorAbstract
+            | None
+        ) = None
         self.engine: Engine | None = None
         self._odps_lock = threading.Lock()
 
@@ -592,7 +607,9 @@ class DBConnector:
             logger.error(
                 f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}") from e
+            raise RuntimeError(
+                f"[{self.db_type}] Query execution failed: {str(e)}"
+            ) from e
 
     @_require_odps_connection_and_handle_errors
     def execute_non_query(
@@ -664,4 +681,6 @@ class DBConnector:
             logger.error(
                 f"[{self.db_type}] Error executing non-query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}") from e
+            raise RuntimeError(
+                f"[{self.db_type}] Non-query execution failed: {str(e)}"
+            ) from e

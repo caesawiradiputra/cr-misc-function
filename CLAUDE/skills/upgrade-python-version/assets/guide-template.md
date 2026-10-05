@@ -54,7 +54,10 @@ Examples of what changed:
 ```python
 # before
 from typing import List, Optional, Union
+
+
 def f(x: Optional[int]) -> Union[List[str], str]: ...
+
 
 # after
 def f(x: int | None) -> list[str] | str: ...

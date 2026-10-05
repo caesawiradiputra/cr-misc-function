@@ -86,7 +86,9 @@ def get_partition(
     return yesterday.strftime("%Y%m%d")
 
 
-def get_bizdate(date_add: timedelta = timedelta(days=1), is_datetime: bool = False) -> str:
+def get_bizdate(
+    date_add: timedelta = timedelta(days=1), is_datetime: bool = False
+) -> str:
     """Return the business date string for DataWorks bizdate convention.
 
     DataWorks uses 'bizdate' for pipeline execution dates and scheduling.

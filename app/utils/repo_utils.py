@@ -113,8 +113,7 @@ def generate_placeholders(count: int, db_type: str = "mssql") -> str:
         placeholder = "%s"
     else:
         raise ValueError(
-            f"Unknown database type: {db_type}. "
-            f"Supported: mssql, mysql, postgres, hive"
+            f"Unknown database type: {db_type}. Supported: mssql, mysql, postgres, hive"
         )
 
     return ", ".join([placeholder] * count)
@@ -230,14 +229,15 @@ def build_update_query(
         placeholder_char = "%s"
     else:
         raise ValueError(
-            f"Unknown database type: {db_type}. "
-            f"Supported: mssql, mysql, postgres, hive"
+            f"Unknown database type: {db_type}. Supported: mssql, mysql, postgres, hive"
         )
 
     # Build SET clause
     set_clause = ", ".join([f"{col} = {placeholder_char}" for col in columns])
 
-    query = f"UPDATE {table_ref} SET {set_clause} WHERE {where_column} = {placeholder_char}"
+    query = (
+        f"UPDATE {table_ref} SET {set_clause} WHERE {where_column} = {placeholder_char}"
+    )
     logger.debug(f"Generated UPDATE query: {query}")
     return query
 
@@ -365,6 +365,3 @@ def merge_query_params(
         else:
             merged.append(group)
     return tuple(merged)
-
-
-

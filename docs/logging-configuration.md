@@ -133,6 +133,7 @@ After initialization in your main script, import the logger in any other module:
 # any_module.py
 from app.configs.log_config import logger
 
+
 def process_data(data):
     logger.info(f"Processing {len(data)} items")
     # ... your code
@@ -198,11 +199,13 @@ if __name__ == "__main__":
 # main.py
 from app.configs.log_config import init_logging, logger
 
+
 def main():
     logger.info("Main function running")
     result = process_data()
     logger.info(f"Result: {result}")
     return result
+
 
 if __name__ == "__main__":
     init_logging("main")
@@ -215,6 +218,7 @@ if __name__ == "__main__":
 # data_processor.py
 from app.configs.log_config import logger
 
+
 class DataProcessor:
     def process(self, data):
         logger.info(f"Processing {len(data)} records")
@@ -225,7 +229,7 @@ class DataProcessor:
         except Exception as e:
             logger.error(f"Processing failed: {e}", exc_info=True)
             raise
-    
+
     def _internal_process(self, data):
         logger.debug(f"Internal processing of {type(data)}")
         # ... implementation
@@ -319,6 +323,7 @@ To add this logging to an existing project:
 
    ```python
    from app.configs.log_config import logger
+
    logger.info("Doing work...")
    ```
 
@@ -363,6 +368,7 @@ logger.info("This will appear")
 
 ```python
 from app.configs.config import LOG_DIR
+
 print(f"Logs are in: {LOG_DIR}")
 ```
 

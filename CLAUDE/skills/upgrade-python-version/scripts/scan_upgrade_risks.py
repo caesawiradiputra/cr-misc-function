@@ -26,79 +26,294 @@ import sys
 ##             deprecated = warns now, removed in a later version
 ##   kind: module (imported), attr (dotted name), method (any obj.<name>(...)),
 ##         kwarg (call to dotted name with keyword), special (custom check)
-_ABCS = ("Awaitable Coroutine AsyncIterable AsyncIterator AsyncGenerator Hashable "
-         "Iterable Iterator Generator Reversible Sized Container Callable Collection "
-         "Set MutableSet Mapping MutableMapping MappingView KeysView ItemsView "
-         "ValuesView Sequence MutableSequence ByteString").split()
-_ASYNCIO_LOOP_APIS = ("sleep gather wait wait_for shield as_completed open_connection "
-                      "start_server open_unix_connection start_unix_server Queue "
-                      "LifoQueue PriorityQueue Lock Event Condition Semaphore "
-                      "BoundedSemaphore create_subprocess_exec create_subprocess_shell").split()
+_ABCS = (
+    "Awaitable Coroutine AsyncIterable AsyncIterator AsyncGenerator Hashable "
+    "Iterable Iterator Generator Reversible Sized Container Callable Collection "
+    "Set MutableSet Mapping MutableMapping MappingView KeysView ItemsView "
+    "ValuesView Sequence MutableSequence ByteString"
+).split()
+_ASYNCIO_LOOP_APIS = (
+    "sleep gather wait wait_for shield as_completed open_connection "
+    "start_server open_unix_connection start_unix_server Queue "
+    "LifoQueue PriorityQueue Lock Event Condition Semaphore "
+    "BoundedSemaphore create_subprocess_exec create_subprocess_shell"
+).split()
 
 RULES: list[tuple] = [
-    ("3.9", "breaks", "attr", "base64.encodestring", "removed", "use base64.encodebytes"),
-    ("3.9", "breaks", "attr", "base64.decodestring", "removed", "use base64.decodebytes"),
-    ("3.9", "breaks", "method", "isAlive", "Thread.isAlive() removed", "use is_alive()"),
-    ("3.9", "breaks", "method", "getchildren", "Element.getchildren() removed", "use list(elem)"),
-    ("3.9", "breaks", "method", "getiterator", "Element.getiterator() removed", "use elem.iter()"),
-    ("3.9", "breaks", "attr", "sys.setcheckinterval", "removed", "use sys.setswitchinterval"),
+    (
+        "3.9",
+        "breaks",
+        "attr",
+        "base64.encodestring",
+        "removed",
+        "use base64.encodebytes",
+    ),
+    (
+        "3.9",
+        "breaks",
+        "attr",
+        "base64.decodestring",
+        "removed",
+        "use base64.decodebytes",
+    ),
+    (
+        "3.9",
+        "breaks",
+        "method",
+        "isAlive",
+        "Thread.isAlive() removed",
+        "use is_alive()",
+    ),
+    (
+        "3.9",
+        "breaks",
+        "method",
+        "getchildren",
+        "Element.getchildren() removed",
+        "use list(elem)",
+    ),
+    (
+        "3.9",
+        "breaks",
+        "method",
+        "getiterator",
+        "Element.getiterator() removed",
+        "use elem.iter()",
+    ),
+    (
+        "3.9",
+        "breaks",
+        "attr",
+        "sys.setcheckinterval",
+        "removed",
+        "use sys.setswitchinterval",
+    ),
     ("3.9", "breaks", "attr", "plistlib.readPlist", "removed", "use plistlib.load"),
-    ("3.9", "breaks", "kwarg", "json.loads:encoding", "encoding= argument removed", "drop the argument"),
+    (
+        "3.9",
+        "breaks",
+        "kwarg",
+        "json.loads:encoding",
+        "encoding= argument removed",
+        "drop the argument",
+    ),
     ("3.10", "breaks", "module", "parser", "module removed", "use ast"),
     ("3.10", "breaks", "module", "formatter", "module removed", "vendor or drop"),
-    *[("3.10", "breaks", "attr", f"collections.{n}", "ABC alias removed from collections",
-       f"use collections.abc.{n} (identical class)") for n in _ABCS],
-    *[("3.10", "breaks", "kwarg", f"asyncio.{n}:loop", "loop= parameter removed",
-       "drop loop=; uses the running loop") for n in _ASYNCIO_LOOP_APIS],
-    ("3.10", "deprecated", "module", "distutils", "deprecated (removed in 3.12)",
-     "use setuptools / packaging / shutil"),
-    ("3.10", "deprecated", "attr", "asyncio.get_event_loop",
-     "warns when no loop is running (errors in 3.14)", "use asyncio.run / get_running_loop"),
-    ("3.11", "breaks", "attr", "asyncio.coroutine", "@asyncio.coroutine removed", "use async def"),
-    ("3.11", "breaks", "attr", "inspect.getargspec", "removed", "use inspect.signature/getfullargspec"),
-    ("3.11", "breaks", "attr", "inspect.formatargspec", "removed", "use inspect.signature"),
+    *[
+        (
+            "3.10",
+            "breaks",
+            "attr",
+            f"collections.{n}",
+            "ABC alias removed from collections",
+            f"use collections.abc.{n} (identical class)",
+        )
+        for n in _ABCS
+    ],
+    *[
+        (
+            "3.10",
+            "breaks",
+            "kwarg",
+            f"asyncio.{n}:loop",
+            "loop= parameter removed",
+            "drop loop=; uses the running loop",
+        )
+        for n in _ASYNCIO_LOOP_APIS
+    ],
+    (
+        "3.10",
+        "deprecated",
+        "module",
+        "distutils",
+        "deprecated (removed in 3.12)",
+        "use setuptools / packaging / shutil",
+    ),
+    (
+        "3.10",
+        "deprecated",
+        "attr",
+        "asyncio.get_event_loop",
+        "warns when no loop is running (errors in 3.14)",
+        "use asyncio.run / get_running_loop",
+    ),
+    (
+        "3.11",
+        "breaks",
+        "attr",
+        "asyncio.coroutine",
+        "@asyncio.coroutine removed",
+        "use async def",
+    ),
+    (
+        "3.11",
+        "breaks",
+        "attr",
+        "inspect.getargspec",
+        "removed",
+        "use inspect.signature/getfullargspec",
+    ),
+    (
+        "3.11",
+        "breaks",
+        "attr",
+        "inspect.formatargspec",
+        "removed",
+        "use inspect.signature",
+    ),
     ("3.11", "breaks", "attr", "binascii.b2a_hqx", "removed", "no replacement"),
     ("3.11", "breaks", "attr", "binascii.a2b_hqx", "removed", "no replacement"),
-    ("3.11", "breaks", "attr", "gettext.lgettext", "l*gettext() removed", "use gettext()"),
-    ("3.11", "breaks", "kwarg", "random.shuffle:random", "random= parameter removed",
-     "use random.Random(seed).shuffle"),
-    ("3.11", "breaks", "special", "random.sample:set", "random.sample() rejects sets",
-     "pass sorted(s) / list(s) (list(s) keeps the old, order-dependent result)"),
-    ("3.11", "breaks", "special", "re:inline-flag", "global inline flag not at pattern start is an error",
-     "move (?i)/(?s)/... to the very start of the pattern"),
-    ("3.11", "behavior", "special", "enum:mixin",
-     "format()/f-string of (str/int, Enum) members now gives 'Cls.MEMBER', not the value",
-     "use member.value explicitly where the value is formatted"),
-    ("3.11", "behavior", "special", "int:str-limit",
-     "int <-> str conversion of >4300 digits raises ValueError", "only if huge ints are parsed"),
-    ("3.11", "deprecated", "attr", "locale.getdefaultlocale", "deprecated", "use locale.getlocale"),
-    ("3.12", "breaks", "module", "distutils", "module removed", "use setuptools / packaging"),
+    (
+        "3.11",
+        "breaks",
+        "attr",
+        "gettext.lgettext",
+        "l*gettext() removed",
+        "use gettext()",
+    ),
+    (
+        "3.11",
+        "breaks",
+        "kwarg",
+        "random.shuffle:random",
+        "random= parameter removed",
+        "use random.Random(seed).shuffle",
+    ),
+    (
+        "3.11",
+        "breaks",
+        "special",
+        "random.sample:set",
+        "random.sample() rejects sets",
+        "pass sorted(s) / list(s) (list(s) keeps the old, order-dependent result)",
+    ),
+    (
+        "3.11",
+        "breaks",
+        "special",
+        "re:inline-flag",
+        "global inline flag not at pattern start is an error",
+        "move (?i)/(?s)/... to the very start of the pattern",
+    ),
+    (
+        "3.11",
+        "behavior",
+        "special",
+        "enum:mixin",
+        "format()/f-string of (str/int, Enum) members now gives 'Cls.MEMBER', not the value",
+        "use member.value explicitly where the value is formatted",
+    ),
+    (
+        "3.11",
+        "behavior",
+        "special",
+        "int:str-limit",
+        "int <-> str conversion of >4300 digits raises ValueError",
+        "only if huge ints are parsed",
+    ),
+    (
+        "3.11",
+        "deprecated",
+        "attr",
+        "locale.getdefaultlocale",
+        "deprecated",
+        "use locale.getlocale",
+    ),
+    (
+        "3.12",
+        "breaks",
+        "module",
+        "distutils",
+        "module removed",
+        "use setuptools / packaging",
+    ),
     ("3.12", "breaks", "module", "imp", "module removed", "use importlib"),
     ("3.12", "breaks", "module", "asynchat", "module removed", "use asyncio"),
     ("3.12", "breaks", "module", "asyncore", "module removed", "use asyncio"),
     ("3.12", "breaks", "module", "smtpd", "module removed", "use aiosmtpd"),
-    ("3.12", "breaks", "module", "pkg_resources",
-     "setuptools no longer preinstalled in venvs", "use importlib.metadata/resources"),
-    ("3.12", "breaks", "attr", "configparser.SafeConfigParser", "removed", "use ConfigParser"),
-    ("3.12", "breaks", "method", "readfp", "ConfigParser.readfp() removed", "use read_file()"),
-    ("3.12", "breaks", "attr", "ssl.wrap_socket", "removed", "use SSLContext.wrap_socket"),
+    (
+        "3.12",
+        "breaks",
+        "module",
+        "pkg_resources",
+        "setuptools no longer preinstalled in venvs",
+        "use importlib.metadata/resources",
+    ),
+    (
+        "3.12",
+        "breaks",
+        "attr",
+        "configparser.SafeConfigParser",
+        "removed",
+        "use ConfigParser",
+    ),
+    (
+        "3.12",
+        "breaks",
+        "method",
+        "readfp",
+        "ConfigParser.readfp() removed",
+        "use read_file()",
+    ),
+    (
+        "3.12",
+        "breaks",
+        "attr",
+        "ssl.wrap_socket",
+        "removed",
+        "use SSLContext.wrap_socket",
+    ),
     ("3.12", "breaks", "attr", "locale.format", "removed", "use locale.format_string"),
-    *[("3.12", "breaks", "method", m, "unittest alias removed", f"use {n}") for m, n in [
-        ("assertEquals", "assertEqual"), ("assertNotEquals", "assertNotEqual"),
-        ("assert_", "assertTrue"), ("failUnless", "assertTrue"), ("failIf", "assertFalse"),
-        ("assertRegexpMatches", "assertRegex"), ("assertRaisesRegexp", "assertRaisesRegex"),
-        ("assertDictContainsSubset", "explicit dict comparison")]],
-    ("3.12", "deprecated", "attr", "datetime.datetime.utcnow", "deprecated",
-     "datetime.now(timezone.utc) (returns an AWARE datetime - not a drop-in)"),
-    *[("3.13", "breaks", "module", m, "module removed (PEP 594)", "use a PyPI replacement")
-      for m in ("cgi cgitb crypt telnetlib pipes nntplib imghdr sndhdr audioop chunk "
-                "mailcap msilib nis ossaudiodev spwd sunau uu xdrlib lib2to3").split()],
+    *[
+        ("3.12", "breaks", "method", m, "unittest alias removed", f"use {n}")
+        for m, n in [
+            ("assertEquals", "assertEqual"),
+            ("assertNotEquals", "assertNotEqual"),
+            ("assert_", "assertTrue"),
+            ("failUnless", "assertTrue"),
+            ("failIf", "assertFalse"),
+            ("assertRegexpMatches", "assertRegex"),
+            ("assertRaisesRegexp", "assertRaisesRegex"),
+            ("assertDictContainsSubset", "explicit dict comparison"),
+        ]
+    ],
+    (
+        "3.12",
+        "deprecated",
+        "attr",
+        "datetime.datetime.utcnow",
+        "deprecated",
+        "datetime.now(timezone.utc) (returns an AWARE datetime - not a drop-in)",
+    ),
+    *[
+        (
+            "3.13",
+            "breaks",
+            "module",
+            m,
+            "module removed (PEP 594)",
+            "use a PyPI replacement",
+        )
+        for m in (
+            "cgi cgitb crypt telnetlib pipes nntplib imghdr sndhdr audioop chunk "
+            "mailcap msilib nis ossaudiodev spwd sunau uu xdrlib lib2to3"
+        ).split()
+    ],
     ("3.13", "breaks", "attr", "locale.resetlocale", "removed", "use locale.setlocale"),
 ]
 
 _INLINE_FLAG = re.compile(r"\(\?[aiLmsux]+\)")
-_RE_FUNCS = {"compile", "match", "search", "fullmatch", "findall", "finditer", "sub",
-             "subn", "split"}
+_RE_FUNCS = {
+    "compile",
+    "match",
+    "search",
+    "fullmatch",
+    "findall",
+    "finditer",
+    "sub",
+    "subn",
+    "split",
+}
 
 
 def vtuple(v: str) -> tuple[int, int]:
@@ -128,7 +343,8 @@ class Scanner(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for a in node.names:
             self.aliases[(a.asname or a.name).split(".")[0]] = (
-                a.name if a.asname else a.name.split(".")[0])
+                a.name if a.asname else a.name.split(".")[0]
+            )
             self._check_module(node, a.name)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
@@ -163,17 +379,26 @@ class Scanner(ast.NodeVisitor):
                 target, kw = r[3].split(":")
                 if func == target and kw in kwargs:
                     self.hit(node, r, f"{func}({kw}=...)")
-            elif r[2] == "method" and isinstance(node.func, ast.Attribute) \
-                    and node.func.attr == r[3]:
+            elif (
+                r[2] == "method"
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == r[3]
+            ):
                 self.hit(node, r, f".{r[3]}()")
             elif r[3] == "random.sample:set" and func == "random.sample" and node.args:
                 a = node.args[0]
                 if isinstance(a, (ast.Set, ast.SetComp)) or (
-                        isinstance(a, ast.Call) and isinstance(a.func, ast.Name)
-                        and a.func.id in ("set", "frozenset")):
+                    isinstance(a, ast.Call)
+                    and isinstance(a.func, ast.Name)
+                    and a.func.id in ("set", "frozenset")
+                ):
                     self.hit(node, r, "random.sample(<set>)")
-            elif r[3] == "re:inline-flag" and func.startswith("re.") \
-                    and func[3:] in _RE_FUNCS and node.args:
+            elif (
+                r[3] == "re:inline-flag"
+                and func.startswith("re.")
+                and func[3:] in _RE_FUNCS
+                and node.args
+            ):
                 p = node.args[0]
                 if isinstance(p, ast.Constant) and isinstance(p.value, str):
                     m = _INLINE_FLAG.search(p.value)
@@ -184,13 +409,26 @@ class Scanner(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         bases = {(self.dotted(b) or "").rsplit(".", 1)[-1] for b in node.bases}
         for r in self.rules:
-            if r[3] == "enum:mixin" and bases & {"Enum", "Flag"} and bases & {"str", "int"}:
+            if (
+                r[3] == "enum:mixin"
+                and bases & {"Enum", "Flag"}
+                and bases & {"str", "int"}
+            ):
                 self.hit(node, r, f"class {node.name}({', '.join(sorted(bases))})")
         self.generic_visit(node)
 
 
 def iter_py(root: str):
-    skip = {".git", ".venv", "venv", "legacy", "build", "dist", "node_modules", "__pycache__"}
+    skip = {
+        ".git",
+        ".venv",
+        "venv",
+        "legacy",
+        "build",
+        "dist",
+        "node_modules",
+        "__pycache__",
+    }
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith(".")]
         for f in filenames:

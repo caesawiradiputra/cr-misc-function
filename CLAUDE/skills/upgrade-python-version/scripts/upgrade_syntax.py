@@ -73,16 +73,28 @@ def run_ruff(base: list[str], extra: list[str]) -> list[dict]:
 
 
 def _typing_usage(tree: ast.AST) -> tuple[list[ast.ImportFrom], set[str]]:
-    imports = [n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)
-               and n.module in ("typing", "typing_extensions") and n.col_offset == 0]
+    imports = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.ImportFrom)
+        and n.module in ("typing", "typing_extensions")
+        and n.col_offset == 0
+    ]
     used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
-    used |= {n.value.id for n in ast.walk(tree)
-             if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)}
+    used |= {
+        n.value.id
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+    }
     ## A string that parses as an expression may be a string annotation
     ## ("List[int]") or an __all__ entry, so its names count as used. Prose such
     ## as "Asset List" does not parse and is ignored.
     for n in ast.walk(tree):
-        if isinstance(n, ast.Constant) and isinstance(n.value, str) and len(n.value) < 200:
+        if (
+            isinstance(n, ast.Constant)
+            and isinstance(n.value, str)
+            and len(n.value) < 200
+        ):
             try:
                 expr = ast.parse(n.value.strip(), mode="eval")
             except SyntaxError:
@@ -106,16 +118,22 @@ def prune_typing_imports(path: str, before_src: str) -> int:
     lines = src.splitlines(keepends=True)
     removed = 0
     for node in sorted(imports, key=lambda n: n.lineno, reverse=True):
-        keep = [a for a in node.names
-                if (a.asname or a.name) in used_now or (a.asname or a.name) not in used_before]
+        keep = [
+            a
+            for a in node.names
+            if (a.asname or a.name) in used_now
+            or (a.asname or a.name) not in used_before
+        ]
         if len(keep) == len(node.names):
             continue
         removed += len(node.names) - len(keep)
         new = ""
         if keep:
-            names = ", ".join(a.name + (f" as {a.asname}" if a.asname else "") for a in keep)
+            names = ", ".join(
+                a.name + (f" as {a.asname}" if a.asname else "") for a in keep
+            )
             new = f"from {node.module} import {names}\n"
-        lines[node.lineno - 1:node.end_lineno] = [new]
+        lines[node.lineno - 1 : node.end_lineno] = [new]
     if removed:
         with open(path, "w", encoding="utf-8") as f:
             f.write("".join(lines))
@@ -126,12 +144,23 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--target", required=True, help="target Python version, e.g. 3.11")
     ap.add_argument("--path", default=".", help="project root (default: .)")
-    ap.add_argument("--dry-run", action="store_true", help="report only, change nothing")
-    ap.add_argument("--include-string-format", action="store_true",
-                    help="also apply UP030/UP031/UP032 string-formatting rewrites")
-    ap.add_argument("--runtime-annotation-files", nargs="*", default=[],
-                    help="globs whose runtime-evaluated annotations must NOT be rewritten")
-    ap.add_argument("--extend-exclude", nargs="*", default=[], help="extra paths to skip")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="report only, change nothing"
+    )
+    ap.add_argument(
+        "--include-string-format",
+        action="store_true",
+        help="also apply UP030/UP031/UP032 string-formatting rewrites",
+    )
+    ap.add_argument(
+        "--runtime-annotation-files",
+        nargs="*",
+        default=[],
+        help="globs whose runtime-evaluated annotations must NOT be rewritten",
+    )
+    ap.add_argument(
+        "--extend-exclude", nargs="*", default=[], help="extra paths to skip"
+    )
     args = ap.parse_args()
 
     major, minor = args.target.split(".")[:2]
@@ -140,23 +169,39 @@ def main() -> None:
         ignore.update(STRING_FORMAT_RULES)
 
     base = ruff_cmd() + [
-        "check", "--isolated", "--select", "UP",
-        "--ignore", ",".join(sorted(ignore)),
-        "--target-version", f"py{major}{minor}",
-        "--extend-exclude", ",".join(DEFAULT_EXCLUDES + args.extend_exclude),
+        "check",
+        "--isolated",
+        "--select",
+        "UP",
+        "--ignore",
+        ",".join(sorted(ignore)),
+        "--target-version",
+        f"py{major}{minor}",
+        "--extend-exclude",
+        ",".join(DEFAULT_EXCLUDES + args.extend_exclude),
     ]
     if args.runtime_annotation_files:
-        pfi = ", ".join(f'"{g}" = {json.dumps(RUNTIME_ANNOTATION_RULES)}'
-                        for g in args.runtime_annotation_files)
+        pfi = ", ".join(
+            f'"{g}" = {json.dumps(RUNTIME_ANNOTATION_RULES)}'
+            for g in args.runtime_annotation_files
+        )
         base += ["--config", f"lint.per-file-ignores = {{{pfi}}}"]
     base.append(args.path)
 
     before = run_ruff(base, [])
     names = {d["code"]: d["message"] for d in before}
-    fixable = Counter(d["code"] for d in before
-                      if d.get("fix") and d["fix"].get("applicability") == "safe")
-    fixed_files = sorted({d["filename"] for d in before
-                          if d.get("fix") and d["fix"].get("applicability") == "safe"})
+    fixable = Counter(
+        d["code"]
+        for d in before
+        if d.get("fix") and d["fix"].get("applicability") == "safe"
+    )
+    fixed_files = sorted(
+        {
+            d["filename"]
+            for d in before
+            if d.get("fix") and d["fix"].get("applicability") == "safe"
+        }
+    )
     pruned = 0
     if not args.dry_run and fixable:
         sources = {}
@@ -166,27 +211,39 @@ def main() -> None:
         run_ruff(base, ["--fix"])
         pruned = sum(prune_typing_imports(fn, sources[fn]) for fn in fixed_files)
     if args.dry_run:
-        after = [d for d in before
-                 if not (d.get("fix") and d["fix"].get("applicability") == "safe")]
+        after = [
+            d
+            for d in before
+            if not (d.get("fix") and d["fix"].get("applicability") == "safe")
+        ]
     else:
         after = run_ruff(base, [])
     remaining = Counter(d["code"] for d in after)
     applied = Counter(
-        {c: n - remaining.get(c, 0) for c, n in Counter(d["code"] for d in before).items()}
+        {
+            c: n - remaining.get(c, 0)
+            for c, n in Counter(d["code"] for d in before).items()
+        }
     )
     files = fixed_files
 
     verb = "Would apply" if args.dry_run else "Applied"
     print(f"## Syntax modernization (ruff UP rules, target py{major}{minor})\n")
-    print(f"{verb} **{sum(v for v in applied.values() if v > 0)}** safe fixes "
-          f"in **{len(files)}** files.\n")
+    print(
+        f"{verb} **{sum(v for v in applied.values() if v > 0)}** safe fixes "
+        f"in **{len(files)}** files.\n"
+    )
     if pruned:
-        print(f"Removed **{pruned}** `typing` import names left unused by the rewrite.\n")
+        print(
+            f"Removed **{pruned}** `typing` import names left unused by the rewrite.\n"
+        )
     print("| Rule | Example message | Fixed | Left for review |")
     print("| --- | --- | --- | --- |")
     for code in sorted(set(applied) | set(remaining)):
         fixed = max(applied.get(code, 0), 0)
-        print(f"| {code} | {names.get(code, '')[:70]} | {fixed} | {remaining.get(code, 0)} |")
+        print(
+            f"| {code} | {names.get(code, '')[:70]} | {fixed} | {remaining.get(code, 0)} |"
+        )
     if after:
         print("\n### Left for manual review (no safe automatic fix)\n")
         for d in after[:200]:
@@ -197,8 +254,10 @@ def main() -> None:
     for code, why in sorted(ignore.items()):
         print(f"- {code}: {why}")
     if args.runtime_annotation_files:
-        print("\nAnnotation rewrites skipped for: "
-              + ", ".join(f"`{g}`" for g in args.runtime_annotation_files))
+        print(
+            "\nAnnotation rewrites skipped for: "
+            + ", ".join(f"`{g}`" for g in args.runtime_annotation_files)
+        )
 
 
 if __name__ == "__main__":

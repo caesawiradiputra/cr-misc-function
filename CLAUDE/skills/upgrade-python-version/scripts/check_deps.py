@@ -67,7 +67,9 @@ def poetry_constraint(spec: str) -> str:
             v = part[1:].strip()
             m = _VERSION.fullmatch(v)
             nums = [int(p) for p in m.groups() if p is not None] if m else []
-            level = next((i for i, n in enumerate(nums) if n != 0), max(len(nums) - 1, 0))
+            level = next(
+                (i for i, n in enumerate(nums) if n != 0), max(len(nums) - 1, 0)
+            )
             out.append(_bump(v, level) or part)
         elif part.startswith("~") and not part.startswith("~="):
             v = part[1:].strip()
@@ -89,8 +91,11 @@ def from_poetry_table(table: dict) -> list[str]:
             reqs.append(name + poetry_constraint(value))
         elif isinstance(value, dict) and "version" in value:
             extras = value.get("extras") or []
-            reqs.append(name + (f"[{','.join(extras)}]" if extras else "")
-                        + poetry_constraint(str(value["version"])))
+            reqs.append(
+                name
+                + (f"[{','.join(extras)}]" if extras else "")
+                + poetry_constraint(str(value["version"]))
+            )
     return reqs
 
 
@@ -103,14 +108,28 @@ def collect(path: str) -> tuple[list[str], str, set[str]]:
     pyproject = os.path.join(path, "pyproject.toml")
     if os.path.isfile(os.path.join(path, "uv.lock")) and os.path.isfile(pyproject):
         out = subprocess.run(
-            ["uv", "export", "--frozen", "--no-hashes", "--no-emit-project", "--all-groups",
-             "--no-header", "--no-annotate"],
-            cwd=path, capture_output=True, text=True)
+            [
+                "uv",
+                "export",
+                "--frozen",
+                "--no-hashes",
+                "--no-emit-project",
+                "--all-groups",
+                "--no-header",
+                "--no-annotate",
+            ],
+            cwd=path,
+            capture_output=True,
+            text=True,
+        )
         if out.returncode == 0:
             ## Keep environment markers: a universal lock pins some packages
             ## once per Python range, and only the markers tell them apart.
-            reqs = [ln.strip() for ln in out.stdout.splitlines()
-                    if ln.strip() and not ln.startswith(("#", "-e", "."))]
+            reqs = [
+                ln.strip()
+                for ln in out.stdout.splitlines()
+                if ln.strip() and not ln.startswith(("#", "-e", "."))
+            ]
             with open(pyproject, "rb") as f:
                 data = tomllib.load(f)
             direct = list(data.get("project", {}).get("dependencies", []))
@@ -120,8 +139,11 @@ def collect(path: str) -> tuple[list[str], str, set[str]]:
     req_txt = os.path.join(path, "requirements.txt")
     if os.path.isfile(req_txt):
         with open(req_txt, encoding="utf-8") as f:
-            reqs = [ln.split("#")[0].strip() for ln in f
-                    if ln.strip() and not ln.lstrip().startswith(("#", "-"))]
+            reqs = [
+                ln.split("#")[0].strip()
+                for ln in f
+                if ln.strip() and not ln.lstrip().startswith(("#", "-"))
+            ]
         reqs = [r for r in reqs if r]
         return reqs, "requirements.txt", _names(reqs)
     if os.path.isfile(pyproject):
@@ -131,8 +153,11 @@ def collect(path: str) -> tuple[list[str], str, set[str]]:
         reqs = list(project.get("dependencies", []))
         for group in ("dev",):
             reqs += project.get("optional-dependencies", {}).get(group, [])
-            reqs += [g for g in data.get("dependency-groups", {}).get(group, [])
-                     if isinstance(g, str)]
+            reqs += [
+                g
+                for g in data.get("dependency-groups", {}).get(group, [])
+                if isinstance(g, str)
+            ]
         poetry = data.get("tool", {}).get("poetry", {})
         reqs += from_poetry_table(poetry.get("dependencies", {}))
         reqs += from_poetry_table(poetry.get("dev-dependencies", {}))
@@ -146,15 +171,21 @@ def collect(path: str) -> tuple[list[str], str, set[str]]:
 
 # ------------------------------------------------------------------ install
 def venv_python(venv: str) -> str:
-    return os.path.join(venv, "Scripts" if os.name == "nt" else "bin",
-                        "python.exe" if os.name == "nt" else "python")
+    return os.path.join(
+        venv,
+        "Scripts" if os.name == "nt" else "bin",
+        "python.exe" if os.name == "nt" else "python",
+    )
 
 
-_NETWORK = re.compile(r"error sending request|client error \(Connect\)|timed out|Could not connect",
-                      re.I)
+_NETWORK = re.compile(
+    r"error sending request|client error \(Connect\)|timed out|Could not connect", re.I
+)
 
 
-def uv_install(py: str, reqs: list[str], overrides: dict[str, str], tmp: str) -> tuple[bool, str]:
+def uv_install(
+    py: str, reqs: list[str], overrides: dict[str, str], tmp: str
+) -> tuple[bool, str]:
     """Install; retry up to 3 times with backoff when the index is unreachable."""
     for attempt in range(4):
         ok, err = _uv_install_once(py, reqs, overrides, tmp)
@@ -164,8 +195,9 @@ def uv_install(py: str, reqs: list[str], overrides: dict[str, str], tmp: str) ->
     return ok, err
 
 
-def _uv_install_once(py: str, reqs: list[str], overrides: dict[str, str],
-                     tmp: str) -> tuple[bool, str]:
+def _uv_install_once(
+    py: str, reqs: list[str], overrides: dict[str, str], tmp: str
+) -> tuple[bool, str]:
     cmd = ["uv", "pip", "install", "--python", py, *reqs]
     if overrides:
         path = os.path.join(tmp, "overrides.txt")
@@ -176,10 +208,15 @@ def _uv_install_once(py: str, reqs: list[str], overrides: dict[str, str],
     return p.returncode == 0, p.stderr or ""
 
 
-_FAILED = re.compile(r"(?:Failed to (?:build|download|prepare)|no wheels? (?:for|with))"
-                     r"[^`]*`([A-Za-z0-9][A-Za-z0-9._-]*)==([^`]+)`", re.I)
-_FAILED_ALT = re.compile(r"Because ([A-Za-z0-9][A-Za-z0-9._-]*)==(\S+) (?:has no wheels|depends on Python)",
-                         re.I)
+_FAILED = re.compile(
+    r"(?:Failed to (?:build|download|prepare)|no wheels? (?:for|with))"
+    r"[^`]*`([A-Za-z0-9][A-Za-z0-9._-]*)==([^`]+)`",
+    re.I,
+)
+_FAILED_ALT = re.compile(
+    r"Because ([A-Za-z0-9][A-Za-z0-9._-]*)==(\S+) (?:has no wheels|depends on Python)",
+    re.I,
+)
 
 
 def failures(stderr: str) -> list[tuple[str, str]]:
@@ -188,8 +225,11 @@ def failures(stderr: str) -> list[tuple[str, str]]:
 
 
 def summarize(stderr: str) -> str:
-    lines = [ln.strip() for ln in stderr.splitlines()
-             if re.search(r"error|×|fatal|No solution|unsatisf|depends on", ln, re.I)]
+    lines = [
+        ln.strip()
+        for ln in stderr.splitlines()
+        if re.search(r"error|×|fatal|No solution|unsatisf|depends on", ln, re.I)
+    ]
     return " / ".join(lines[:3]).replace("|", "/")[:240]
 
 
@@ -214,14 +254,19 @@ def _wheel_ok(filename: str, xy: str) -> bool:
     if f"cp{xy}" in pys or "py3" in pys:
         return True
     if abi == "abi3":
-        return any(p.startswith("cp3") and p[3:].isdigit() and int(p[3:]) <= int(xy)
-                   for p in pys)
+        return any(
+            p.startswith("cp3") and p[3:].isdigit() and int(p[3:]) <= int(xy)
+            for p in pys
+        )
     return False
 
 
 def pypi(name: str, version: str | None = None) -> dict | None:
-    url = f"https://pypi.org/pypi/{name}/{version}/json" if version else \
-        f"https://pypi.org/pypi/{name}/json"
+    url = (
+        f"https://pypi.org/pypi/{name}/{version}/json"
+        if version
+        else f"https://pypi.org/pypi/{name}/json"
+    )
     for attempt in range(3):
         try:
             with urllib.request.urlopen(url, timeout=30) as r:
@@ -241,7 +286,10 @@ def minimal_wheel_version(name: str, above: str, xy: str) -> tuple[str | None, s
         if re.search(r"[a-zA-Z]", v) or _ver_key(v) <= floor:
             continue
         files = [f for f in data["releases"][v] if not f.get("yanked")]
-        if any(f["filename"].endswith(".whl") and _wheel_ok(f["filename"], xy) for f in files):
+        if any(
+            f["filename"].endswith(".whl") and _wheel_ok(f["filename"], xy)
+            for f in files
+        ):
             return v, ""
     return None, f"no release above {above} has a py{xy} wheel"
 
@@ -258,18 +306,31 @@ def parents(name: str, reqs: list[str]) -> list[str]:
         for dep in info.get("requires_dist") or []:
             dm = _NAME.match(dep)
             if dm and _norm(dm.group(1)) == _norm(name) and "extra ==" not in dep:
-                out.append(f"`{m.group(1)}=={pin.group(1)}` requires `{dep.split(';')[0].strip()}`")
+                out.append(
+                    f"`{m.group(1)}=={pin.group(1)}` requires `{dep.split(';')[0].strip()}`"
+                )
     return out
 
 
 # -------------------------------------------------------------------- drift
-def resolve(reqs: list[str], version: str, overrides: dict[str, str], tmp: str) -> dict[str, str]:
+def resolve(
+    reqs: list[str], version: str, overrides: dict[str, str], tmp: str
+) -> dict[str, str]:
     """name -> version as uv resolves `reqs` for `version` (no install/build)."""
     src = os.path.join(tmp, f"drift-{version}.txt")
     with open(src, "w", encoding="utf-8") as f:
         f.write("\n".join(reqs) + "\n")
-    cmd = ["uv", "pip", "compile", "-q", "--python-version", version, "--no-header",
-           "--no-annotate", src]
+    cmd = [
+        "uv",
+        "pip",
+        "compile",
+        "-q",
+        "--python-version",
+        version,
+        "--no-header",
+        "--no-annotate",
+        src,
+    ]
     if overrides:
         cmd += ["--override", os.path.join(tmp, "overrides.txt")]
     p = subprocess.run(cmd, capture_output=True, text=True)
@@ -290,24 +351,41 @@ def _breaking(old: str, new: str) -> bool:
     return o[0] == 0 and len(o) > 1 and len(n) > 1 and o[1] != n[1]
 
 
-def drift(reqs: list[str], current: list[str], old_py: str, new_py: str,
-          overrides: dict[str, str], direct: set[str], tmp: str) -> tuple[list[str], bool]:
+def drift(
+    reqs: list[str],
+    current: list[str],
+    old_py: str,
+    new_py: str,
+    overrides: dict[str, str],
+    direct: set[str],
+    tmp: str,
+) -> tuple[list[str], bool]:
     """(Markdown lines, whether any breaking drift was found)."""
     out = [f"\n### Resolution drift {old_py} -> {new_py}\n"]
     before = resolve(reqs, old_py, {}, tmp)
     after = resolve(current, new_py, overrides, tmp)
     if not before or not after:
         return out + ["Could not resolve for both versions; drift not checked."], False
-    rows = [(n, before[n], after[n]) for n in sorted(set(before) & set(after))
-            if before[n] != after[n] and _breaking(before[n], after[n])]
+    rows = [
+        (n, before[n], after[n])
+        for n in sorted(set(before) & set(after))
+        if before[n] != after[n] and _breaking(before[n], after[n])
+    ]
     if not rows:
         return out + ["No major-version jumps caused by the Python change."], False
-    out.append("These resolve to a new MAJOR (or 0.x minor) version only because the Python"
-          " changed. They install, but may break at import/runtime: pin the old line"
-          " (e.g. `numpy<2`) unless the code is verified against the new one.\n")
-    out += [f"| Package | On {old_py} | On {new_py} | Kind |", "| --- | --- | --- | --- |"]
-    out += [f"| {n} | {o} | {v} | {'direct' if n in direct else 'transitive'} |"
-            for n, o, v in rows]
+    out.append(
+        "These resolve to a new MAJOR (or 0.x minor) version only because the Python"
+        " changed. They install, but may break at import/runtime: pin the old line"
+        " (e.g. `numpy<2`) unless the code is verified against the new one.\n"
+    )
+    out += [
+        f"| Package | On {old_py} | On {new_py} | Kind |",
+        "| --- | --- | --- | --- |",
+    ]
+    out += [
+        f"| {n} | {o} | {v} | {'direct' if n in direct else 'transitive'} |"
+        for n, o, v in rows
+    ]
     return out, True
 
 
@@ -316,7 +394,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--python", required=True, help="target version, e.g. 3.11")
     ap.add_argument("--path", default=".")
-    ap.add_argument("--from", dest="src", help="current Python, e.g. 3.8 (enables drift check)")
+    ap.add_argument(
+        "--from", dest="src", help="current Python, e.g. 3.8 (enables drift check)"
+    )
     ap.add_argument("--max-rounds", type=int, default=8)
     args = ap.parse_args()
     xy = "".join(args.python.split(".")[:2])
@@ -337,10 +417,15 @@ def main() -> None:
     ok, err = False, ""
     with tempfile.TemporaryDirectory(prefix="pyupgrade-deps-") as tmp:
         venv = os.path.join(tmp, "venv")
-        p = subprocess.run(["uv", "venv", venv, "--python", args.python, "--quiet"],
-                           capture_output=True, text=True)
+        p = subprocess.run(
+            ["uv", "venv", venv, "--python", args.python, "--quiet"],
+            capture_output=True,
+            text=True,
+        )
         if p.returncode != 0:
-            sys.exit(f"could not create a Python {args.python} venv: {p.stderr.strip()}")
+            sys.exit(
+                f"could not create a Python {args.python} venv: {p.stderr.strip()}"
+            )
         py = venv_python(venv)
         for _ in range(args.max_rounds):
             ok, err = uv_install(py, current, overrides, tmp)
@@ -357,30 +442,59 @@ def main() -> None:
                     ## Every line for the package (one per marker) gets the pin.
                     for i in by_name[key]:
                         m = _NAME.match(current[i])
-                        marker = current[i].split(";", 1)[1] if ";" in current[i] else ""
+                        marker = (
+                            current[i].split(";", 1)[1] if ";" in current[i] else ""
+                        )
                         current[i] = f"{m.group(1)}{m.group(2) or ''}=={new}" + (
-                            f" ;{marker}" if marker else "")
-                    kind = "direct" if key in direct else "transitive (locked) via " + (
-                        "; ".join(parents(name, [reqs[i] for i in range(len(reqs))
-                                                 if _NAME.match(reqs[i]) and _norm(
-                                                     _NAME.match(reqs[i]).group(1)) in direct])
-                                  ) or "unknown parent")
-                    changes.append((name, f"{name}=={ver}", f"{name}=={new}", kind,
-                                    summarize(err)))
+                            f" ;{marker}" if marker else ""
+                        )
+                    kind = (
+                        "direct"
+                        if key in direct
+                        else "transitive (locked) via "
+                        + (
+                            "; ".join(
+                                parents(
+                                    name,
+                                    [
+                                        reqs[i]
+                                        for i in range(len(reqs))
+                                        if _NAME.match(reqs[i])
+                                        and _norm(_NAME.match(reqs[i]).group(1))
+                                        in direct
+                                    ],
+                                )
+                            )
+                            or "unknown parent"
+                        )
+                    )
+                    changes.append(
+                        (name, f"{name}=={ver}", f"{name}=={new}", kind, summarize(err))
+                    )
                 else:
                     overrides[key] = f"{name}>={new}"
                     via = "; ".join(parents(name, reqs)) or "unknown parent"
-                    changes.append((name, f"{name}=={ver}", f"{name}>={new}",
-                                    f"transitive via {via}", summarize(err)))
+                    changes.append(
+                        (
+                            name,
+                            f"{name}=={ver}",
+                            f"{name}>={new}",
+                            f"transitive via {via}",
+                            summarize(err),
+                        )
+                    )
                 progressed = True
             if not progressed:
                 break
         if ok and args.src:
-            drift_lines, drifted = drift(reqs, current, args.src, args.python, overrides,
-                                         direct, tmp)
+            drift_lines, drifted = drift(
+                reqs, current, args.src, args.python, overrides, direct, tmp
+            )
 
     if ok and not changes:
-        print(f"All {len(reqs)} requirements install as pinned on Python {args.python}.")
+        print(
+            f"All {len(reqs)} requirements install as pinned on Python {args.python}."
+        )
         print("\n".join(drift_lines))
         sys.exit(1 if drifted else 0)
     if changes:
@@ -390,20 +504,32 @@ def main() -> None:
             print(f"| {name} | `{old}` | `{new}` | {kind} | {reason} |")
         print()
     if ok:
-        print(f"**Validated:** the full set installs on Python {args.python} with the bumps above."
-              + (" Transitive bumps were forced with uv overrides: fix them by raising the"
-                 " parent pin until it allows that version." if overrides else ""))
+        print(
+            f"**Validated:** the full set installs on Python {args.python} with the bumps above."
+            + (
+                " Transitive bumps were forced with uv overrides: fix them by raising the"
+                " parent pin until it allows that version."
+                if overrides
+                else ""
+            )
+        )
         print("\n".join(drift_lines))
         sys.exit(1)
     if _NETWORK.search(err):
-        print(f"**Network error** reaching the package index - not a dependency problem."
-              f" Re-run when the index is reachable: {summarize(err)}")
+        print(
+            f"**Network error** reaching the package index - not a dependency problem."
+            f" Re-run when the index is reachable: {summarize(err)}"
+        )
         sys.exit(2)
-    print(f"**Unresolved:** install still fails on Python {args.python}: {summarize(err)}")
+    print(
+        f"**Unresolved:** install still fails on Python {args.python}: {summarize(err)}"
+    )
     for item in dict.fromkeys(stuck):
         print(f"- {item}")
-    print("\nNeeds manual analysis (e.g. a yanked/removed package, a resolution conflict,"
-          " or a package with no wheel for this Python at any version).")
+    print(
+        "\nNeeds manual analysis (e.g. a yanked/removed package, a resolution conflict,"
+        " or a package with no wheel for this Python at any version)."
+    )
     sys.exit(2)
 
 

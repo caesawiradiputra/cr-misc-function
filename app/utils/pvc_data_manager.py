@@ -56,6 +56,7 @@ from app.utils import load_parquet_safe
 
 PROCESS_NAMES = "misc_function"
 
+
 def _get_base_path() -> str:
     """Determine the base path for data storage based on environment.
 
@@ -232,7 +233,7 @@ class PVCDataManager:
         self,
         output_files: list[str],
         subdirectory: str = "temp",
-        max_age_hours: int | None = None
+        max_age_hours: int | None = None,
     ) -> bool:
         """Check if task output files exist and are fresh enough to skip reprocessing.
 
@@ -352,7 +353,9 @@ class PVCDataManager:
                     filtered_files.append(file_path)
             all_files = filtered_files
 
-        logger.debug(f"Files in PVC {subdirectory} (filter='{filter}'): {[os.path.basename(f) for f in all_files]}")
+        logger.debug(
+            f"Files in PVC {subdirectory} (filter='{filter}'): {[os.path.basename(f) for f in all_files]}"
+        )
         return all_files
 
     def cleanup_pvc_directory(

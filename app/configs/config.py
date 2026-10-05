@@ -97,8 +97,10 @@ LOGGING_CONFIG: LoggingConfig = LoggingConfig(
     file_prefix=os.environ.get("LOG_FILE_PREFIX", "misc_function"),
     retention_days=int(os.environ.get("LOG_RETENTION_DAYS", "7")),
     max_files=int(os.environ.get("MAX_LOG_FILES", "50")),
-    enable_file_rotation=os.environ.get("ENABLE_LOG_ROTATION", "true").lower() == "true",
-    enable_compression=os.environ.get("ENABLE_LOG_COMPRESSION", "true").lower() == "true",
+    enable_file_rotation=os.environ.get("ENABLE_LOG_ROTATION", "true").lower()
+    == "true",
+    enable_compression=os.environ.get("ENABLE_LOG_COMPRESSION", "true").lower()
+    == "true",
     diagnose=os.environ.get("LOG_DIAGNOSE", "true").lower() == "true",
     create_file_logs=os.environ.get("CREATE_FILE_LOGS", "true").lower() == "true",
 )

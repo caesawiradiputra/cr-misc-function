@@ -52,6 +52,7 @@ def process_items(items: list[dict]) -> list[dict]:
 ```python
 from typing import List, Dict
 
+
 def process_items(items: List[Dict]) -> List[Dict]:
     result: List[Dict] = []
 ```

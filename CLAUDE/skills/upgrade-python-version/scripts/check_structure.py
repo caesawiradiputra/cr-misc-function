@@ -67,15 +67,27 @@ def definitions(tree: ast.AST) -> dict[str, tuple[str, tuple[str, str, str]]]:
                     sig = "class"
                 else:
                     a = child.args
-                    sig = "def(" + ", ".join(
-                        [f"/{p.arg}" for p in a.posonlyargs]
-                        + [p.arg for p in a.args]
-                        + ([f"*{a.vararg.arg}"] if a.vararg else [])
-                        + [f"kw:{p.arg}" for p in a.kwonlyargs]
-                        + ([f"**{a.kwarg.arg}"] if a.kwarg else [])) + ")"
-                body = ast.Module(body=[s for s in child.body if not isinstance(
-                    s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))],
-                    type_ignores=[])
+                    sig = (
+                        "def("
+                        + ", ".join(
+                            [f"/{p.arg}" for p in a.posonlyargs]
+                            + [p.arg for p in a.args]
+                            + ([f"*{a.vararg.arg}"] if a.vararg else [])
+                            + [f"kw:{p.arg}" for p in a.kwonlyargs]
+                            + ([f"**{a.kwarg.arg}"] if a.kwarg else [])
+                        )
+                        + ")"
+                    )
+                body = ast.Module(
+                    body=[
+                        s
+                        for s in child.body
+                        if not isinstance(
+                            s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                        )
+                    ],
+                    type_ignores=[],
+                )
                 head = ast.dump(_Strip().visit(ast.parse(ast.unparse(body))))
                 deco = [ast.dump(d) for d in child.decorator_list]
                 bases = [ast.dump(b) for b in getattr(child, "bases", [])]
@@ -83,16 +95,25 @@ def definitions(tree: ast.AST) -> dict[str, tuple[str, tuple[str, str, str]]]:
                 walk(child, q + ".")
 
     walk(tree, "")
-    module_level = ast.Module(body=[s for s in tree.body if not isinstance(
-        s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))], type_ignores=[])
-    out["<module>"] = ("module", (ast.dump(_Strip().visit(ast.parse(ast.unparse(module_level)))),
-                                  "", ""))
+    module_level = ast.Module(
+        body=[
+            s
+            for s in tree.body
+            if not isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        ],
+        type_ignores=[],
+    )
+    out["<module>"] = (
+        "module",
+        (ast.dump(_Strip().visit(ast.parse(ast.unparse(module_level)))), "", ""),
+    )
     return out
 
 
 def git(*args: str, cwd: str) -> str:
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True,
-                          check=True).stdout
+    return subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
+    ).stdout
 
 
 def main() -> None:
@@ -101,8 +122,19 @@ def main() -> None:
     ap.add_argument("--path", default=".")
     args = ap.parse_args()
 
-    changed = [f for f in git("diff", "--name-only", "--diff-filter=M", args.rev, "--",
-                              "*.py", cwd=args.path).splitlines() if f]
+    changed = [
+        f
+        for f in git(
+            "diff",
+            "--name-only",
+            "--diff-filter=M",
+            args.rev,
+            "--",
+            "*.py",
+            cwd=args.path,
+        ).splitlines()
+        if f
+    ]
     structure, code, errors = [], [], []
     for rel in changed:
         try:
@@ -121,18 +153,28 @@ def main() -> None:
             elif a[q][0] != b[q][0]:
                 structure.append(f"{rel}: signature of `{q}` {a[q][0]} -> {b[q][0]}")
             elif a[q][1] != b[q][1]:
-                parts = [label for label, x, y in zip(("body", "decorators", "bases"),
-                                                      a[q][1], b[q][1]) if x != y]
+                parts = [
+                    label
+                    for label, x, y in zip(
+                        ("body", "decorators", "bases"), a[q][1], b[q][1]
+                    )
+                    if x != y
+                ]
                 code.append(f"{rel}: `{q}` ({', '.join(parts)})")
 
     print(f"## Structure check vs {args.rev} ({len(changed)} changed .py files)\n")
-    for title, items in (("Parse errors", errors), ("Structure changes", structure),
-                         ("Non-annotation code changes to justify", code)):
+    for title, items in (
+        ("Parse errors", errors),
+        ("Structure changes", structure),
+        ("Non-annotation code changes to justify", code),
+    ):
         if items:
             print(f"### {title}\n")
             print("\n".join(f"- {i}" for i in items) + "\n")
     if not (errors or structure or code):
-        print("Only annotations and imports changed: structure and executable code identical.")
+        print(
+            "Only annotations and imports changed: structure and executable code identical."
+        )
     sys.exit(2 if errors or structure else 1 if code else 0)
 
 

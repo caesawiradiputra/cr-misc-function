@@ -55,6 +55,7 @@ try:
     from app.configs.log_config import logger
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 
@@ -86,10 +87,14 @@ class OSSConnector:
             connector = OSSConnector("negative_list")
         """
         if db_type not in oss_config:
-            raise ValueError(f"OSS config key not found: {db_type}. Available keys: {list(oss_config.keys())}")
+            raise ValueError(
+                f"OSS config key not found: {db_type}. Available keys: {list(oss_config.keys())}"
+            )
 
         self.config: dict[str, Any] = oss_config[db_type]
-        logger.debug("Initializing OSSConnector for db_type={}, config={}", db_type, self.config)
+        logger.debug(
+            "Initializing OSSConnector for db_type={}, config={}", db_type, self.config
+        )
 
         self.access_key_id: str = self.config.get("access_key_id", "")
         self.access_key_secret: str = self.config.get("access_key_secret", "")
@@ -110,13 +115,17 @@ class OSSConnector:
             )
 
         self.auth: oss2.Auth = oss2.Auth(self.access_key_id, self.access_key_secret)
-        self.bucket: oss2.Bucket = oss2.Bucket(self.auth, self.endpoint, self.bucket_name)
+        self.bucket: oss2.Bucket = oss2.Bucket(
+            self.auth, self.endpoint, self.bucket_name
+        )
 
     def __enter__(self) -> "OSSConnector":
         """Context manager entry - return self for use in with statement."""
         return self
 
-    def __exit__(self, exc_type: type | None, exc_val: Exception | None, exc_tb: Any | None) -> None:
+    def __exit__(
+        self, exc_type: type | None, exc_val: Exception | None, exc_tb: Any | None
+    ) -> None:
         """Context manager exit - cleanup if needed.
 
         Args:
@@ -149,7 +158,9 @@ class OSSConnector:
                 file_list.append(obj.key)
 
             if file_list:
-                logger.info("Found {} objects in prefix: {}", len(file_list), directory_prefix)
+                logger.info(
+                    "Found {} objects in prefix: {}", len(file_list), directory_prefix
+                )
                 for file in file_list[:5]:  # Log first 5
                     logger.debug("   - {}", file)
             else:
@@ -158,7 +169,9 @@ class OSSConnector:
             return file_list
 
         except oss2.exceptions.OssError as e:
-            logger.error("OSS list_object failed for prefix={}: {}", directory_prefix, e)
+            logger.error(
+                "OSS list_object failed for prefix={}: {}", directory_prefix, e
+            )
             return []
         except Exception as e:
             logger.error("Unexpected error in list_object: {}", e)
@@ -197,7 +210,11 @@ class OSSConnector:
             return False
 
     def download_object(
-        self, oss_object_path: str, local_file_path: str, max_retries: int = 3, retry_delay: float = 1.0
+        self,
+        oss_object_path: str,
+        local_file_path: str,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
     ) -> bool:
         """Download a file from OSS with retry logic.
 
@@ -237,12 +254,16 @@ class OSSConnector:
                 logger.info("Downloaded: {} -> {}", oss_object_path, local_file_path)
                 return True
             except oss2.exceptions.OssError as e:
-                logger.warning("OSS download attempt {}/{} failed: {}", attempt + 1, max_retries, e)
+                logger.warning(
+                    "OSS download attempt {}/{} failed: {}", attempt + 1, max_retries, e
+                )
                 if attempt < max_retries - 1:
-                    backoff = retry_delay * (2 ** attempt)  # Exponential backoff
+                    backoff = retry_delay * (2**attempt)  # Exponential backoff
                     time.sleep(backoff)
                 else:
-                    logger.error("OSS download failed after {} attempts: {}", max_retries, e)
+                    logger.error(
+                        "OSS download failed after {} attempts: {}", max_retries, e
+                    )
             except Exception as e:
                 logger.error("Download failed: {}", e)
                 return False
@@ -267,13 +288,17 @@ class OSSConnector:
             return False
 
         if not confirm:
-            logger.warning("Delete operation requires confirm=True for: {}", oss_object_path)
+            logger.warning(
+                "Delete operation requires confirm=True for: {}", oss_object_path
+            )
             return False
 
         try:
             # Check if object exists first
             if not self.bucket.object_exists(oss_object_path):
-                logger.warning("Object does not exist, cannot delete: {}", oss_object_path)
+                logger.warning(
+                    "Object does not exist, cannot delete: {}", oss_object_path
+                )
                 return False
 
             self.bucket.delete_object(oss_object_path)
@@ -312,7 +337,11 @@ class OSSConnector:
             return False
 
     def refresh_data(
-        self, file_name: str, oss_path: str, local_path: str, force_download: bool = False
+        self,
+        file_name: str,
+        oss_path: str,
+        local_path: str,
+        force_download: bool = False,
     ) -> pd.DataFrame:
         """Smart data synchronization with caching and freshness check.
 
@@ -386,7 +415,9 @@ class OSSConnector:
                 logger.warning("Downloaded file is empty: {}", local_file_path)
                 return pd.DataFrame()
 
-            logger.info("Reading parquet file: {} ({} bytes)", local_file_path, file_size)
+            logger.info(
+                "Reading parquet file: {} ({} bytes)", local_file_path, file_size
+            )
             return pd.read_parquet(local_file_path)
 
         except pd.errors.ParserError as e:

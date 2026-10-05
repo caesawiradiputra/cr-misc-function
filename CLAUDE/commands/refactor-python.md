@@ -67,6 +67,7 @@ def process_items(items: list[dict]) -> list[dict]:
 ```python
 from typing import Any, List, Dict, Optional
 
+
 def process_items(items: List[Dict]) -> List[Dict]:
     result: List[Dict] = []
     ...
@@ -144,7 +145,7 @@ for item in items:
     process(item, config)
 
 # ✅ After
-config = load_config()      # Called once
+config = load_config()  # Called once
 for item in items:
     process(item, config)
 ```
@@ -157,13 +158,17 @@ Add at function entry to show which optional args are active:
 # Loguru (preferred): use {} placeholders — never f-strings
 from loguru import logger
 
+
 def fetch_orders(days: int = 30, format: str = "csv") -> pd.DataFrame:
     logger.debug("fetch_orders called: days={}, format={}", days, format)
     ...
 
+
 # Standard logging: use %s — never f-strings
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 def fetch_orders(days: int = 30, format: str = "csv"):
     logger.debug("fetch_orders called: days=%s, format=%s", days, format)
