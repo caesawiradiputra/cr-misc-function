@@ -84,7 +84,9 @@ class LoadExternalTableMapper:
             if process_file in str(obj.key):
                 all_cache_file_paths.append(obj.key)
                 df_persist = df_persist.append(
-                    self.process_df_persist(self.process_type, obj.key, column_use, dict_dtype),
+                    self.process_df_persist(
+                        self.process_type, obj.key, column_use, dict_dtype
+                    ),
                     ignore_index=True,
                 )
 
@@ -93,12 +95,16 @@ class LoadExternalTableMapper:
             self.logger.info(f"-- {len(df_persist)} row(s) processed. --")
             df_persist = DataFrame(df_persist, as_type=t_schema)
             df_persist.persist(self.table_name, partition=f"pt={args['bizdate']}")
-        self.logger.info(f"-- {len(all_cache_file_paths)} file(s) processed: {all_cache_file_paths} --")
+        self.logger.info(
+            f"-- {len(all_cache_file_paths)} file(s) processed: {all_cache_file_paths} --"
+        )
 
     def __get_oss_conn(self):
         """Opens the OSS bucket connection using the da-ops RAM user."""
         auth = oss2.Auth(args["access_key"], args["access_key_secret"])
-        return oss2.Bucket(auth, "https://oss-ap-southeast-5.aliyuncs.com", args["bucket"])
+        return oss2.Bucket(
+            auth, "https://oss-ap-southeast-5.aliyuncs.com", args["bucket"]
+        )
 
     def get_schema_table_odps(self, table_name: str) -> Tuple[Dict, List[str], Dict]:
         """Reads the target table's schema and adapts it for DataFrame use.
@@ -168,7 +174,11 @@ class LoadExternalTableMapper:
 if __name__ == "__main__":
     list_crawl = ["branch"]
     for source in list_crawl:
-        oss_dir = f"master_data_address/{source}/source"  # TODO: confirm OSS source path
+        oss_dir = (
+            f"master_data_address/{source}/source"  # TODO: confirm OSS source path
+        )
         table_name = f"dgo_mda_raw_data_{source}"
         print("obj: ", source, ", oss: ", oss_dir)
-        LoadExternalTableMapper(process_type=source, path_oss=oss_dir, table_name=table_name)
+        LoadExternalTableMapper(
+            process_type=source, path_oss=oss_dir, table_name=table_name
+        )

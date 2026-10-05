@@ -156,6 +156,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def process_data(data: list, timeout: int = 30, retry: bool = False) -> dict:
     """
     Process data with optional timeout and retry behavior.
@@ -595,6 +596,7 @@ pytest -v
      def format_date(date: datetime, fmt: str = "%Y-%m-%d") -> str:
          """Format a datetime object to string."""
          return date.strftime(fmt)
+
 
      def find_user(user_id: int) -> dict[str, str] | None:
          """Find a user by ID or return None if not found."""

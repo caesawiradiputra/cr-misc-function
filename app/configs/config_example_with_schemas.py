@@ -69,7 +69,8 @@ try:
     from app.configs.log_config import logger
 except ImportError:
     import logging
-    logger = logging.getLogger(__name__)
+
+    logger = logging.getLogger(__name__)  # type: ignore[assignment]
 
 
 def load_environment() -> None:
@@ -113,12 +114,16 @@ DEFAULT_TIMEZONE = "Asia/Jakarta"  # Customize for your region
 
 try:
     now: datetime = (
-        datetime.fromisoformat(DATETIME_NOW).replace(tzinfo=pytz.timezone(DEFAULT_TIMEZONE))
+        datetime.fromisoformat(DATETIME_NOW).replace(
+            tzinfo=pytz.timezone(DEFAULT_TIMEZONE)
+        )
         if DATETIME_NOW != ""
         else datetime.now(pytz.timezone(DEFAULT_TIMEZONE))
     )
 except ValueError as e:
-    raise ValueError(f"Invalid DATETIME_NOW format (expected ISO format): {DATETIME_NOW}") from e
+    raise ValueError(
+        f"Invalid DATETIME_NOW format (expected ISO format): {DATETIME_NOW}"
+    ) from e
 
 print(f"✓ Processing time: {now} ({DEFAULT_TIMEZONE})")
 
@@ -138,7 +143,9 @@ date_id_partition_no: str = date_id.strftime("%Y%m%d")
 # ============================================================================
 LOGGING: LoggingConfig = LoggingConfig(
     level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-    format=os.environ.get("LOG_FORMAT", "json").lower(),  # 'json' for Grafana, 'text' for standard
+    format=os.environ.get(
+        "LOG_FORMAT", "json"
+    ).lower(),  # 'json' for Grafana, 'text' for standard
     dir=os.environ.get("LOG_DIR", "./logs"),
     file_prefix=os.environ.get("LOG_FILE_PREFIX", "misc_function"),
     retention_days=int(os.environ.get("LOG_RETENTION_DAYS", "7")),
@@ -255,7 +262,9 @@ DATABASE: DatabaseConfig = DatabaseConfig(
 # These are project-specific settings that don't fit standard schemas
 # They can be added to the AppConfig schema or kept separate as needed
 
-ENABLE_TASK_OUTPUT_CACHE: bool = os.environ.get("ENABLE_TASK_OUTPUT_CACHE", "true").lower() == "true"
+ENABLE_TASK_OUTPUT_CACHE: bool = (
+    os.environ.get("ENABLE_TASK_OUTPUT_CACHE", "true").lower() == "true"
+)
 TASK_OUTPUT_CACHE_HOURS: int = int(os.environ.get("TASK_OUTPUT_CACHE_HOURS", "12"))
 
 # Legacy database router (alternative to using dict of schemas)

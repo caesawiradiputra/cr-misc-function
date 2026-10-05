@@ -6,39 +6,38 @@ on:
   pull_request:
     branches: ["master", "dev", "sit"]
 
+permissions:
+  contents: read
+
 jobs:
   lint-and-typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Setup Conda
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v10.2.0
         with:
+          # Keep in step with the uv that writes uv.lock locally.
+          version: "0.12.12"
           python-version: "3.11"
-          activate-environment: ci
-          environment-file: environment.yml
-          auto-update-conda: true
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
-      - name: Verify Python
-        shell: bash -l {0}
-        run: |
-          python --version
-          which python
+      - name: Sync dependencies
+        run: uv sync --frozen
 
       - name: Ruff lint
-        shell: bash -l {0}
-        run: |
-          ruff check .
+        run: uv run ruff check .
 
       - name: Ruff format check
-        shell: bash -l {0}
-        run: |
-          ruff format --check .
+        run: uv run ruff format --check .
 
       - name: mypy
-        shell: bash -l {0}
-        run: |
-          mypy .
+        run: uv run mypy .
+
+      - name: pytest
+        run: uv run pytest

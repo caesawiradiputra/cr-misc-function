@@ -52,11 +52,14 @@ Replace bare `except:` with specific exception types. Use logger for context.
 
 ```python
 # Before
-try: ...
-except: return None
+try:
+    ...
+except:
+    return None
 
 # After
-try: ...
+try:
+    ...
 except KeyError:
     logger.debug("Not found: {}", key)
     return None

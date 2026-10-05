@@ -119,10 +119,13 @@ def __enter__(self):
     """Enter context manager."""
     return self
 
+
 def __exit__(self, exc_type, exc_val, exc_tb):
     """Exit context manager and cleanup."""
     if exc_type:
-        logger.error(f"[{self.__class__.__name__}] Operation failed: {exc_val}", exc_info=True)
+        logger.error(
+            f"[{self.__class__.__name__}] Operation failed: {exc_val}", exc_info=True
+        )
     self.strategy.disconnect()
 ```
 
@@ -203,6 +206,7 @@ Load external SQL files instead of embedding in code:
 ```python
 from app.utils.repo_utils import read_query_file
 
+
 class OrderRepository:
     DATABASE_TYPE = "mssql"
     SCHEMA = "dbo"
@@ -253,6 +257,7 @@ All functions have comprehensive docstrings with usage examples, parameter detai
 
 ```python
 from app.utils.data_utils import export_to_csv, convert_csv_to_parquet
+
 help(export_to_csv)  # View full docstring with examples
 help(convert_csv_to_parquet)
 ```
@@ -282,6 +287,7 @@ def get_orders_by_status(self, status: str) -> pd.DataFrame | None:
     except Exception as e:
         logger.error(f"Failed to fetch orders: {e}")
         return None
+
 
 def insert_order(self, order_data: dict[str, Any]) -> int:
     """Insert new order and return row count."""
@@ -370,13 +376,17 @@ class OrderRepository:
 
     # Query constants at module level
     QUERY_PENDING = f"SELECT * FROM {SCHEMA}.{TABLE_NAME} WHERE status = 'PENDING'"
-    QUERY_BY_DATE_RANGE = f"SELECT * FROM {SCHEMA}.{TABLE_NAME} WHERE created_at BETWEEN ? AND ?"
+    QUERY_BY_DATE_RANGE = (
+        f"SELECT * FROM {SCHEMA}.{TABLE_NAME} WHERE created_at BETWEEN ? AND ?"
+    )
 
     def get_pending_orders(self) -> pd.DataFrame:
         return self.strategy.execute_query(self.QUERY_PENDING)
 
     def get_orders_by_date(self, start: str, end: str) -> pd.DataFrame:
-        return self.strategy.execute_query(self.QUERY_BY_DATE_RANGE, params=(start, end))
+        return self.strategy.execute_query(
+            self.QUERY_BY_DATE_RANGE, params=(start, end)
+        )
 ```
 
 ### Pattern 2: Batch Operations Efficiently

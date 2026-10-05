@@ -60,7 +60,9 @@ import pytz
 from pydantic import BaseModel, Field
 
 
-def _parse_datetime_now(datetime_now_str: str = "", timezone: str = "Asia/Jakarta") -> datetime:
+def _parse_datetime_now(
+    datetime_now_str: str = "", timezone: str = "Asia/Jakarta"
+) -> datetime:
     """Parse datetime string or return current datetime.
 
     Supports multiple datetime formats:
@@ -177,14 +179,19 @@ class DatabaseConfig(BaseModel):
             "postgres": DATABASE_POSTGRES,
         }
     """
+
     host: str = Field(default="", description="Database hostname or IP")
     port: Union[int, str] = Field(default="", description="Database port")
     user: str = Field(default="", description="Database username")
     password: str = Field(default="", description="Database password")
     database: str = Field(default="", description="Database name")
     driver: Optional[str] = Field(default=None, description="Database driver name")
-    dialect: str = Field(default="", description="SQLAlchemy dialect (e.g., mssql, postgresql)")
-    library: str = Field(default="", description="Python library for SQLAlchemy (e.g., pyodbc, psycopg2)")
+    dialect: str = Field(
+        default="", description="SQLAlchemy dialect (e.g., mssql, postgresql)"
+    )
+    library: str = Field(
+        default="", description="Python library for SQLAlchemy (e.g., pyodbc, psycopg2)"
+    )
     pool_size: int = Field(default=5, description="Connection pool size")
     max_overflow: int = Field(default=10, description="Max overflow connections")
     connect_timeout: int = Field(default=30, description="Connection timeout (seconds)")
@@ -298,16 +305,21 @@ class LoggingConfig(BaseModel):
             create_file_logs=False,  # Skip file creation in ephemeral environments
         )
     """
+
     level: str = Field(default="INFO", description="Logging level")
     format: str = Field(default="json", description="Console format: 'json' or 'text'")
     dir: str = Field(default="./logs", description="Log directory path")
     file_prefix: str = Field(default="app", description="Log filename prefix")
     retention_days: int = Field(default=7, description="Log retention days")
     max_files: int = Field(default=50, description="Max log files to keep")
-    enable_file_rotation: bool = Field(default=True, description="Enable daily rotation")
+    enable_file_rotation: bool = Field(
+        default=True, description="Enable daily rotation"
+    )
     enable_compression: bool = Field(default=True, description="Compress rotated logs")
     diagnose: bool = Field(default=True, description="Full diagnostics in file logs")
-    create_file_logs: bool = Field(default=True, description="Create log files (default: True)")
+    create_file_logs: bool = Field(
+        default=True, description="Create log files (default: True)"
+    )
 
     class Config:
         extra = "allow"
@@ -370,6 +382,7 @@ class KafkaConfig(BaseModel):
             sasl_password=os.environ.get("KAFKA_PASSWORD"),
         )
     """
+
     bootstrap_servers: str = Field(default="", description="Kafka broker addresses")
     topic: str = Field(default="", description="Default topic name")
     group_id: Optional[str] = Field(default=None, description="Consumer group ID")
@@ -446,10 +459,15 @@ class ElasticsearchConfig(BaseModel):
             password="pV6wEeJB6PPhD2bW",
         )
     """
+
     enabled: bool = Field(default=False, description="Enable Elasticsearch integration")
-    hosts: str = Field(default="", description="Elasticsearch host(s) - comma-separated")
+    hosts: str = Field(
+        default="", description="Elasticsearch host(s) - comma-separated"
+    )
     index: str = Field(default="", description="Target index name")
-    connection_schema: str = Field(default="https", description="Connection schema: 'http' or 'https'")
+    connection_schema: str = Field(
+        default="https", description="Connection schema: 'http' or 'https'"
+    )
     username: str = Field(default="", description="Username for authentication")
     password: str = Field(default="", description="Password for authentication")
     request_timeout: int = Field(default=30, description="Request timeout (seconds)")
@@ -525,13 +543,16 @@ class AppConfig(BaseModel):
         processing_date = APP.datetime_now.date()
         execution_timestamp = APP.datetime_now.isoformat()
     """
+
     debug: bool = Field(default=False, description="Debug mode")
     environment: str = Field(default="production", description="Environment name")
     app_name: str = Field(default="app", description="Application name")
     app_version: str = Field(default="1.0.0", description="Application version")
     timezone: str = Field(default="Asia/Jakarta", description="Application timezone")
     max_workers: int = Field(default=4, description="Max concurrent workers")
-    request_timeout_seconds: int = Field(default=30, description="Request timeout (seconds)")
+    request_timeout_seconds: int = Field(
+        default=30, description="Request timeout (seconds)"
+    )
     datetime_now: datetime = Field(
         default_factory=lambda: datetime.now(pytz.timezone("Asia/Jakarta")),
         description="Processing date/reference datetime",
@@ -586,6 +607,7 @@ class ODPSConfig(BaseModel):
     Validation:
         Use is_configured() before connecting to ODPS
     """
+
     access_id: str = Field(default="", description="ODPS access ID")
     secret_access_key: str = Field(default="", description="ODPS secret key")
     project: str = Field(default="", description="ODPS project name")
@@ -602,10 +624,7 @@ class ODPSConfig(BaseModel):
             True if all core credentials are provided
         """
         return bool(
-            self.access_id
-            and self.secret_access_key
-            and self.project
-            and self.endpoint
+            self.access_id and self.secret_access_key and self.project and self.endpoint
         )
 
 
@@ -652,6 +671,7 @@ class OSSConfig(BaseModel):
             ),
         }
     """
+
     access_key_id: str = Field(default="", description="OSS access key ID")
     access_key_secret: str = Field(default="", description="OSS access key secret")
     bucket_name: str = Field(default="", description="OSS bucket name")

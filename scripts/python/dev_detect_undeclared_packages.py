@@ -22,6 +22,7 @@ from pathlib import Path
 # Utilities
 # --------------------------------------------------
 
+
 def run(cmd: list[str]) -> str:
     result = subprocess.run(
         cmd,
@@ -39,6 +40,7 @@ def normalize(name: str) -> str:
 # --------------------------------------------------
 # Conda Environment Lookup
 # --------------------------------------------------
+
 
 def get_conda_env_python(env_name: str) -> Path:
     info = json.loads(run(["conda", "info", "--json"]))
@@ -59,29 +61,25 @@ def get_conda_env_python(env_name: str) -> Path:
 # Installed Packages
 # --------------------------------------------------
 
+
 def get_pip_installed(python_path: Path) -> dict[str, str]:
     output = run([str(python_path), "-m", "pip", "list", "--format=json"])
     data = json.loads(output)
 
-    return {
-        normalize(pkg["name"]): pkg["version"]
-        for pkg in data
-    }
+    return {normalize(pkg["name"]): pkg["version"] for pkg in data}
 
 
 def get_conda_metadata(env_name: str) -> dict[str, dict]:
     output = run(["conda", "list", "-n", env_name, "--json"])
     data = json.loads(output)
 
-    return {
-        normalize(pkg["name"]): pkg
-        for pkg in data
-    }
+    return {normalize(pkg["name"]): pkg for pkg in data}
 
 
 # --------------------------------------------------
 # Poetry Lock Parsing
 # --------------------------------------------------
+
 
 def parse_poetry_lock(lock_path: Path) -> set[str]:
     if not lock_path.exists():
@@ -102,9 +100,8 @@ def parse_poetry_lock(lock_path: Path) -> set[str]:
 # Reporting
 # --------------------------------------------------
 
-def explain(pkg: str,
-            version: str,
-            conda_meta: dict[str, dict]) -> None:
+
+def explain(pkg: str, version: str, conda_meta: dict[str, dict]) -> None:
 
     print(f"  - {pkg}=={version}")
 
@@ -124,6 +121,7 @@ def explain(pkg: str,
 # Severity & Color System
 # --------------------------------------------------
 
+
 class Severity:
     INFO = "INFO"
     WARNING = "WARNING"
@@ -135,9 +133,9 @@ def color(text: str, level: str) -> str:
         return text
 
     colors = {
-        Severity.INFO: "\033[36m",       # Cyan
-        Severity.WARNING: "\033[33m",    # Yellow
-        Severity.CRITICAL: "\033[31m",   # Red
+        Severity.INFO: "\033[36m",  # Cyan
+        Severity.WARNING: "\033[33m",  # Yellow
+        Severity.CRITICAL: "\033[31m",  # Red
     }
     reset = "\033[0m"
 
@@ -148,10 +146,10 @@ def color(text: str, level: str) -> str:
 # Detection Logic (Upgraded)
 # --------------------------------------------------
 
-def classify_package(pkg: str,
-                     version: str,
-                     conda_meta: dict[str, dict],
-                     locked: set[str]) -> tuple[str, str] | tuple[None, None]:
+
+def classify_package(
+    pkg: str, version: str, conda_meta: dict[str, dict], locked: set[str]
+) -> tuple[str, str] | tuple[None, None]:
     """
     Returns (severity, reason)
     """
@@ -170,10 +168,9 @@ def classify_package(pkg: str,
     return Severity.INFO, f"conda-managed dependency (channel: {channel})"
 
 
-def detect_pollution(env_name: str,
-                     explain_mode: bool,
-                     strict_mode: bool,
-                     check_venv: bool) -> None:
+def detect_pollution(
+    env_name: str, explain_mode: bool, strict_mode: bool, check_venv: bool
+) -> None:
 
     print("\nEnterprise Environment Pollution Detector\n")
 
@@ -251,6 +248,7 @@ def detect_pollution(env_name: str,
 # --------------------------------------------------
 # CLI
 # --------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(

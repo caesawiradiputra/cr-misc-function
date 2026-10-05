@@ -61,4 +61,6 @@ line-ending = "auto"
 # DataWorks PyODPS nodes execute on the platform's pinned Python 3.7 runtime,
 # not this repo's target-version — builtin generic subscripting (list[str],
 # tuple[...]) raises TypeError there, so typing.List/Dict/Tuple must stay.
-"temp/pyODPS/*.py" = ["UP006", "UP035"]
+# The runtime also injects `o` (the ODPS entry), `args` and `DataFrame` as
+# globals, so F821 (undefined name) is expected; F842 covers a scratch variable.
+"temp/pyODPS/*.py" = ["UP006", "UP035", "F821", "F842"]

@@ -34,7 +34,8 @@ from trino.auth import BasicAuthentication
 from trino.dbapi import Connection as Trino_Connection
 from trino.dbapi import Cursor as Trino_Cursor
 
-from app.configs.config import database_config, odps_config
+from app.configs.config import ODPS as ODPS_CONFIG
+from app.configs.config import database_config
 from app.configs.log_config import logger
 
 
@@ -142,14 +143,31 @@ class DBConnector:
         self._validate_db_type()
         self.config = self._parse_config()  # * Single unified config
 
-        self.connection: Trino_Connection | Psycopg2_Connection | Hive_Connection | Pyodbc_Connection | PooledMySQLConnection | MySQLConnectionAbstract | None = None
+        self.connection: (
+            Trino_Connection
+            | Psycopg2_Connection
+            | Hive_Connection
+            | Pyodbc_Connection
+            | PooledMySQLConnection
+            | MySQLConnectionAbstract
+            | None
+        ) = None
         self.connection_odps: ODPS | None = None
-        self.cursor: Trino_Cursor | Psycopg2_Cursor | Hive_Cursor | Pyodbc_Cursor | MySQLCursorAbstract | None = None
+        self.cursor: (
+            Trino_Cursor
+            | Psycopg2_Cursor
+            | Hive_Cursor
+            | Pyodbc_Cursor
+            | MySQLCursorAbstract
+            | None
+        ) = None
         self.engine: Engine | None = None
         self._odps_lock = threading.Lock()
 
         # * Get pool size from unified config object
-        self._thread_pool = ThreadPoolExecutor(max_workers=self.config.pool_size)
+        self._thread_pool: ThreadPoolExecutor | None = ThreadPoolExecutor(
+            max_workers=self.config.pool_size
+        )
 
         if self.db_type != "odps":
             self.connect()
@@ -165,31 +183,37 @@ class DBConnector:
             for field in [
                 "access_id",
                 "secret_access_key",
-                "default_project",
+                "project",
                 "endpoint",
             ]:
-                if not odps_config.get(field):
+                if not getattr(ODPS_CONFIG, field):
                     raise ValueError(
                         f"[{self.db_type}] Missing ODPS config field: {field}"
                     )
-            return ODPSConfig(db_type="odps", **odps_config)
+            return ODPSConfig(
+                db_type="odps",
+                access_id=ODPS_CONFIG.access_id,
+                secret_access_key=ODPS_CONFIG.secret_access_key,
+                default_project=ODPS_CONFIG.project,
+                endpoint=ODPS_CONFIG.endpoint,
+            )
         else:
             db_config = database_config[self.db_type]
             for field in ["host", "port", "user", "password", "database"]:
-                if not db_config.get(field):
+                if not getattr(db_config, field):
                     raise ValueError(
                         f"[{self.db_type}] Missing DB config field: {field}"
                     )
             return DBConfig(
                 db_type=self.db_type,
-                host=db_config["host"],
-                port=db_config["port"],
-                user=db_config["user"],
-                password=db_config["password"],
-                database=db_config["database"],
-                driver=db_config.get("driver"),
-                pool_size=db_config.get("pool_size", 5),
-                max_overflow=db_config.get("max_overflow", 10),
+                host=db_config.host,
+                port=int(db_config.port),
+                user=db_config.user,
+                password=db_config.password,
+                database=db_config.database,
+                driver=db_config.driver,
+                pool_size=db_config.pool_size,
+                max_overflow=db_config.max_overflow,
             )
 
     class DBConnectorError(Exception):
@@ -592,7 +616,9 @@ class DBConnector:
             logger.error(
                 f"[{self.db_type}] Error executing query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Query execution failed: {str(e)}") from e
+            raise RuntimeError(
+                f"[{self.db_type}] Query execution failed: {str(e)}"
+            ) from e
 
     @_require_odps_connection_and_handle_errors
     def execute_non_query(
@@ -664,4 +690,6 @@ class DBConnector:
             logger.error(
                 f"[{self.db_type}] Error executing non-query: {str(e)}", exc_info=True
             )
-            raise RuntimeError(f"[{self.db_type}] Non-query execution failed: {str(e)}") from e
+            raise RuntimeError(
+                f"[{self.db_type}] Non-query execution failed: {str(e)}"
+            ) from e
