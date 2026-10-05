@@ -1,8 +1,8 @@
 # Docker Image CI Standard
 
-The standard `Docker Image CI` GitHub Actions workflow for BFI data repositories that build an image and push it to the Alibaba Cloud Container Registry (ACR). The template is [`templates/github-workflows/docker-image.yml`](../../templates/github-workflows/docker-image.yml).
+The standard `Docker Image CI` GitHub Actions workflow for data repositories that build an image and push it to the Alibaba Cloud Container Registry (ACR). The template is [`templates/github-workflows/docker-image.yml`](../../templates/github-workflows/docker-image.yml).
 
-First used and tested in `da-negative-list` (PR #60, 2026-10-02). Every rule below exists because of something that broke or could break, noted in the *Why* column.
+First used and tested in a Python service repo on 2026-10-02. Every rule below exists because of something that broke or could break, noted in the *Why* column.
 
 ## 1. Adopting it in a repository
 
@@ -26,7 +26,7 @@ First used and tested in `da-negative-list` (PR #60, 2026-10-02). Every rule bel
 | 8 | The `environment` input is informational only. | It labels the run and the summary but changes nothing in the build; people assume it selects configuration. |
 | 9 | Use `docker/login-action`, not a hand-written `docker login`. | It logs out when the job ends, so credentials do not remain on the runner. |
 | 10 | Build and push with `docker/build-push-action` and set `provenance: false` and `sbom: false`. | ACR rejects the attestation manifest buildx attaches by default: `denied: unknown manifest class for application/vnd.oci.empty.v1+json`. |
-| 11 | Write the run summary through `tee -a "$GITHUB_STEP_SUMMARY"`, including the image digest and a complete local run command (`docker login`, then `docker run -d --name <image>_<tag> -p ... --env-file .env <image>:<tag>`). The container name is the image name and the image tag as given, with no environment added (put the environment in the tag when it is wanted, for example `v2.0-sit` gives `negative-list_v2.0-sit`). | The digest lets a deployment pin an exact image: `<image>@sha256:...`. Writing only to the summary file leaves the step log showing the script source with unexpanded `${...}` and no output; `tee` prints the real values to the log as well. |
+| 11 | Write the run summary through `tee -a "$GITHUB_STEP_SUMMARY"`, including the image digest and a complete local run command (`docker login`, then `docker run -d --name <image>_<tag> -p ... --env-file .env <image>:<tag>`). The container name is the image name and the image tag as given, with no environment added (put the environment in the tag when it is wanted, for example `v2.0-sit` gives `my-service_v2.0-sit`). | The digest lets a deployment pin an exact image: `<image>@sha256:...`. Writing only to the summary file leaves the step log showing the script source with unexpanded `${...}` and no output; `tee` prints the real values to the log as well. |
 | 12 | Cache `scope` per image. | Without it, several images built in one repository (a matrix) share one cache and evict each other. |
 
 Application configuration is never baked into the image or generated in CI; it is supplied at run time.
@@ -48,7 +48,7 @@ Use an explicit `image_tag` (for example `1.4.0`) for anything a deployment will
 - **Pin tool versions**, for example `pip install uv==<version>`, so a new release of the tool cannot change the build.
 - **Order layers for caching:** copy the dependency manifests (`pyproject.toml`, `uv.lock`) and install dependencies before copying the application code.
 - **No `.env` files in the image.** Keep `.env*` in `.dockerignore`.
-- Optional: mirror the base image into the BFI registry. Docker Hub limits anonymous pulls per IP address and GitHub runners share IP addresses. This has not been hit yet.
+- Optional: mirror the base image into your own registry. Docker Hub limits anonymous pulls per IP address and GitHub runners share IP addresses. This has not been hit yet.
 
 ### 4.1 When to upgrade the pinned `uv` (and the base image digest)
 
@@ -58,7 +58,7 @@ Pinning stops a tool release from silently changing a build, but a pin that is n
 
 | Trigger | What to do |
 | --- | --- |
-| The version that writes `uv.lock` on developer machines is newer than the Dockerfile's. Run `uv --version` and compare it with the Dockerfile pin. | Raise the Dockerfile pin to match. `uv.lock` records a format `version` and `revision` (`da-negative-list` was `version = 1`, `revision = 3`, written by uv 0.12.12). An older uv in the image may fail to read or may rewrite a lock written by a newer one, and `uv sync --frozen` should fail the build loudly. |
+| The version that writes `uv.lock` on developer machines is newer than the Dockerfile's. Run `uv --version` and compare it with the Dockerfile pin. | Raise the Dockerfile pin to match. `uv.lock` records a format `version` and `revision` (the first repo was `version = 1`, `revision = 3`, written by uv 0.12.12). An older uv in the image may fail to read or may rewrite a lock written by a newer one, and `uv sync --frozen` should fail the build loudly. |
 | A security advisory or a bug that affects the build or the lock resolution. | Upgrade promptly. |
 | A uv feature or fix the repository needs. | Upgrade as part of that change. |
 | A scheduled review, for example once a quarter (or when you revisit the base-image digest). | Check the latest release, read the release notes for lock-format or behaviour changes, and decide. If nothing needs it, leave the pin alone. |
@@ -78,7 +78,7 @@ Apply the same discipline to the **base image digest**: update it on purpose, af
 
 ## 5. Layer cache (optional)
 
-The template caches layers in the GitHub Actions cache (`type=gha`). Measured in `da-negative-list`:
+The template caches layers in the GitHub Actions cache (`type=gha`). Measured in the first repo:
 
 | Run | Total time |
 | --- | --- |
@@ -88,7 +88,7 @@ The template caches layers in the GitHub Actions cache (`type=gha`). Measured in
 
 Everything built in the Dockerfile was reused in the second run, yet the saving was only about 10 s because pulling the base image and pushing layers dominate and are not cached. The cache therefore pays off only where the apt and dependency-install layers are slow.
 
-**The cache is scoped to the branch.** GitHub lets a run restore only caches created on its own branch or on the repository's default branch (for pull requests, also the base branch). A run on `sit` cannot use a cache written on `dev`, `master` or a feature branch. So the first run on each branch is a cold build that also writes the cache: in `da-negative-list` the first run on `sit` reused no layers, its cache export alone took 71 s, and the run took 144 s against 93 s without a cache. Later runs on the same branch hit the cache as long as the Dockerfile and the lock file are unchanged. A cache shared by all branches would have to live in a registry (`type=registry`); that has not been tried against ACR, which already rejects some OCI manifest types (see rule 10).
+**The cache is scoped to the branch.** GitHub lets a run restore only caches created on its own branch or on the repository's default branch (for pull requests, also the base branch). A run on `sit` cannot use a cache written on `dev`, `master` or a feature branch. So the first run on each branch is a cold build that also writes the cache: in the first repo the first run on `sit` reused no layers, its cache export alone took 71 s, and the run took 144 s against 93 s without a cache. Later runs on the same branch hit the cache as long as the Dockerfile and the lock file are unchanged. A cache shared by all branches would have to live in a registry (`type=registry`); that has not been tried against ACR, which already rejects some OCI manifest types (see rule 10).
 
 To decide for a repository: dispatch twice with the same tag and compare job durations. If the saving is small, delete the `cache-from` and `cache-to` lines; keeping `build-push-action` and the flags above is still worthwhile. A code-only commit rebuilds only the last layers, and a change to the lock file rebuilds the dependency layer.
 

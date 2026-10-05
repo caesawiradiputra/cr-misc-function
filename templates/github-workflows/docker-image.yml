@@ -57,8 +57,8 @@ jobs:
     timeout-minutes: 30
 
     env:
-      REGISTRY: "registry-intl.ap-southeast-5.aliyuncs.com"
-      REGISTRY_NAMESPACE: "bfi-registry"
+      REGISTRY: "<REGISTRY>"  # TODO: set the registry host, e.g. an Alibaba Cloud ACR endpoint
+      REGISTRY_NAMESPACE: "<REGISTRY_NAMESPACE>"  # TODO: set the registry namespace
       IMAGE_NAME: "your-image-name"  # TODO: set this repository's image name
 
     steps:
