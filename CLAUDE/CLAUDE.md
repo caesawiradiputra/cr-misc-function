@@ -167,6 +167,32 @@ marked "confirmed" were verified; the rest are hypotheses to test.
   every running WSL process, including a running Docker build and the Claude
   session. Never suggest it while a build is running. To compare speeds, download
   the same large file with `curl.exe` on Windows and `curl` in WSL.
+- **Claude Code itself can fail with `ERR_PROXY_TUNNEL` after `autoProxy=true`.**
+  An already-running/resumed session (`claude --continue`) hit "Couldn't
+  connect through your proxy (ERR_PROXY_TUNNEL) — the proxy refused the
+  tunnel: check its credentials and that it allows this host," while a
+  freshly started `claude` process on the same machine — same corporate
+  PAC-based proxy that `autoProxy=true` mirrors into WSL (exposed to WSL
+  processes as `WSL_PAC_URL`) — reached `api.anthropic.com` instantly. So it
+  wasn't the proxy blocking the host outright — it was a stale/
+  already-negotiated tunnel in the older process (most likely from before a
+  `wsl --shutdown`, or a proxy-auth session expiring underneath it). Diagnose
+  by testing a *fresh* `claude` process plus a direct `curl` to the Claude
+  Code hosts before concluding the proxy itself is broken; if a fresh process
+  also fails, that's the real signal of a proxy/allowlist problem worth
+  escalating. One-off fix: restart the stuck session. Durable fix, in
+  `~/.claude/settings.json`:
+  ```json
+  "env": {
+    "NO_PROXY": "api.anthropic.com,claude.ai,claude.com,platform.claude.com,.anthropic.com,.claude.ai,.claude.com"
+  }
+  ```
+  Scoped to Claude Code's own `env` block only — doesn't touch the shell's
+  `http_proxy`/`https_proxy`, so `apt`/`pip`/`git` still go through the
+  corporate proxy as before. Verify all four hosts return a real HTTP status
+  direct (no `000`) before adding it. `env` is read once at Claude Code
+  startup, so every running session needs restarting after this change;
+  confirm with `/status`'s Proxy row.
 
 ---
 

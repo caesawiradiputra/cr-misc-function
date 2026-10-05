@@ -461,6 +461,43 @@ Add that line to `~/.bashrc` to make it persist across shells. If no proxy is ac
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
 ```
 
+**A more targeted variant: `ERR_PROXY_TUNNEL` from one specific (often
+already-running) session.** If only one running/resumed `claude` session
+errors with `Couldn't connect through your proxy (ERR_PROXY_TUNNEL) — the
+proxy refused the tunnel`, while a *freshly started* `claude` process on the
+same machine connects fine, the proxy usually isn't blocking Anthropic's
+hosts — the older process is holding a stale/already-negotiated proxy tunnel
+(commonly from before a `wsl --shutdown`, or the proxy's own auth session
+expiring underneath it). Confirm with a direct `curl` to each host before
+touching anything:
+
+```bash
+for h in api.anthropic.com claude.ai claude.com platform.claude.com; do
+  printf '%s: ' "$h"
+  curl -s -o /dev/null -w '%{http_code}\n' --max-time 10 "https://$h/"
+done
+```
+
+Any real HTTP code (`200`, `301`, `403`, `404`, `405`, ...) means that host is
+reachable direct; a `000` means it's genuinely blocked and does need the
+proxy path — that's the one worth escalating to the network team, naming the
+host and that it needs `CONNECT` allowed on port 443. If all four return a
+real code, prefer scoping the bypass to Claude Code only instead of the
+blanket `~/.bashrc` export above — add it to `~/.claude/settings.json` so
+`apt`/`pip`/`git` keep using the corporate proxy as before:
+
+```json
+{
+  "env": {
+    "NO_PROXY": "api.anthropic.com,claude.ai,claude.com,platform.claude.com,.anthropic.com,.claude.ai,.claude.com"
+  }
+}
+```
+
+`env` is read once at startup, so restart every running `claude` session
+(including the one that errored) after adding it, and confirm with
+`/status`'s Proxy row.
+
 ### `uv`/`uvx` not found when Claude Code runs shell commands
 
 This repository's own `CLAUDE.md` has Claude Code run `uv sync`, `uv run`, etc. as its normal workflow. The official `uv` installer (`curl -LsSf https://astral.sh/uv/install.sh | sh`) places `uv`/`uvx` in `~/.local/bin`, which an interactive login shell picks up via `~/.bashrc`/`~/.profile` — but not every process Claude Code or its tools spawn is guaranteed to inherit that (elevated `sudo` contexts and remote-extension-host-style processes are the same class of gotcha documented for `~/.local/bin` in the global `~/.claude/CLAUDE.md`). If a `uv`/`uvx` command fails with "command not found" only in some contexts but works in an interactive shell, symlink both binaries into a directory that's unconditionally on `PATH`:
