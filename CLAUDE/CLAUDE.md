@@ -196,6 +196,66 @@ marked "confirmed" were verified; the rest are hypotheses to test.
 
 ---
 
+## Docker Image CI Standard (GitHub Actions)
+
+Standard `Docker Image CI` workflow for repos that build and push an image to
+Alibaba Cloud Container Registry (ACR). Established 2026-10-02 in a
+negative-list repo, tested by real dispatches. The template is
+`templates/github-workflows/docker-image.yml` and the rules are in
+`docs/guidelines/DOCKER-IMAGE-CI-STANDARD.md`, both in `cr-misc-function` (on
+branch `docs/docker-image-ci-standard` until merged). Start from the template
+when creating or updating a repo's `.github/workflows/docker-image.yml`; don't
+hand-write a new variant.
+
+- **Only `master`, `dev` and `sit` push a mutable branch tag** (`latest`, `dev`,
+  `sit`). Other branches push just `<image_tag>` and `<short SHA>`. An earlier
+  "any other branch → `sit`" mapping let a feature-branch run overwrite `:sit`.
+- **ACR rejects buildx attestations** (`denied: unknown manifest class ...
+  oci.empty.v1+json`). With `docker/build-push-action`, always set
+  `provenance: false` and `sbom: false`.
+- **Pin the Dockerfile base image by digest and pin tool versions** (e.g.
+  `pip install uv==<version>`). A floating tag moved `python3.9` to Debian 13
+  and broke an `apt-key add` step that worked on `python3.8`. Pins are moved on
+  purpose, not left to rot and not bumped to "latest" by habit: raise the `uv`
+  pin when the `uv` that writes `uv.lock` locally is newer than the Dockerfile's,
+  for a security or bug fix, when a feature is needed, at a scheduled review
+  (e.g. quarterly), or when the base image's Python changes. Check the release's
+  `requires_python` on PyPI first, review the `uv.lock` diff, then rebuild, start
+  the container and run a CI dispatch. Details: section 4.1 of the standard.
+- Hardening that is part of the standard: `permissions: contents: read`,
+  inputs passed through `env:` (never `${{ }}` inside `run:`), `image_tag`
+  validated, `concurrency` group, `timeout-minutes`, `docker/login-action`, a
+  commit-SHA tag, and a step summary with the image digest and a complete local
+  `docker run -d --name <image>_<tag> -p ... --env-file .env` command
+  (container name = image name and the image tag as given, no environment
+  added, e.g. `<image>_v2.0-sit` for tag `v2.0-sit`), written with
+  `tee -a "$GITHUB_STEP_SUMMARY"` so real values also appear in the step log
+  (a heredoc written only to the summary file leaves the log showing the script
+  source with unexpanded `${...}`). The `environment` input is informational
+  only.
+- **The layer cache (`type=gha`) is optional.** Measured: 93 s cold, 83 s fully
+  cached, so it only pays off where apt / dependency layers are slow. Before
+  adding it to another repo, dispatch twice with the same tag and compare job
+  durations; when several images are built in one repo, give each its own cache
+  `scope`. The `type=gha` cache is scoped to the branch (a run restores only
+  its own branch's cache or the default branch's), so the first run on each
+  branch is cold and slower (first `sit` run: 144 s vs 93 s with no cache, the
+  cache export alone took 71 s); don't read "no `CACHED` lines" on a new branch
+  as a bug.
+- **Test from the work branch** with `gh workflow run docker-image.yml --ref
+  <branch> -f image_tag=<test-tag> -f environment=dev`. The workflow file from
+  that branch is used, and a feature branch moves no branch tag. Delete the
+  test tags from the registry afterwards.
+- A Docker image is not proven by `docker build` alone: also start the
+  container (`docker run -d`) and call its health endpoints. In the first repo,
+  a successful build still failed at import because a fresh dependency resolve
+  picked packages newer than the old lock.
+- For Python repos migrated from Poetry to uv, pin every runtime package to
+  the old lock's versions with `[tool.uv] constraint-dependencies` and compare
+  the installed set against the old lock before merging.
+
+---
+
 ## Project Standards
 
 - **Package manager**: uv (not pip directly). When a repository uses uv/pyproject.toml
