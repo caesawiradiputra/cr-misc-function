@@ -41,6 +41,7 @@ Usage:
         logger.info("Cleaning...")
         logger.debug("Removed items={}", 10)
 """
+
 import json
 import logging
 import os
@@ -54,6 +55,7 @@ from loguru import logger
 
 class LogFileEntry(TypedDict):
     """Type definition for log file metadata."""
+
     path: str
     name: str
     mtime: float
@@ -61,7 +63,9 @@ class LogFileEntry(TypedDict):
     age_days: int
 
 
-def _format_location(name: str | None, function: str | None, line: int | None, width: int = 60) -> str:
+def _format_location(
+    name: str | None, function: str | None, line: int | None, width: int = 60
+) -> str:
     """Format logger location (name:function:line) with smart truncation and padding.
 
     Combines the three components into a single fixed-width field:
@@ -88,7 +92,7 @@ def _format_location(name: str | None, function: str | None, line: int | None, w
         return location.ljust(width)  # Right-pad with spaces
     else:
         # Left-truncate with '..' prefix
-        truncated = location[-(width - 2):]  # Keep width-2 chars from right
+        truncated = location[-(width - 2) :]  # Keep width-2 chars from right
         return f"..{truncated}"
 
 
@@ -109,6 +113,7 @@ def _location_filter(record: dict) -> bool:
         record["name"], record["function"], record["line"], width=60
     )
     return True
+
 
 # Lazy imports to avoid circular dependencies with proper type hints
 _config_loaded: bool = False
@@ -136,7 +141,15 @@ def _load_config() -> None:
 
         Overrides _log_level to "DEBUG" if _debug flag is True.
     """
-    global _config_loaded, _debug, _log_dir, _log_file_prefix, _log_level, _log_retention_days, _max_log_files, _log_format
+    global \
+        _config_loaded, \
+        _debug, \
+        _log_dir, \
+        _log_file_prefix, \
+        _log_level, \
+        _log_retention_days, \
+        _max_log_files, \
+        _log_format
 
     if _config_loaded:
         return
@@ -151,6 +164,7 @@ def _load_config() -> None:
             LOG_RETENTION_DAYS,
             MAX_LOG_FILES,
         )
+
         _debug = DEBUG
         _log_dir = LOG_DIR
         _log_file_prefix = LOG_FILE_PREFIX
@@ -258,8 +272,6 @@ def _console_json_sink(message: dict) -> None:
     sys.stdout.flush()
 
 
-
-
 def _cleanup_old_logs() -> None:
     """Clean up old log files based on retention policy.
 
@@ -278,7 +290,12 @@ def _cleanup_old_logs() -> None:
     """
     _load_config()
 
-    if _log_dir is None or _log_file_prefix is None or _log_retention_days is None or _max_log_files is None:
+    if (
+        _log_dir is None
+        or _log_file_prefix is None
+        or _log_retention_days is None
+        or _max_log_files is None
+    ):
         return
     if not os.path.exists(_log_dir):
         return
@@ -291,13 +308,15 @@ def _cleanup_old_logs() -> None:
                 mtime = os.path.getmtime(filepath)
                 file_size = os.path.getsize(filepath)
                 age_days = (datetime.now() - datetime.fromtimestamp(mtime)).days
-                log_files.append({
-                    "path": filepath,
-                    "name": file,
-                    "mtime": mtime,
-                    "size": file_size,
-                    "age_days": age_days,
-                })
+                log_files.append(
+                    {
+                        "path": filepath,
+                        "name": file,
+                        "mtime": mtime,
+                        "size": file_size,
+                        "age_days": age_days,
+                    }
+                )
 
         # Sort by modification time (newest first)
         log_files.sort(key=lambda x: x["mtime"], reverse=True)
@@ -325,7 +344,6 @@ def _cleanup_old_logs() -> None:
                     pass
     except Exception:
         pass
-
 
 
 def init_logging(script_name: str = "app", cleanup: bool = True) -> None:
@@ -364,7 +382,9 @@ def init_logging(script_name: str = "app", cleanup: bool = True) -> None:
         def some_function():
             logger.info("Doing work...")
     """
-    logger.debug("init_logging called with script_name={}, cleanup={}", script_name, cleanup)
+    logger.debug(
+        "init_logging called with script_name={}, cleanup={}", script_name, cleanup
+    )
     _load_config()
 
     if _log_level is None or _log_dir is None or _log_file_prefix is None:
@@ -394,12 +414,14 @@ def init_logging(script_name: str = "app", cleanup: bool = True) -> None:
             level=_log_level,
             format=CONSOLE_FORMAT,
             colorize=True,
-            filter=_location_filter, # type: ignore
+            filter=_location_filter,  # type: ignore
         )
 
     # Add file handler (detailed structured text with full diagnostics)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(_log_dir, f"{_log_file_prefix}_{script_name}_{timestamp}.log")
+    log_file = os.path.join(
+        _log_dir, f"{_log_file_prefix}_{script_name}_{timestamp}.log"
+    )
     logger.add(
         log_file,
         level=_log_level,
@@ -445,7 +467,11 @@ class ScriptLogContext:
     """
 
     def __init__(self, script_name: str = "app", cleanup: bool = True) -> None:
-        logger.debug("ScriptLogContext.__init__ called with script_name={}, cleanup={}", script_name, cleanup)
+        logger.debug(
+            "ScriptLogContext.__init__ called with script_name={}, cleanup={}",
+            script_name,
+            cleanup,
+        )
         self.script_name = script_name
         self.cleanup = cleanup
 
@@ -490,11 +516,16 @@ def with_logging(script_name: str | None = None, cleanup: bool = True):
             # ... generate report ...
             # Logging automatically cleaned up on exit
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             name = script_name or func.__name__
-            logger.debug("@with_logging decorator executing: name={}, cleanup={}", name, cleanup)
+            logger.debug(
+                "@with_logging decorator executing: name={}, cleanup={}", name, cleanup
+            )
             with ScriptLogContext(script_name=name, cleanup=cleanup):
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator

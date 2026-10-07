@@ -50,7 +50,7 @@ from app.configs.config_schemas import (
 try:
     from app.configs.log_config import logger
 except ImportError:
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)  # type: ignore[assignment]
 
 
 def load_environment() -> None:
@@ -97,8 +97,10 @@ LOGGING_CONFIG: LoggingConfig = LoggingConfig(
     file_prefix=os.environ.get("LOG_FILE_PREFIX", "misc_function"),
     retention_days=int(os.environ.get("LOG_RETENTION_DAYS", "7")),
     max_files=int(os.environ.get("MAX_LOG_FILES", "50")),
-    enable_file_rotation=os.environ.get("ENABLE_LOG_ROTATION", "true").lower() == "true",
-    enable_compression=os.environ.get("ENABLE_LOG_COMPRESSION", "true").lower() == "true",
+    enable_file_rotation=os.environ.get("ENABLE_LOG_ROTATION", "true").lower()
+    == "true",
+    enable_compression=os.environ.get("ENABLE_LOG_COMPRESSION", "true").lower()
+    == "true",
     diagnose=os.environ.get("LOG_DIAGNOSE", "true").lower() == "true",
     create_file_logs=os.environ.get("CREATE_FILE_LOGS", "true").lower() == "true",
 )
@@ -155,6 +157,12 @@ OSS_NEGATIVE_LIST: OSSConfig = OSSConfig(
     endpoint=os.environ.get("OSS_NEGATIVE_LIST_ENDPOINT", ""),
     region=os.environ.get("OSS_NEGATIVE_LIST_REGION", ""),
 )
+
+# OSS router keyed by connector name, used by OSSConnector(db_type).
+# Add other buckets here, e.g. "reports": OSS_REPORTS.
+oss_config: dict[str, OSSConfig] = {
+    "negative_list": OSS_NEGATIVE_LIST,
+}
 
 # ============================================================================
 # PROJECT-SPECIFIC CONFIGURATION (add directly in config.py)

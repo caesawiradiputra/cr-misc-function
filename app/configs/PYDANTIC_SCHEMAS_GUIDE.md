@@ -212,10 +212,12 @@ from app.configs.config import (
 
 # Use schemas for validated data
 if DATABASE.is_configured():
-    logger.info("Connecting to {} database at {}:{}",
-                DATABASE.driver or "default",
-                DATABASE.host,
-                DATABASE.port)
+    logger.info(
+        "Connecting to {} database at {}:{}",
+        DATABASE.driver or "default",
+        DATABASE.host,
+        DATABASE.port,
+    )
 
 # Use validation methods
 if LOGGING.validate_format():

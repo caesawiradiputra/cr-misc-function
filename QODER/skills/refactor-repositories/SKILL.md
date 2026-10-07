@@ -25,12 +25,18 @@ Every repository class MUST have this structure in exactly this order:
 class OrderRepository:
     """Repository for accessing order data."""
 
-    DATABASE_TYPE: str = "mssql"   # lowercase: "mssql", "postgres", "mysql", "hive", "trino", "odps"
-    SCHEMA: str = "dbo"            # For MSSQL/PostgreSQL/Hive (schema-based)
+    DATABASE_TYPE: str = (
+        "mssql"  # lowercase: "mssql", "postgres", "mysql", "hive", "trino", "odps"
+    )
+    SCHEMA: str = "dbo"  # For MSSQL/PostgreSQL/Hive (schema-based)
     # DATABASE: str = "db_name"    # For MySQL/Hive (database-based) — use instead of SCHEMA
     TABLE_NAME: str = "orders"
     COLUMNS: list[str] = [
-        "order_id", "customer_id", "total_amount", "status", "created_at",
+        "order_id",
+        "customer_id",
+        "total_amount",
+        "status",
+        "created_at",
     ]
 ```
 
@@ -60,9 +66,12 @@ No other logic in `__init__`.
 def __enter__(self):
     return self
 
+
 def __exit__(self, exc_type, exc_val, exc_tb):
     if exc_type:
-        logger.error("[%s] Operation failed: %s", self.__class__.__name__, exc_val, exc_info=True)
+        logger.error(
+            "[%s] Operation failed: %s", self.__class__.__name__, exc_val, exc_info=True
+        )
     self.strategy.disconnect()
 ```
 
@@ -72,6 +81,7 @@ def __exit__(self, exc_type, exc_val, exc_tb):
 # Good — domain-specific
 def get_pending_orders(self, days: int = 30) -> pd.DataFrame | None: ...
 def insert_bulk_orders(self, orders: list[dict]) -> int: ...
+
 
 # Bad — generic CRUD (belongs to strategy layer)
 def execute_query(self, sql: str): ...
@@ -131,11 +141,14 @@ return self.strategy.execute_query(query, params=(start, end))
 ### Bulk Insert
 ```python
 def insert_bulk_orders(self, orders: list[dict[str, Any]]) -> int:
-    if not orders: return 0
+    if not orders:
+        return 0
     query = build_insert_query(self.SCHEMA, self.TABLE_NAME, list(orders[0].keys()))
     rows_affected = 0
     for order in orders:
-        rows_affected += self.strategy.execute_non_query(query, params=tuple(order.values()))
+        rows_affected += self.strategy.execute_non_query(
+            query, params=tuple(order.values())
+        )
     return rows_affected
 ```
 

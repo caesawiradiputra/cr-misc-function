@@ -147,6 +147,7 @@ Apply improvements in this priority order:
 from typing import Any
 import pandas as pd
 
+
 def process_items(items: list[dict]) -> list[dict]:
     """Process items and return transformed results.
 
@@ -167,6 +168,7 @@ def process_items(items: list[dict]) -> list[dict]:
 ```python
 from typing import Any, List, Dict, Optional
 import pandas as pd
+
 
 def process_items(items: List[Dict]) -> List[Dict]:
     """Process items and return transformed results.
@@ -380,6 +382,7 @@ results = [process(item) for item in valid_items]
 ```python
 from loguru import logger  # Loguru (preferred in this project)
 
+
 def fetch_orders(days: int = 30, format: str = "csv") -> pd.DataFrame:
     """Fetch orders from the past N days.
 
@@ -483,7 +486,7 @@ Every repository class MUST have this structure (in order):
 ```python
 class OrderRepository:
     DATABASE_TYPE = "mssql"  # or "postgres", "mysql", "hive"
-    SCHEMA = "dbo"           # For MSSQL/PostgreSQL/Hive
+    SCHEMA = "dbo"  # For MSSQL/PostgreSQL/Hive
     # DATABASE = "db_name"   # For MySQL (use DATABASE instead of SCHEMA)
     TABLE_NAME = "orders"
     COLUMNS = ["id", "customer_id", "total", "status", "created_at"]

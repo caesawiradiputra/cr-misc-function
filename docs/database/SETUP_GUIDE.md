@@ -232,14 +232,14 @@ trino://trino_user@localhost:8080/postgres/public
 from odps import ODPS
 
 odps = ODPS(
-    'your_access_id',
-    'your_access_key',
-    'your_project_name',
-    'http://service.aliyun.com/api'
+    "your_access_id",
+    "your_access_key",
+    "your_project_name",
+    "http://service.aliyun.com/api",
 )
 
 # 2. Execute DDL
-with open('db/ddl/odps/tables.sql') as f:
+with open("db/ddl/odps/tables.sql") as f:
     sql = f.read()
     odps.execute_sql(sql)
 

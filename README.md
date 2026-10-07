@@ -84,7 +84,9 @@ from app.connections.strategies import create_strategy
 
 # Pattern 1: Direct strategy with context manager (recommended)
 with create_strategy("mssql") as strategy:
-    df = strategy.execute_query("SELECT * FROM users WHERE status = ?", params=("active",))
+    df = strategy.execute_query(
+        "SELECT * FROM users WHERE status = ?", params=("active",)
+    )
     print(df.head())
 ```
 
@@ -186,6 +188,7 @@ def __enter__(self):
     self.connect()
     return self
 
+
 def __exit__(self, exc_type, exc_val, exc_tb):
     if exc_type:
         logger.error(f"Operation failed: {exc_val}")
@@ -199,6 +202,7 @@ def __exit__(self, exc_type, exc_val, exc_tb):
 ```python
 from app.connections.strategies import create_strategy
 import pandas as pd
+
 
 class InvoiceRepository:
     def __init__(self):
@@ -230,8 +234,8 @@ Adjust pool settings for high-concurrency scenarios:
 DATABASE_MSSQL = {
     "server": os.environ.get("DATABASE_MSSQL_SERVER"),
     # ... other config
-    "pool_size": 10,        # Default: 5
-    "max_overflow": 20,     # Default: 10
+    "pool_size": 10,  # Default: 5
+    "max_overflow": 20,  # Default: 10
 }
 ```
 

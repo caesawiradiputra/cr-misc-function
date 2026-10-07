@@ -97,7 +97,7 @@ file into `~/.claude/`:
 
 | Placeholder | Where | Replace with |
 | --- | --- | --- |
-| `<WINDOWS_USERNAME>` | `windows/settings.json`, `CLAUDE.md`, `skills/jira-ticket-kickoff` | The Windows account name |
+| `<WINDOWS_USERNAME>` | `windows/settings.json`, `CLAUDE.md`, `skills/jira-ticket-kickoff`, `skills/jira-in-da-sync` | The Windows account name |
 | `<ATLASSIAN_SITE>` | `skills/jira-ticket-kickoff`, `skills/bast-*` | The Atlassian site name (`<site>.atlassian.net`) |
 | `<ATLASSIAN_CLOUD_ID>` | `skills/bast-*` | The site's cloud ID (from `getAccessibleAtlassianResources`) |
 | `PROJ` (as in `PROJ-1234`) | `skills/jira-ticket-kickoff`, `skills/bast-*` | Your own Jira project key |
@@ -230,6 +230,7 @@ description. You can also call them by name.
 | `migrate-to-uv` | Migrate a Poetry/Conda project to uv end to end (backup, `uv add`, config, verify) |
 | `upgrade-python-version` | Move a project to a newer Python (e.g. 3.8 → 3.11): minimal dependency bumps, syntax-only rewrites, structure check, upgrade guide |
 | `jira-ticket-kickoff` | Start or resume work on a ticket: fetch the requirement, sync `dev`, create the branch + `release/<TICKET>/` folder |
+| `jira-in-da-sync` | Daily intake sweep over the source boards (`IN`, plus other boards in any status): clone assigned tickets that have no `PROJ` link (old ones are only listed), keep a checkpoint per board so later runs skip checked tickets, then remind which `PROJ` tickets still sit in Backlog / To Do / Data Analysis. State lives in `~/.claude/state/jira-in-da-sync.json` |
 | `bast-generator` | Create a BAST handover page in Confluence from a ticket and its release folder |
 | `bast-learn` | Learn a repo's BAST conventions from its older pages |
 | `confluence-ops-docs` | Business/ops documentation for Confluence derived from a codebase |

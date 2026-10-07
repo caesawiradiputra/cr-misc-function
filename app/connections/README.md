@@ -73,8 +73,9 @@ with DBConnectorStrategy("mssql") as conn:
     df = conn.execute_query("queries/monthly_report.sql")
 
     # Non-query operations (INSERT/UPDATE/DELETE)
-    rows_affected = conn.execute_non_query("DELETE FROM temp_data WHERE created < ?",
-                                           params=("2024-01-01",))
+    rows_affected = conn.execute_non_query(
+        "DELETE FROM temp_data WHERE created < ?", params=("2024-01-01",)
+    )
 ```
 
 ### Repository Pattern (Domain-Specific Logic)
@@ -82,6 +83,7 @@ with DBConnectorStrategy("mssql") as conn:
 ```python
 from app.connections.strategies import create_strategy
 import pandas as pd
+
 
 class UserRepository:
     def __init__(self):
@@ -98,6 +100,7 @@ class UserRepository:
 
     def __exit__(self, *args):
         self.strategy.disconnect()
+
 
 # Usage
 with UserRepository() as repo:
@@ -135,8 +138,7 @@ df = strategy.execute_query("SELECT * FROM products")
 
 # Parameterized query (prevents SQL injection)
 df = strategy.execute_query(
-    "SELECT * FROM orders WHERE customer_id = ? AND status = ?",
-    params=(123, "PENDING")
+    "SELECT * FROM orders WHERE customer_id = ? AND status = ?", params=(123, "PENDING")
 )
 
 strategy.disconnect()
@@ -151,14 +153,13 @@ with create_strategy("mssql") as strategy:
     # INSERT
     rows = strategy.execute_non_query(
         "INSERT INTO logs (message, created_at) VALUES (?, GETDATE())",
-        params=("User logged in",)
+        params=("User logged in",),
     )
     print(f"Inserted {rows} rows")
 
     # UPDATE
     rows = strategy.execute_non_query(
-        "UPDATE users SET last_login = GETDATE() WHERE user_id = ?",
-        params=(456,)
+        "UPDATE users SET last_login = GETDATE() WHERE user_id = ?", params=(456,)
     )
 
     # DDL
@@ -172,11 +173,13 @@ import pandas as pd
 from app.connections.strategies import create_strategy
 
 # Sample data
-df = pd.DataFrame({
-    'product_id': [1, 2, 3],
-    'name': ['Widget', 'Gadget', 'Doohickey'],
-    'price': [19.99, 29.99, 39.99]
-})
+df = pd.DataFrame(
+    {
+        "product_id": [1, 2, 3],
+        "name": ["Widget", "Gadget", "Doohickey"],
+        "price": [19.99, 29.99, 39.99],
+    }
+)
 
 with create_strategy("mssql") as strategy:
     result = strategy.create_table(
@@ -184,7 +187,7 @@ with create_strategy("mssql") as strategy:
         table_name="products_staging",
         df=df,
         if_exists="append",  # Options: "fail", "replace", "append"
-        index=False
+        index=False,
     )
     print(result)  # "Table `dbo.products_staging` created in mssql."
 ```
@@ -195,11 +198,13 @@ with create_strategy("mssql") as strategy:
 import pandas as pd
 from app.connections.strategies import create_strategy
 
-df = pd.DataFrame({
-    'event_id': [1, 2, 3],
-    'event_type': ['click', 'view', 'purchase'],
-    'timestamp': pd.to_datetime(['2024-11-01', '2024-11-02', '2024-11-03'])
-})
+df = pd.DataFrame(
+    {
+        "event_id": [1, 2, 3],
+        "event_type": ["click", "view", "purchase"],
+        "timestamp": pd.to_datetime(["2024-11-01", "2024-11-02", "2024-11-03"]),
+    }
+)
 
 with create_strategy("hive") as strategy:
     result = strategy.create_table(
@@ -207,7 +212,7 @@ with create_strategy("hive") as strategy:
         table_name="events",
         df=df,
         oss_path="oss://bucket/path/to/events/",  # Required for Hive
-        if_exists="replace"
+        if_exists="replace",
     )
     # Creates external Parquet table with MSCK REPAIR
 ```
@@ -223,6 +228,7 @@ url = strategy.get_connection_url()
 
 # Use with pandas directly
 import pandas as pd
+
 df = pd.read_sql("SELECT * FROM table", url)
 ```
 
@@ -258,6 +264,7 @@ Each strategy can implement database-specific features:
 from app.connections.strategies import MSSQLStrategy
 from app.configs.config import database_config
 
+
 # Extend MSSQLStrategy with custom methods
 class ExtendedMSSQLStrategy(MSSQLStrategy):
     def execute_stored_procedure(self, proc_name: str, params=None):
@@ -273,14 +280,18 @@ class ExtendedMSSQLStrategy(MSSQLStrategy):
 
         # Fetch results
         import pandas as pd
+
         columns = [desc[0] for desc in self.cursor.description]
         rows = self.cursor.fetchall()
         return pd.DataFrame.from_records(rows, columns=columns)
 
+
 # Usage
 strategy = ExtendedMSSQLStrategy(config)
 strategy.connect()
-df = strategy.execute_stored_procedure("sp_GetMonthlyReport", {"year": 2024, "month": 11})
+df = strategy.execute_stored_procedure(
+    "sp_GetMonthlyReport", {"year": 2024, "month": 11}
+)
 ```
 
 ### Thread-Safe Async Operations (ODPS)
@@ -329,32 +340,48 @@ ODPS_ENDPOINT=http://service.odps.aliyun.com/api
 
 ### Config Module (`app/configs/config.py`)
 
+Each connection is a Pydantic object from `app/configs/config_schemas.py`.
+`database_config` routes RDBMS `db_type` names to `DatabaseConfig` objects and
+`oss_config` routes OSS connector names to `OSSConfig` objects. `ODPS` is a single
+`ODPSConfig`; `create_strategy("odps")` reads it and maps `project` to the
+strategy's `default_project`.
+
 ```python
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+from app.configs.config_schemas import DatabaseConfig, ODPSConfig, OSSConfig
 
-database_config = {
-    "mssql": {
-        "host": os.getenv("DATABASE_MSSQL_HOST"),
-        "port": int(os.getenv("DATABASE_MSSQL_PORT", 1433)),
-        "user": os.getenv("DATABASE_MSSQL_USER"),
-        "password": os.getenv("DATABASE_MSSQL_PASSWORD"),
-        "database": os.getenv("DATABASE_MSSQL_DATABASE"),
-        "driver": os.getenv("DATABASE_MSSQL_DRIVER"),
-        "pool_size": 5,
-        "max_overflow": 10,
-    },
+DATABASE_MSSQL = DatabaseConfig(
+    host=os.environ.get("DATABASE_MSSQL_HOST", ""),
+    port=os.environ.get("DATABASE_MSSQL_PORT", "1433"),
+    user=os.environ.get("DATABASE_MSSQL_USER", ""),
+    password=os.environ.get("DATABASE_MSSQL_PASSWORD", ""),
+    database=os.environ.get("DATABASE_MSSQL_DATABASE", ""),
+    driver=os.environ.get("DATABASE_MSSQL_DRIVER", "ODBC Driver 17 for SQL Server"),
+    pool_size=int(os.environ.get("DATABASE_MSSQL_POOL_SIZE", "5")),
+    max_overflow=int(os.environ.get("DATABASE_MSSQL_MAX_OVERFLOW", "10")),
+)
+
+database_config: dict[str, DatabaseConfig] = {
+    "mssql": DATABASE_MSSQL,
     # ... other databases
 }
 
-odps_config = {
-    "access_id": os.getenv("ODPS_ACCESS_ID"),
-    "secret_access_key": os.getenv("ODPS_ACCESS_KEY"),
-    "default_project": os.getenv("ODPS_PROJECT"),
-    "endpoint": os.getenv("ODPS_ENDPOINT"),
-}
+ODPS = ODPSConfig(
+    access_id=os.environ.get("ODPS_ACCESS_ID", ""),
+    secret_access_key=os.environ.get("ODPS_ACCESS_KEY", ""),
+    project=os.environ.get("ODPS_PROJECT", ""),
+    endpoint=os.environ.get("ODPS_ENDPOINT", ""),
+)
+
+OSS_NEGATIVE_LIST = OSSConfig(
+    access_key_id=os.environ.get("OSS_NEGATIVE_LIST_ACCESS_KEY_ID", ""),
+    access_key_secret=os.environ.get("OSS_NEGATIVE_LIST_ACCESS_KEY_SECRET", ""),
+    bucket_name=os.environ.get("OSS_NEGATIVE_LIST_BUCKET_NAME", ""),
+    endpoint=os.environ.get("OSS_NEGATIVE_LIST_ENDPOINT", ""),
+)
+
+oss_config: dict[str, OSSConfig] = {"negative_list": OSS_NEGATIVE_LIST}
 ```
 
 ---
@@ -374,6 +401,7 @@ import snowflake.connector
 
 from .base import RDBMSBaseStrategy
 
+
 class SnowflakeStrategy(RDBMSBaseStrategy):
     """Strategy for Snowflake Data Warehouse."""
 
@@ -382,9 +410,9 @@ class SnowflakeStrategy(RDBMSBaseStrategy):
             user=self.config.user,
             password=self.config.password,
             account=self.config.host,  # Snowflake account identifier
-            warehouse='COMPUTE_WH',
+            warehouse="COMPUTE_WH",
             database=self.config.database,
-            schema='PUBLIC'
+            schema="PUBLIC",
         )
 
     def _build_connection_url(self) -> str:
@@ -401,6 +429,7 @@ _STRATEGY_MAP = {
     # ... existing mappings
     "snowflake": SnowflakeStrategy,
 }
+
 
 @overload
 def create_strategy(db_type: Literal["snowflake"]) -> SnowflakeStrategy: ...
@@ -492,8 +521,13 @@ from .mssql_strategy import MSSQLStrategy
 from .factory import create_strategy
 
 __all__ = [
-    "DBConfig", "DatabaseStrategy", "RDBMSBaseStrategy", "timed_operation",
-    "PostgreSQLStrategy", "MSSQLStrategy", "create_strategy",
+    "DBConfig",
+    "DatabaseStrategy",
+    "RDBMSBaseStrategy",
+    "timed_operation",
+    "PostgreSQLStrategy",
+    "MSSQLStrategy",
+    "create_strategy",
 ]
 ```
 
@@ -511,14 +545,18 @@ _STRATEGY_MAP = {
     "mssql": MSSQLStrategy,
 }
 
+
 @overload
 def create_strategy(db_type: Literal["postgres"]) -> PostgreSQLStrategy: ...
+
 
 @overload
 def create_strategy(db_type: Literal["mssql"]) -> MSSQLStrategy: ...
 
+
 @overload
 def create_strategy(db_type: str) -> DatabaseStrategy: ...
+
 
 def create_strategy(db_type: str):
     if db_type not in database_config:
@@ -555,6 +593,7 @@ def create_strategy(db_type: str):
 
 ```python
 from .factory import create_strategy
+
 __all__ = ["create_strategy", ...]
 ```
 

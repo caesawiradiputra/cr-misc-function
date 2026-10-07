@@ -1,6 +1,6 @@
 from typing import Literal, overload
 
-from app.configs.config import database_config, odps_config
+from app.configs.config import ODPS, database_config
 
 from .base import DatabaseStrategy, DBConfig, ODPSConfig
 from .hive_strategy import HiveStrategy
@@ -57,30 +57,36 @@ def create_strategy(db_type: str) -> DatabaseStrategy: ...
 def create_strategy(db_type: str):
     """Factory to create appropriate strategy instance for given db_type."""
     if db_type == "odps":
-        for field in ["access_id", "secret_access_key", "default_project", "endpoint"]:
-            if not odps_config.get(field):
+        for field in ["access_id", "secret_access_key", "project", "endpoint"]:
+            if not getattr(ODPS, field):
                 raise ValueError(f"[{db_type}] Missing ODPS config field: {field}")
-        cfg = ODPSConfig(db_type="odps", **odps_config)
-        return ODPSStrategy(cfg)
+        odps_cfg = ODPSConfig(
+            db_type="odps",
+            access_id=ODPS.access_id,
+            secret_access_key=ODPS.secret_access_key,
+            default_project=ODPS.project,
+            endpoint=ODPS.endpoint,
+        )
+        return ODPSStrategy(odps_cfg)
 
     if db_type not in database_config:
         raise ValueError(f"[{db_type}] Unsupported database type")
 
-    db_cfg_raw: dict = database_config[db_type]
+    db_cfg = database_config[db_type]
     for field in ["host", "port", "user", "password", "database"]:
-        if not db_cfg_raw.get(field):
+        if not getattr(db_cfg, field):
             raise ValueError(f"[{db_type}] Missing DB config field: {field}")
 
     cfg = DBConfig(
         db_type=db_type,
-        host=db_cfg_raw["host"],
-        port=db_cfg_raw["port"],
-        user=db_cfg_raw["user"],
-        password=db_cfg_raw["password"],
-        database=db_cfg_raw["database"],
-        driver=db_cfg_raw.get("driver"),
-        pool_size=db_cfg_raw.get("pool_size", 5),
-        max_overflow=db_cfg_raw.get("max_overflow", 10),
+        host=db_cfg.host,
+        port=int(db_cfg.port),
+        user=db_cfg.user,
+        password=db_cfg.password,
+        database=db_cfg.database,
+        driver=db_cfg.driver,
+        pool_size=db_cfg.pool_size,
+        max_overflow=db_cfg.max_overflow,
     )
 
     strategy_cls = _STRATEGY_MAP.get(db_type)
