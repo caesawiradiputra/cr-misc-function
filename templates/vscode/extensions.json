@@ -8,7 +8,6 @@
 		"mikestead.dotenv",
 		"usernamehw.errorlens",
 		"donjayamanne.githistory",
-		"GitHub.copilot-chat",
 		"GitHub.copilot",
 		"codezombiech.gitignore",
 		"nhoizey.gremlins",
@@ -29,19 +28,32 @@
 		"charliermarsh.ruff",
 		"Gruntfuggly.todo-tree",
 		"ms-python.mypy-type-checker",
-		"ms-python.black-formatter",
 		"mtxr.sqltools",
 		"mtxr.sqltools-driver-pg",
+		"mtxr.sqltools-driver-mssql",
+		"mtxr.sqltools-driver-mysql",
 		"redhat.vscode-yaml",
 		"ms-azuretools.vscode-docker",
 		"yzhang.markdown-all-in-one",
 		"eamodio.gitlens",
 		"IBM.output-colorizer",
 		"RandomFractalsInc.vscode-data-preview",
-		"ms-toolsai.jupyter-variable-explorer"
+		"streetsidesoftware.code-spell-checker",
+		"ms-vscode.powershell",
+		"tamasfe.even-better-toml",
+		"ms-kubernetes-tools.vscode-kubernetes-tools",
+		"GitHub.vscode-pull-request-github",
+		"ms-toolsai.datawrangler",
+		"anthropic.claude-code",
+		"bierner.markdown-mermaid"
 	],
-	// List of extensions recommended by VS Code that should not be recommended for users of this workspace.
+	// List of extensions recommended by VS Code that should not be recommended for users of this
+	// workspace — consistently flagged as unwanted across multiple real project workspaces
+	// (dbt/Altimate: Antigravity-bundled dbt tooling that's noisy in plain VS Code; GCP: this
+	// stack runs on Alibaba Cloud, not GCP).
 	"unwantedRecommendations": [
-		
+		"innoverio.vscode-dbt-power-user",
+		"altimateai.vscode-altimate-mcp-server",
+		"googlecloudtools.datacloud"
 	]
 }
