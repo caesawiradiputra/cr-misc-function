@@ -297,6 +297,15 @@ already known to be wrong.
   byte-for-byte match), state explicitly whether it's functionally material.
   Don't burn tool calls reproducing something whose relevance was never
   established.
+- **Check the cost before a large read.** Before reading a large source
+  (session transcripts, a full Confluence page, a big Jira result), estimate
+  its size and likely cost. Prefer efficient, authoritative sources: local
+  files, git history, PRs, changelogs and targeted Jira queries. Use larger or
+  more expensive sources when necessary; if the only viable route has
+  significant cost, explain the trade-off and ask before proceeding. (Added
+  2026-10-09, logbook session: the user asked not to scan a week of
+  transcripts, then chose a local CSV as the source of truth over re-reading
+  the Confluence page, both to save tokens.)
 - **Trust but verify the reference itself.** When checking reconstructed or
   new content against an existing "reference" (another file, a prior commit,
   a doc), confirm that reference is actually authoritative before diffing
@@ -436,12 +445,50 @@ Rules VS Code cannot auto-fix — apply these manually when writing or editing M
 
 ---
 
+## Work Logbook (weekly reporting)
+
+The user's tracking of what they did, used for weekly reporting. Master file:
+`~/.claude/logbook/logbook.csv`; Windows copy:
+`/mnt/c/Users/<WINDOWS_USERNAME>/Documents/Work/Logbook/logbook.csv`. Use the `logbook` skill
+(`~/.claude/skills/logbook/`) and its helper; never hand-edit the CSV.
+
+- When a task finishes, or a PR is opened or merged, **propose** a logbook row
+  (ticket, one-line outcome-first task, status) and write it after the user's OK.
+- One row per ticket per day; the helper upserts, so later status changes update
+  the same row.
+- Skills that finish a unit of work (`/generate-pr-message`, `jira-ticket-kickoff`,
+  `bast-generator`) propose the row themselves at their last step.
+- To backfill a period, summarize from git commits, PRs and release docs
+  (`release/<TICKET>/CHANGELOG.md`, including its requirement-update and
+  decision sections), never from session transcripts (too large, and the
+  PR/commit record is more accurate).
+- The weekly Confluence tracker page is generated from the CSVs only when asked
+  (`/logbook` publish procedure); finished work idle for 7 days moves to the archive CSV, and paused tickets go to an On Hold child page.
+- The CSVs and `jira-cache.json` are the source of truth; to recheck, run `/logbook check` (CSV vs
+  git/PRs vs Jira) and never read the Confluence page back for state.
+- `sync` copies to the Windows folder only when the master changed; run it at the
+  first logbook touch of a session or when asked, not after every edit.
+
+---
+
+## Jira Status on PRs
+
+When a PR is prepared or opened, check the ticket's Jira status (Atlassian MCP):
+PR to `dev` → `Testing`; PR to `master` → `Ready to Release`. Notify and ask before
+transitioning (never silently), pick the transition by its target status, and skip
+when the ticket is already at or past it. Details: the "Jira Status Check" phase of
+`/generate-pr-message`. If a repo's workflow lacks these statuses, report the
+available transitions instead of guessing.
+
+---
+
 ## Available Slash Commands
 
 | Command | Description |
 | --- | --- |
 | `/commit` | Generate Conventional Commit + gitmoji message, review/refine, and commit |
 | `/generate-pr-message` | Generate PR messages + release folder for a branch deployment |
+| `/logbook` | Add/update a weekly-report logbook row, print the weekly summary, copy the CSV to Windows |
 | `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees |
 | `/refactor-python` | Refactor Python code while preserving behavior |
 | `/refactor-repositories` | Refactor repository classes to mandatory structure |

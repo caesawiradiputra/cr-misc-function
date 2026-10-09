@@ -1,0 +1,810 @@
+#!/usr/bin/env python3
+"""Work logbook: upsert rows, weekly summary, archive old work, render Confluence HTML.
+
+Paths (override for tests with environment variables):
+  LOGBOOK_PATH         master CSV (default ~/.claude/logbook/logbook.csv); the archive
+                       (logbook-archive.csv) and config.json live next to it
+  LOGBOOK_WINDOWS_DIR  Windows export folder, e.g. /mnt/c/Users/<you>/Documents/Work/Logbook
+                       (fallback: first line of ~/.claude/logbook/windows_dir.txt)
+"""
+
+import argparse
+import csv
+import datetime as dt
+import filecmp
+import html
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+LOGBOOK = Path(
+    os.environ.get("LOGBOOK_PATH") or Path.home() / ".claude/logbook/logbook.csv"
+)
+ARCHIVE = LOGBOOK.with_name("logbook-archive.csv")
+CONFIG_FILE = LOGBOOK.parent / "config.json"
+CACHE_FILE = LOGBOOK.parent / "jira-cache.json"
+JIRA_KEY = re.compile(r"[A-Z][A-Z0-9]+-\d+")
+WINDOWS_DIR_FILE = LOGBOOK.parent / "windows_dir.txt"
+COLUMNS = ["date", "ticket", "repo", "type", "task", "status", "notes"]
+TYPES = ["fea", "fix", "chore", "docs", "refactor", "ops"]
+STATUSES = [
+    "In progress", "PR to dev", "Merged to dev", "Merged to sit",
+    "PR to master", "Released", "Done", "Analysis", "Fixing", "Hold",
+]  # fmt: skip
+## Logbook status -> the status words used on the Confluence weekly page.
+PAGE_STATUS = {
+    "Analysis": "ANALYST", "In progress": "DEVELOPMENT", "Fixing": "FIXING",
+    "PR to dev": "TESTING", "Merged to dev": "TESTING", "Merged to sit": "TESTING",
+    "PR to master": "READY FOR RELEASE", "Released": "DONE", "Done": "DONE",
+    "Hold": "HOLD",
+}  # fmt: skip
+FINISHED = {"Released", "Done"}
+## Jira workflow status -> page status, for assigned tickets the user has not logged work on.
+JIRA_STATUS = {
+    "Hold": "HOLD", "Testing": "TESTING", "Ready For Release": "READY FOR RELEASE",
+    "In Progress": "DEVELOPMENT", "Data Development": "DEVELOPMENT",
+    "Data Analysis": "ANALYST", "Revisi SRF Data": "ANALYST", "Bug Fixing": "FIXING",
+    "[BU] Todo": "TODO", "TODO": "TODO", "To Do": "TODO", "Backlog": "TODO",
+    "PAT": "DONE", "Done": "DONE",
+}  # fmt: skip
+## Start-date cell fill once unfinished work gets old: tiers light to strong.
+AGING_COLORS = ["#FFFAE6", "#FFF0B3", "#FF8F73"]
+AGING_DAYS = [30, 60, 90]  # override with "aging_days" in config.json
+NO_AGING = {"DONE", "HOLD"}  # finished, or deliberately paused: never highlighted
+## Statuses where the ball is in someone else's court. Their age is shown on the LastUpdate
+## cell (time since anything moved, i.e. when to follow up) instead of on Start Date.
+OTHER_COURT = [
+    "TESTING",
+    "READY FOR RELEASE",
+]  # override with "other_court" in config.json
+FOLLOWUP_DAYS = [7, 14, 30]  # override with "followup_days" in config.json
+## Lozenge colour per page status (Confluence status macro colours).
+STATUS_COLOR = {
+    "ANALYST": "purple", "DEVELOPMENT": "blue", "FIXING": "red", "TESTING": "yellow",
+    "READY FOR RELEASE": "green", "DONE": "green", "HOLD": "neutral", "TODO": "neutral",
+}  # fmt: skip
+
+
+def read_rows(path: Path = LOGBOOK) -> list[dict[str, str]]:
+    """Read a logbook CSV, aborting (without writing) if its shape is wrong."""
+    if not path.exists():
+        return []
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames != COLUMNS:
+            sys.exit(
+                f"{path}: header {reader.fieldnames} != expected {COLUMNS}. "
+                "Fix the file by hand; nothing was changed."
+            )
+        rows = list(reader)
+    for number, row in enumerate(rows, start=2):
+        if None in row or None in row.values():
+            sys.exit(f"{path}: line {number} has the wrong number of fields.")
+        problem = row_problem(row)
+        if problem:
+            sys.exit(f"{path}: line {number}: {problem}. Nothing was changed.")
+    return rows
+
+
+def row_problem(row: dict[str, str]) -> str:
+    """Return what is wrong with a stored row, or an empty string."""
+    for name in ("date", "ticket", "task"):
+        if not row[name].strip():
+            return f"empty {name}"
+    try:
+        iso_week(row["date"])
+    except SystemExit:
+        return f"invalid date {row['date']!r}"
+    if row["type"] and row["type"] not in TYPES:
+        return f"unknown type {row['type']!r}"
+    if row["status"] and row["status"] not in STATUSES:
+        return f"unknown status {row['status']!r}"
+    return ""
+
+
+def write_rows(rows: list[dict[str, str]], path: Path = LOGBOOK) -> None:
+    """Write a CSV atomically: temp file in the same folder, then replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def iso_week(date: str) -> str:
+    try:
+        year, week, _ = dt.date.fromisoformat(date).isocalendar()
+    except ValueError:
+        sys.exit(f"Invalid date {date!r}; use YYYY-MM-DD.")
+    return f"{year}-W{week:02d}"
+
+
+def windows_dir() -> Path:
+    folder = os.environ.get("LOGBOOK_WINDOWS_DIR", "").strip()
+    if not folder and WINDOWS_DIR_FILE.exists():
+        folder = WINDOWS_DIR_FILE.read_text(encoding="utf-8").strip()
+    if not folder:
+        sys.exit(
+            "No Windows destination. Set LOGBOOK_WINDOWS_DIR or put the folder path "
+            f"on the first line of {WINDOWS_DIR_FILE}."
+        )
+    path = Path(folder)
+    ## Only the last folder is created; a missing parent usually means a typo in a
+    ## /mnt/c path, so fail instead of creating a whole stray tree.
+    if path.exists() and not path.is_dir():
+        sys.exit(f"Windows destination is not a folder: {path}")
+    if not path.parent.is_dir():
+        sys.exit(f"Windows destination parent does not exist: {path.parent}")
+    return path
+
+
+def cmd_add(args: argparse.Namespace) -> None:
+    date = args.date or dt.date.today().isoformat()
+    iso_week(date)  # rejects an invalid date before anything is written
+    new = {
+        "date": date, "ticket": args.ticket, "repo": args.repo, "type": args.type,
+        "task": args.task, "status": args.status, "notes": args.notes,
+    }  # fmt: skip
+    rows = read_rows()
+    for row in rows:
+        if row["date"] == date and row["ticket"] == args.ticket:
+            row.update({k: v for k, v in new.items() if v})  # keep old values
+            stored, action = row, "updated"
+            break
+    else:
+        rows.append(new)
+        stored, action = new, "added"
+    write_rows(rows)
+    print(f"{action}: {date} {args.ticket} [{stored['status'] or '-'}]")
+
+
+def cmd_week(args: argparse.Namespace) -> None:
+    week = args.week or iso_week(dt.date.today().isoformat())
+    try:
+        dt.date.fromisocalendar(int(week[:4]), int(week[6:]), 1)
+        valid = week[4:6] == "-W" and len(week) == 8
+    except ValueError:
+        valid = False
+    if not valid:
+        sys.exit(f"Invalid week {week!r}; use YYYY-Www, e.g. 2026-W41.")
+    by_ticket: dict[str, list[dict[str, str]]] = {}
+    for row in sorted(read_rows(), key=lambda r: r["date"]):  # stable: ties keep order
+        if iso_week(row["date"]) == week:
+            by_ticket.setdefault(row["ticket"], []).append(row)
+    if not by_ticket:
+        print(f"No entries for {week}.")
+        return
+    print(f"## Weekly report {week}\n")
+    for ticket, rows in by_ticket.items():
+        last = rows[-1]
+        print(f"- **{ticket}** ({last['repo']}, {last['type']}): {last['task']}")
+        print(f"  - status: {last['status'] or '-'}")
+        for row in rows:
+            if row["notes"]:
+                print(f"  - {row['date']}: {row['notes']}")
+
+
+def cmd_sync(_: argparse.Namespace) -> None:
+    if not LOGBOOK.exists():
+        sys.exit("No logbook to copy.")
+    folder = windows_dir()
+    folder.mkdir(exist_ok=True)
+    for source in (LOGBOOK, ARCHIVE):
+        if not source.exists():
+            continue
+        dest = folder / source.name
+        if dest.exists() and filecmp.cmp(source, dest, shallow=False):
+            print(f"already up to date: {dest}")
+            continue
+        shutil.copyfile(source, dest)
+        print(f"copied to {dest}")
+
+
+def load_config() -> dict[str, Any]:
+    """Optional config.json: jira_base, pic, projects (repo -> project name)."""
+    if not CONFIG_FILE.exists():
+        return {}
+    try:
+        config: dict[str, Any] = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        return config
+    except json.JSONDecodeError as exc:
+        sys.exit(f"{CONFIG_FILE}: invalid JSON ({exc}).")
+
+
+def load_cache() -> dict[str, dict[str, Any]]:
+    """jira-cache.json: ticket -> {created, source, description} for the weekly page."""
+    if not CACHE_FILE.exists():
+        return {}
+    try:
+        cache: dict[str, dict[str, Any]] = json.loads(
+            CACHE_FILE.read_text(encoding="utf-8")
+        )
+        return cache
+    except json.JSONDecodeError as exc:
+        sys.exit(f"{CACHE_FILE}: invalid JSON ({exc}).")
+
+
+def save_cache(cache: dict[str, dict[str, Any]]) -> None:
+    fd, tmp = tempfile.mkstemp(dir=CACHE_FILE.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2, ensure_ascii=False, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp, CACHE_FILE)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def cmd_cache(args: argparse.Namespace) -> None:
+    """Manage the page cache: set one ticket, or list tickets that still lack one."""
+    cache = load_cache()
+    if args.action == "missing":
+        tickets = {r["ticket"] for r in read_rows() + read_rows(ARCHIVE)}
+        todo = sorted(t for t in tickets if t not in cache)
+        print("\n".join(todo) if todo else "all tickets have a cache entry.")
+        return
+    if not args.ticket:
+        sys.exit("cache set needs --ticket.")
+    entry = cache.setdefault(args.ticket, {})
+    if args.created:
+        iso_week(args.created)  # validates YYYY-MM-DD
+        entry["created"] = args.created
+    if args.source:
+        if not JIRA_KEY.fullmatch(args.source):
+            sys.exit(f"--source must be a Jira key like IN-1234, got {args.source!r}.")
+        entry["source"] = args.source
+    if args.description:
+        entry["description"] = args.description
+    for name in (
+        "summary",
+        "jira_status",
+        "updated",
+        "project",
+        "before_hold",
+        "hold_since",
+    ):
+        if getattr(args, name):
+            entry[name] = getattr(args, name)
+    for date in (args.updated, args.hold_since):
+        if date:
+            iso_week(date)  # validates YYYY-MM-DD
+    if args.track:
+        entry["track"] = args.track == "yes"
+    save_cache(cache)
+    print(f"cached {args.ticket}: {', '.join(entry)}")
+
+
+def tracked_only_items(cache: dict, logged: set[str]) -> list[list[dict[str, str]]]:
+    """Assigned, open DA tickets with no logbook row yet: one synthetic row each."""
+    archived = {r["ticket"] for r in read_rows(ARCHIVE)}
+    items = []
+    for ticket, info in cache.items():
+        if not info.get("track") or ticket in logged or ticket in archived:
+            continue
+        date = info.get("updated") or info.get("created") or dt.date.today().isoformat()
+        items.append([{
+            "date": date, "ticket": ticket, "repo": "", "type": "",
+            "task": info.get("summary") or ticket, "status": "", "notes": "",
+        }])  # fmt: skip
+    return items
+
+
+def cmd_rename(args: argparse.Namespace) -> None:
+    """Re-key a ticket (e.g. a slug that later got a Jira key) in rows, archive and cache."""
+    if not JIRA_KEY.fullmatch(args.to) and not args.force:
+        sys.exit(f"--to {args.to!r} is not a Jira key; pass --force to allow it.")
+    moved = 0
+    loaded = {path: read_rows(path) for path in (LOGBOOK, ARCHIVE)}
+    taken = {(r["date"], r["ticket"]) for rows in loaded.values() for r in rows}
+    clash = sorted(
+        r["date"] for rows in loaded.values() for r in rows
+        if r["ticket"] == args.old and (r["date"], args.to) in taken
+    )  # fmt: skip
+    if clash:
+        sys.exit(
+            f"{args.to} already has rows on {', '.join(clash)}; merge those by hand first."
+        )
+    for path, rows in loaded.items():
+        for row in rows:
+            if row["ticket"] == args.old:
+                row["ticket"] = args.to
+                moved += 1
+        if rows:
+            write_rows(rows, path)
+    cache = load_cache()
+    if args.old in cache:
+        cache.setdefault(args.to, {}).update(cache.pop(args.old))
+        save_cache(cache)
+    print(
+        f"renamed {args.old} -> {args.to}: {moved} row(s), cache {'moved' if args.old in cache or args.to in cache else 'unchanged'}"
+    )
+
+
+## How far along a logbook status is; used to spot a row that lags behind its PR.
+STAGE = {
+    "": 0, "Analysis": 1, "In progress": 1, "Fixing": 1, "Hold": 1,
+    "PR to dev": 2, "Merged to dev": 3, "Merged to sit": 3,
+    "PR to master": 4, "Released": 5, "Done": 5,
+}  # fmt: skip
+TICKET_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b|\bbug-\d+\b")
+
+
+def _run(cmd: list[str], cwd: str) -> str | None:
+    try:
+        done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def pr_stage(pr: dict[str, Any]) -> str:
+    """Logbook status a pull request implies."""
+    merged, is_open = bool(pr.get("mergedAt")), pr.get("state") == "OPEN"
+    if pr.get("baseRefName") in ("master", "main"):
+        return "Released" if merged else ("PR to master" if is_open else "")
+    if pr.get("baseRefName") == "sit":
+        return "Merged to sit" if merged else ("PR to dev" if is_open else "")
+    return "Merged to dev" if merged else ("PR to dev" if is_open else "")
+
+
+def git_evidence(
+    repo_paths: dict[str, str], since: str
+) -> tuple[dict[str, dict], list[str]]:
+    """ticket -> {stage, last, repos} from local commits and GitHub PRs since a date."""
+    evidence: dict[str, dict] = {}
+    notes: list[str] = []
+
+    def note(ticket: str, repo: str, date: str, stage: str) -> None:
+        ev = evidence.setdefault(ticket, {"stage": "", "last": "", "repos": set()})
+        ev["repos"].add(repo)
+        ev["last"] = max(ev["last"], date)
+        if STAGE.get(stage, 0) > STAGE.get(ev["stage"], 0):
+            ev["stage"] = stage
+
+    for repo, path in repo_paths.items():
+        author = (_run(["git", "config", "user.name"], path) or "").strip()
+        log = _run(
+            ["git", "log", "--all", f"--since={since}", f"--author={author}",
+             "--date=short", "--format=%ad|%s"], path
+        )  # fmt: skip
+        if log is None:
+            notes.append(f"{repo}: git log failed at {path}")
+            continue
+        for line in log.splitlines():
+            date, _, subject = line.partition("|")
+            keys = TICKET_RE.findall(subject) + [
+                f"bug-{n}" for n in re.findall(r"bug #(\d+)", subject)
+            ]
+            for key in set(keys):
+                note(key, repo, date, "")
+        prs = _run(
+            ["gh", "pr", "list", "--state", "all", "--author", "@me", "--limit", "200",
+             "--json", "title,state,baseRefName,headRefName,mergedAt,updatedAt"], path
+        )  # fmt: skip
+        if prs is None:
+            notes.append(f"{repo}: gh pr list unavailable (commits only)")
+            continue
+        for pr in json.loads(prs):
+            when = (pr.get("mergedAt") or pr["updatedAt"])[:10]
+            if when < since:
+                continue
+            for key in set(TICKET_RE.findall(f"{pr['headRefName']} {pr['title']}")):
+                note(key, repo, when, pr_stage(pr))
+    return evidence, notes
+
+
+def cmd_check(args: argparse.Namespace) -> None:
+    """Compare the CSVs with git/PR activity and the Jira cache. Reports only; writes nothing."""
+    cfg, cache = load_config(), load_cache()
+    since = args.since or (dt.date.today() - dt.timedelta(days=7)).isoformat()
+    iso_week(since)
+    items = {i[0]["ticket"]: i for i in group_items(read_rows())}
+    archived = {r["ticket"] for r in read_rows(ARCHIVE)}
+    evidence, notes = git_evidence(cfg.get("repo_paths", {}), since)
+    findings: list[str] = []
+    for ticket, ev in sorted(evidence.items()):
+        item = items.get(ticket)
+        where = ", ".join(sorted(ev["repos"]))
+        if item is None:
+            if ticket not in archived:
+                findings.append(
+                    f"{ticket}: activity on {ev['last']} in {where}"
+                    f"{' (' + ev['stage'] + ')' if ev['stage'] else ''}, but no logbook row"
+                )
+            continue
+        last = item[-1]
+        if STAGE.get(last["status"], 0) < STAGE.get(ev["stage"], 0):
+            findings.append(
+                f"{ticket}: logbook says '{last['status'] or '-'}' but a PR is at '{ev['stage']}' ({where})"
+            )
+        if ev["last"] > last["date"]:
+            findings.append(
+                f"{ticket}: git activity on {ev['last']} is newer than the last logbook row ({last['date']})"
+            )
+    for ticket, item in sorted(items.items()):
+        info = cache.get(ticket, {})
+        jira = JIRA_STATUS.get(info.get("jira_status", ""))
+        mine = PAGE_STATUS.get(item[-1]["status"], "")
+        if jira and mine and jira != mine:
+            updated = info.get("updated", "")
+            if not updated:
+                verdict = "Jira date unknown, refresh the cache (step 0a)"
+            elif updated > item[-1]["date"]:
+                verdict = "Jira is newer"
+            elif updated < item[-1]["date"]:
+                verdict = "the logbook is newer"
+            else:
+                verdict = "same day, decide by hand"
+            findings.append(
+                f"{ticket}: Jira '{info['jira_status']}' ({jira}, updated {updated or '?'}) vs logbook "
+                f"'{item[-1]['status']}' ({mine}, {item[-1]['date']}) -> {verdict}"
+            )
+    print(f"## Recheck since {since} (CSV vs git/PRs vs Jira cache)\n")
+    print(
+        "\n".join(f"- {n}" for n in notes) if notes else "", end="\n" if notes else ""
+    )
+    print("\n".join(f"- {f}" for f in findings) if findings else "Nothing to flag.")
+    if findings:
+        print("\nFix with `add` after confirming; nothing was changed.")
+
+
+def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
+    """Group rows by ticket, each group in date order (a ticket is one page row)."""
+    items: dict[str, list[dict[str, str]]] = {}
+    for row in sorted(rows, key=lambda r: r["date"]):  # stable: ties keep order
+        items.setdefault(row["ticket"], []).append(row)
+    return list(items.values())
+
+
+def cmd_archive(args: argparse.Namespace) -> None:
+    """Move finished tickets idle for --days (default 7) to the archive.
+
+    Logged tickets count from their last logbook date. Assigned DA tickets with no
+    logbook row count from the Jira updated date once Jira shows them done.
+    """
+    cutoff = dt.date.today() - dt.timedelta(days=args.days)
+    rows, archived, cache = read_rows(), read_rows(ARCHIVE), load_cache()
+    moving = {
+        item[0]["ticket"]
+        for item in group_items(rows)
+        if item[-1]["status"] in FINISHED
+        and dt.date.fromisoformat(item[-1]["date"]) <= cutoff
+    }
+    logged = {r["ticket"] for r in rows}
+    jira_done = sorted(
+        ticket
+        for ticket, info in cache.items()
+        if info.get("track")
+        and ticket not in logged
+        and JIRA_STATUS.get(info.get("jira_status", "")) == "DONE"
+        and info.get("updated", "9999-12-31") <= cutoff.isoformat()
+    )
+    if not moving and not jira_done:
+        print(f"nothing to archive (finished and last active on/before {cutoff}).")
+        return
+    names = sorted(moving) + jira_done
+    print(f"{'would archive' if args.dry_run else 'archiving'}: {', '.join(names)}")
+    if args.dry_run:
+        return
+    moved = [r for r in rows if r["ticket"] in moving]
+    for ticket in jira_done:
+        info = cache[ticket]
+        moved.append({
+            "date": info["updated"], "ticket": ticket, "repo": "", "type": "",
+            "task": info.get("summary") or ticket, "status": "Done", "notes": "",
+        })  # fmt: skip
+        info["track"] = False
+    # Archive first: a crash duplicates, never loses. Skipping keys already archived
+    # makes a retry after a partial failure idempotent.
+    have = {(r["date"], r["ticket"]) for r in archived}
+    write_rows(
+        archived + [r for r in moved if (r["date"], r["ticket"]) not in have], ARCHIVE
+    )
+    write_rows([r for r in rows if r["ticket"] not in moving])
+    if jira_done:
+        save_cache(cache)
+
+
+## Table layout the user set on the Confluence page (auto row numbers, fixed widths).
+COL_WIDTHS = [120, 140, 600, 130, 119, 218, 126]
+TABLE_OPEN = '<table data-layout="center" data-width="1468" data-number-column="true">'
+
+
+def long_date(date: str) -> str:
+    """2026-10-05 -> 'October 5, 2026' (the way Confluence shows a date field)."""
+    d = dt.date.fromisoformat(date)
+    return f"{d:%B} {d.day}, {d.year}"
+
+
+def time_tag(date: str) -> str:
+    return f'<time datetime="{date}">{long_date(date)}</time>'
+
+
+def expand(title: str, body: str) -> str:
+    """A collapsed nested expand, used to keep table rows compact."""
+    return (
+        f'<details data-type="nested-expand"><summary>{title}</summary>{body}</details>'
+    )
+
+
+def item_status(last: dict[str, str], info: dict) -> str:
+    """Page status word for a ticket: logbook status first, else the Jira status."""
+    return PAGE_STATUS.get(last["status"]) or JIRA_STATUS.get(
+        info.get("jira_status", ""),
+        (last["status"] or info.get("jira_status", "")).upper() or "-",
+    )
+
+
+def item_project(last: dict[str, str], info: dict, cfg: dict) -> str:
+    return (
+        cfg.get("projects", {}).get(last["repo"]) or info.get("project") or last["repo"]
+    )
+
+
+def render_html(
+    items: list[list[dict[str, str]]],
+    cfg: dict,
+    cache: dict | None = None,
+    hold: bool = False,
+) -> str:
+    """One table row per ticket, in the layout of the Confluence weekly page.
+
+    Uses native Confluence elements: <time> dates, status lozenges, a mention for the
+    PIC (when config has pic_account_id), inline smart-link cards for Jira keys, and
+    collapsed expands in the To Do cell: "Task List" (a ticket worked on over several
+    days, one dated line per day) and "Update" (dated notes), so rows stay short.
+    """
+    esc = html.escape
+    cache = cache or {}
+    head = ["Start Date", "Project", "To Do", "Status", "PIC", "JIRA", "LastUpdate"]
+    widths = list(COL_WIDTHS)
+    if hold:  # the hold page also shows what the ticket was before it was paused
+        head.insert(4, "Before Hold")
+        widths = [120, 140, 460, 110, 190, 119, 200, 126]
+    cols = [f'data-colwidth="{w}"' for w in widths]
+    lines = [
+        TABLE_OPEN,
+        "<thead><tr>"
+        + "".join(f"<th {c}><p>{h}</p></th>" for h, c in zip(head, cols, strict=True))
+        + "</tr></thead>",
+        "<tbody>",
+    ]
+    for item in items:
+        first, last = item[0], item[-1]
+        ticket = first["ticket"]
+        info = cache.get(ticket, {})
+        base = cfg.get("jira_base", "")
+        keys = [
+            k for k in (info.get("source"), ticket) if k
+        ]  # IN key first, like the old page
+        links = []
+        for key in keys:
+            if base and JIRA_KEY.fullmatch(key):
+                links.append(
+                    f'<a href="{esc(base + key)}" data-card-appearance="inline"></a>'
+                )
+            else:
+                links.append(esc(key))
+        link = " ".join(links)
+        start = info.get("created") or first["date"]  # Jira created date (IN if linked)
+        todo = f"<p><strong>{esc(first['task'])}</strong></p>"
+        if info.get("description"):
+            todo += expand("Description", f"<p>{esc(info['description'])}</p>")
+        if len(item) > 1:
+            days = "".join(
+                f"<li><p>{time_tag(r['date'])} {esc(r['task'])}</p></li>" for r in item
+            )
+            todo += expand("Task List", f"<ul>{days}</ul>")
+        noted = [r for r in item if r["notes"]]
+        if noted:
+            entries = "<hr>".join(
+                f"<p>{time_tag(r['date'])}</p><ul><li><p>{esc(r['notes'])}</p></li></ul>"
+                for r in noted
+            )
+            todo += expand("Update", entries)
+        status = item_status(last, info)
+        color = STATUS_COLOR.get(status, "neutral")
+        lozenge = (
+            f'<span data-type="status" data-color="{color}" '
+            f'data-status-style="bold">{esc(status)}</span>'
+        )
+        project = item_project(last, info, cfg)
+        pic = esc(cfg.get("pic", ""))
+        if cfg.get("pic_account_id"):
+            uid = esc(cfg["pic_account_id"])
+            pic = f'<span data-type="mention" data-user-id="{uid}">@{pic}</span>'
+        fill, fill_last = "", False
+        if status not in NO_AGING:
+            fill_last = status in cfg.get("other_court", OTHER_COURT)
+            anchor = last["date"] if fill_last else start
+            tiers = (
+                cfg.get("followup_days", FOLLOWUP_DAYS)
+                if fill_last
+                else cfg.get("aging_days", AGING_DAYS)
+            )
+            age = (dt.date.today() - dt.date.fromisoformat(anchor)).days
+            reached = [c for d, c in zip(tiers, AGING_COLORS, strict=False) if age >= d]
+            if reached:
+                fill = f' data-background="{reached[-1]}" style="background-color: {reached[-1]}"'
+        cells = [
+            time_tag(start), esc(project), todo, lozenge, pic, link,
+            time_tag(last["date"]),
+        ]  # fmt: skip
+        if hold:
+            before = info.get("before_hold", "")
+            word = JIRA_STATUS.get(before, before.upper()) or "-"
+            since = info.get("hold_since")
+            cell = (
+                f'<span data-type="status" data-color="{STATUS_COLOR.get(word, "neutral")}" '
+                f'data-status-style="bold">{esc(word)}</span>'
+                + (f"<br>on hold since {time_tag(since)}" if since else "")
+            )
+            cells.insert(4, cell)
+        lines.append(
+            "<tr>"
+            + "".join(
+                f"<td {c}{fill if i == (len(cells) - 1 if fill_last else 0) else ''}><p>{v}</p></td>"
+                if i != 2
+                else f"<td {c}>{v}</td>"
+                for i, (v, c) in enumerate(zip(cells, cols, strict=True))
+            )
+            + "</tr>"
+        )
+    lines += ["</tbody>", "</table>"]
+    return "\n".join(lines)
+
+
+def cmd_publish(args: argparse.Namespace) -> None:
+    """Print Confluence-ready HTML for the main, hold or archive page."""
+    archive = args.which == "archive"
+    hold = args.which == "hold"
+    if args.empty:
+        out = render_html([], {})
+        if args.out:
+            Path(args.out).write_text(out, encoding="utf-8")
+        else:
+            print(out)
+        return
+    items = group_items(read_rows(ARCHIVE if archive else LOGBOOK))
+    cache, cfg = load_cache(), load_config()
+    if not archive:
+        items += tracked_only_items(cache, {i[0]["ticket"] for i in items})
+        on_hold = [
+            i
+            for i in items
+            if item_status(i[-1], cache.get(i[0]["ticket"], {})) == "HOLD"
+        ]
+        items = on_hold if hold else [i for i in items if i not in on_hold]
+    if args.year:
+        items = [i for i in items if i[-1]["date"].startswith(f"{args.year}-")]
+    if not items:
+        sys.exit(
+            f"No rows in the {args.which} logbook"
+            + (f" for {args.year}." if args.year else ".")
+        )
+    # Orderly: by project (A-Z), then the most recently updated first.
+    items.sort(key=lambda item: item[-1]["date"], reverse=True)
+    items.sort(
+        key=lambda item: item_project(
+            item[-1], cache.get(item[0]["ticket"], {}), cfg
+        ).lower()
+    )
+    body = render_html(items, cfg, cache, hold=hold)
+    legend = {
+        "main": (
+            " Ordered by project, then last update. Tickets on hold are in the child page"
+            " <strong>Weekly DA Interface - On Hold</strong>. Colour: Start Date = my court"
+            " (open too long); LastUpdate = waiting on others (time to follow up)."
+        ),
+        "hold": " Tickets paused in Jira; <strong>Before Hold</strong> is the status each had when paused.",
+    }.get(args.which, "")
+    note = f"<p>Generated {dt.date.today().isoformat()} from the local logbook ({args.which}).{legend}</p>"
+    out = note + "\n" + body
+    if args.out:
+        Path(args.out).write_text(out, encoding="utf-8")
+        print(f"wrote {len(items)} items to {args.out}")
+    else:
+        print(out)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(required=True)
+
+    add = sub.add_parser("add", help="Add or update the row for date+ticket")
+    for name in ("ticket", "task"):
+        add.add_argument(f"--{name}", required=True)
+    for name in ("repo", "notes", "date"):
+        add.add_argument(f"--{name}", default="")
+    add.add_argument("--type", default="", choices=["", *TYPES])
+    add.add_argument("--status", default="", choices=["", *STATUSES])
+    add.set_defaults(func=cmd_add)
+
+    week = sub.add_parser("week", help="Print a weekly summary")
+    week.add_argument("--week", default="", help="e.g. 2026-W41 (default: current)")
+    week.set_defaults(func=cmd_week)
+
+    sync = sub.add_parser(
+        "sync", help="Copy the CSVs to the Windows folder if they differ"
+    )
+    sync.set_defaults(func=cmd_sync)
+
+    arch = sub.add_parser("archive", help="Move old finished tickets to the archive")
+    arch.add_argument(
+        "--days", type=int, default=7, help="idle days before archiving (default 7)"
+    )
+    arch.add_argument("--dry-run", action="store_true")
+    arch.set_defaults(func=cmd_archive)
+
+    check = sub.add_parser(
+        "check", help="Compare the CSVs with git/PRs and the Jira cache"
+    )
+    check.add_argument("--since", default="", help="YYYY-MM-DD (default: 7 days ago)")
+    check.set_defaults(func=cmd_check)
+
+    rename = sub.add_parser("rename", help="Re-key a ticket in rows, archive and cache")
+    rename.add_argument("old")
+    rename.add_argument("to")
+    rename.add_argument(
+        "--force", action="store_true", help="allow a non-Jira target key"
+    )
+    rename.set_defaults(func=cmd_rename)
+
+    cache = sub.add_parser("cache", help="Per-ticket Jira data for the weekly page")
+    cache.add_argument("action", choices=["set", "missing"])
+    cache.add_argument("--ticket", default="")
+    cache.add_argument("--created", default="", help="Jira created date, YYYY-MM-DD")
+    cache.add_argument("--source", default="", help="linked IN/other key, e.g. IN-3247")
+    cache.add_argument(
+        "--description", default="", help="short SRF/requirement summary"
+    )
+    cache.add_argument(
+        "--summary", default="", help="Jira title (rows with no logbook entry)"
+    )
+    cache.add_argument("--jira-status", default="", help="Jira workflow status")
+    cache.add_argument("--updated", default="", help="Jira updated date, YYYY-MM-DD")
+    cache.add_argument("--project", default="", help="project name on the page")
+    cache.add_argument(
+        "--before-hold", default="", help="Jira status before the ticket went on hold"
+    )
+    cache.add_argument(
+        "--hold-since", default="", help="date it went on hold, YYYY-MM-DD"
+    )
+    cache.add_argument(
+        "--track",
+        default="",
+        choices=["", "yes", "no"],
+        help="yes: DA ticket assigned to the user and open, so list it",
+    )
+    cache.set_defaults(func=cmd_cache)
+
+    pub = sub.add_parser("publish", help="Render Confluence HTML (does not post it)")
+    pub.add_argument("which", choices=["main", "hold", "archive"])
+    pub.add_argument(
+        "--empty", action="store_true", help="header row only (page template)"
+    )
+    pub.add_argument(
+        "--year", type=int, default=0, help="archive only: items last active that year"
+    )
+    pub.add_argument("--out", default="", help="write to a file instead of stdout")
+    pub.set_defaults(func=cmd_publish)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

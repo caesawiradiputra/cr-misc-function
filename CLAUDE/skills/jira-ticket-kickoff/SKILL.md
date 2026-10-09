@@ -304,6 +304,13 @@ Append only — never edit or delete the original Description/Acceptance Criteri
 
 No branch operations, no brainstorming hand-off — this path ends at reporting the drift (and the update note, if the user wants it recorded).
 
+## Logbook
+
+After the kickoff or resume recap, propose a logbook row for the ticket (`/logbook`:
+`status` = `In progress`, `task` from the ticket summary; Path C uses the
+slug as `ticket`; `notes` only for a requirement difference or decision worth keeping). Write it after the user's OK. On Path B, update the existing row
+instead of adding one. Path D (recheck only) logs nothing.
+
 ## Pre-completion checklist
 
 - [ ] Path chosen correctly: recheck phrasing → Path D; ticket ID present (not a recheck) → JIRA path (A or B); absent + change described directly → Path C
@@ -318,3 +325,4 @@ No branch operations, no brainstorming hand-off — this path ends at reporting 
 - [ ] Path D: re-fetched live rather than reasoning from memory; drift (if any) diffed against the existing `requirement.md`, not just re-summarized from scratch; attachment list diffed too, with any count/filename/date change flagged for manual review rather than guessed at; any update appended, original sections left untouched; no git or folder operations performed
 - [ ] Links: every URL and every ticket key in text written to a file, a Jira description or comment, or a PR body is a Markdown link (`[PROJ-1234](https://<ATLASSIAN_SITE>.atlassian.net/browse/PROJ-1234)`); none left bare (see "Writing links")
 - [ ] Session ends at a brainstorming discussion (Path A/C), a progress check-in (Path B), or a drift report (Path D) — never at a plan or code change
+- [ ] Logbook row proposed (Path A/B/C) and written only after the user's OK; none for Path D
