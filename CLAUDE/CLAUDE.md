@@ -451,8 +451,8 @@ The user's tracking of what they did, used for weekly reporting. Master file:
   `bast-generator`) propose the row themselves at their last step.
 - To backfill a period, summarize from git commits and PRs, never from session
   transcripts (too large, and the PR/commit record is more accurate).
-- Copy to the Windows folder only daily (`sync --daily`) or when asked, not on
-  every edit.
+- `sync` copies to the Windows folder only when the master changed; run it at the
+  first logbook touch of a session or when asked, not after every edit.
 
 ---
 
