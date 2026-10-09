@@ -114,6 +114,17 @@ are tens of MB per week and hold far more noise than signal. Per repo, run
 --format='%ad|%D|%s'` and, where `gh` works, `gh pr list --author @me --state all`.
 Group by ticket key from the branch or subject (`bug-<n>` when there is no key).
 Use the ticket's last-activity date, set `status` from merges using the table above, and mark tickets with no PR `In progress`, telling the user in chat to verify them (not in `notes`).
+**Where `notes` come from.** For tickets that have a `release/<TICKET>/` folder, read these
+(they are already written, so this costs far less than a transcript), newest first:
+`CHANGELOG.md` (summary, "Breaking Changes", "Code Review Notes", follow-up entries),
+`docs/requirement.md` (dated "Requirement Update" and "Decision" sections, which record
+requests that never reached Jira), and design docs with a "Decisions" table. Add a `notes`
+entry only for something that differs from or adds to the original ticket: a new request
+and its date, a decision and why, or a concern or known gap. Write it in one or two sentences
+on the day it happened (use `add --date` so a ticket gets one row per day with its own note),
+and skip anything the task line already says. Commit bodies are a second source when there
+is no release folder. Show the proposed notes to the user before writing them.
+
 Commits miss non-code work (meetings, investigations, Confluence pages, reviews),
 so ask the user what to add.
 

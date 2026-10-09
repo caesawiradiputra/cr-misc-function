@@ -280,7 +280,7 @@ def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
         if base and re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", ticket):
             url = esc(base + ticket)
             link = f'<a href="{url}" data-card-appearance="inline"></a>'
-        todo = f"<p><strong>{esc(last['task'])}</strong></p>"
+        todo = f"<p><strong>{esc(first['task'])}</strong></p>"
         if len(item) > 1:
             days = "".join(
                 f"<li><p>{time_tag(r['date'])} {esc(r['task'])}</p></li>" for r in item
