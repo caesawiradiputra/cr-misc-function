@@ -1,0 +1,7 @@
+{
+  "jira_base": "https://<ATLASSIAN_SITE>.atlassian.net/browse/",
+  "pic": "<Your Name>",
+  "projects": {
+    "<repo-name>": "<Project name on the weekly page>"
+  }
+}

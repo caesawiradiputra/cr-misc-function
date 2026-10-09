@@ -451,6 +451,8 @@ The user's tracking of what they did, used for weekly reporting. Master file:
   `bast-generator`) propose the row themselves at their last step.
 - To backfill a period, summarize from git commits and PRs, never from session
   transcripts (too large, and the PR/commit record is more accurate).
+- The weekly Confluence tracker page is generated from the CSVs only when asked
+  (`/logbook` publish procedure); finished work older than 14 days moves to the archive CSV.
 - `sync` copies to the Windows folder only when the master changed; run it at the
   first logbook touch of a session or when asked, not after every edit.
 

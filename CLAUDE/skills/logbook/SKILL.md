@@ -7,7 +7,9 @@ description: Track what the user did, for weekly reporting. Adds or updates a ro
 
 Personal tracking file used for weekly reporting.
 
-- **Master file:** `~/.claude/logbook/logbook.csv` (WSL side).
+- **Master file:** `~/.claude/logbook/logbook.csv` (WSL side), plus `logbook-archive.csv`
+  (old finished work) and `config.json` (Jira base URL, PIC, repo → project names,
+  Confluence page ids) in the same folder.
 - **Windows copy:** an export of the master, never edited by hand. Its folder comes from
   `LOGBOOK_WINDOWS_DIR`, or the first line of `~/.claude/logbook/windows_dir.txt`
   (e.g. `/mnt/c/Users/<you>/Documents/Work/Logbook`). `sync` fails with a clear
@@ -50,9 +52,42 @@ nothing like that, keep it to one or two sentences, and don't restate the requir
    | PR open `dev` → `master` | `PR to master` |
    | Merged into `master` / deployed | `Released` |
    | Non-code work finished (docs, BAST, analysis) | `Done` |
-5. **Windows copy:** `sync` copies only when the master differs from the Windows
-   file, so it is safe to run often. Run it the first time the logbook is touched in
+   | Analysis / exploring, no code yet | `Analysis` |
+   | Fixing a defect found after release or testing | `Fixing` |
+   | Blocked or on hold | `Hold` |
+5. **Windows copy:** `sync` copies the master and archive CSVs, each only when it differs
+   from the Windows file, so it is safe to run often. Run it the first time the logbook is touched in
    a session and whenever the user asks, not after every edit.
+
+## Archive and weekly Confluence page
+
+The page layout follows the user's old "Weekly DA Interface" tracker: one row per
+ticket (not per day), columns `#, Start Date, Project, To Do, Status, PIC, JIRA,
+LastUpdate`. It is **generated** from the CSVs, only when the user asks (for the weekly
+meeting), never after each edit. Manual edits on the page are overwritten, so tell the
+user to change rows through the logbook instead.
+
+How a ticket becomes a row: `Start Date` = its first date, `LastUpdate` = its last date,
+`To Do` = the latest `task` in bold plus each non-empty `notes` as a dated bullet,
+`Status` = the latest status mapped to the page words (`In progress` → `DEVELOPMENT`,
+`PR to`/`Merged to dev`/`sit` → `TESTING`, `PR to master` → `READY FOR RELEASE`,
+`Released`/`Done` → `DONE`, `Analysis` → `ANALYST`, plus `FIXING` and `HOLD`), `Project`
+from `config.json` `projects` (repo name when unmapped).
+
+Publish procedure (run only when the user asks to publish / "update the weekly page"):
+
+1. `archive --dry-run` and show the tickets (finished and last active more than 14
+   days ago). After the user's OK, `archive` moves all their rows to
+   `logbook-archive.csv`. Unfinished work is never archived, however old.
+2. `publish main --out <scratchpad>/main.html` and `publish archive --out <scratchpad>/archive.html`
+   (HTML only; the helper never talks to Confluence).
+3. Look in `config.json` for `confluence.main_page_id` and `confluence.archive_page_id`.
+   - **Missing:** create the two pages in the user's personal Confluence space (confirm
+     the titles first; the archive page is a child of the main page), then record the
+     ids and `space_id` under `confluence` in `config.json`.
+   - **Present:** read the page's current version, then replace its body with the new
+     HTML (`updateConfluenceContent`). Say that the whole body is replaced.
+4. Read the page back to confirm the table rendered, report the links, and run `sync`.
 
 ## Backfill from git and PRs (preferred source)
 
@@ -73,7 +108,10 @@ python3 ~/.claude/skills/logbook/logbook.py add --ticket PROJ-1234 --repo da-neg
   --notes "Decided to keep the old key: downstream reports join on it"
 python3 ~/.claude/skills/logbook/logbook.py week              # current ISO week
 python3 ~/.claude/skills/logbook/logbook.py week --week 2026-W41
-python3 ~/.claude/skills/logbook/logbook.py sync              # copy if the master changed
+python3 ~/.claude/skills/logbook/logbook.py sync              # copy CSVs if they changed
+python3 ~/.claude/skills/logbook/logbook.py archive --dry-run # then without --dry-run
+python3 ~/.claude/skills/logbook/logbook.py publish main --out /path/main.html
+python3 ~/.claude/skills/logbook/logbook.py publish archive --out /path/archive.html
 ```
 
 For Google Sheets: File → Import → Upload the Windows copy → "Append to current sheet".
