@@ -30,6 +30,18 @@ Columns: `date, week, ticket, repo, branch, type, task, status, pr_url, notes`.
 5. **Windows copy:** run `sync --daily` the first time the logbook is touched in a
    session (skips if already copied today) and `sync` when the user asks.
 
+## Backfill from git and PRs (preferred source)
+
+To fill a past period, read **commits and PRs, not session transcripts**: transcripts
+are tens of MB per week and hold far more noise than signal. Per repo, run
+`git log --all --since=<monday> --author="$(git config user.name)" --date=short
+--format='%ad|%D|%s'` and, where `gh` works, `gh pr list --author @me --state all`.
+Group by ticket key from the branch or subject (`bug-<n>` when there is no key).
+Use the ticket's last-activity date, set `status` from merges (merged to `dev` /
+`sit` / `master`), and mark tickets with no PR `In progress` with a note to verify.
+Commits miss non-code work (meetings, investigations, Confluence pages, reviews),
+so ask the user what to add.
+
 ## Commands
 
 ```bash

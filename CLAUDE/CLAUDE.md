@@ -447,6 +447,10 @@ The user's tracking of what they did, used for weekly reporting. Master file:
   (ticket, one-line outcome-first task, status) and write it after the user's OK.
 - One row per ticket per day; the helper upserts, so later status changes update
   the same row.
+- Skills that finish a unit of work (`/generate-pr-message`, `jira-ticket-kickoff`,
+  `bast-generator`) propose the row themselves at their last step.
+- To backfill a period, summarize from git commits and PRs, never from session
+  transcripts (too large, and the PR/commit record is more accurate).
 - Copy to the Windows folder only daily (`sync --daily`) or when asked, not on
   every edit.
 
