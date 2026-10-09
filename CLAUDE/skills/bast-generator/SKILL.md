@@ -19,12 +19,13 @@ Reference files (read them when the step says so, not up front):
 3. **Empty means empty.** Cells owned by Data Ops, the user, CAB or IT stay untouched. Do not put placeholders in them. The one exception is the source-code reference (repository, PR, branch) in CAB Checklist item 4, which the skill fills once per BAST.
 4. **Sweep after edits.** After filling, re-read the copy and confirm no leftover template prompt text remains in a cell you were supposed to fill (for example `Isi dengan copas url epic`, `mention @`, or the sample date `January 21, 2022`).
 5. **Preview before create.** The user must see the preview (step 6) and say OK before the copy is made.
+6. **Code format for names.** Every object name and other code-related text you write into a cell is inline code (`<code>…</code>` in the HTML body): workspaces, hosts, databases, schemas, tables, columns, variables, nodes, workflows, AD groups, file names, cron expressions, SQL keywords and suffixes such as `_Realtime_4H`. Labels (`Host:`, `Tables:`), ordinary words, ticket keys and mentions stay plain text. Inline code cannot carry bold, italic or a link, so do not nest them. Apply it in the description, every DDCL row (including file names inside `[Attach file: …]`) and the Scenario Test rows, and keep it when you edit a cell later.
 
 ## Constants
 
 - Site `cloudId`: `<ATLASSIAN_CLOUD_ID>` (<ATLASSIAN_SITE>.atlassian.net). If a call rejects it, call `getAccessibleAtlassianResources` once.
 - Template page ID: `<BAST_TEMPLATE_PAGE_ID>` (the user's own copy of the `BAST DATA` template, in the `Template` folder of their personal space). Read it live on every run so template changes carry over.
-- Destination: the `BAST` folder of the user's personal space, folder ID `<BAST_FOLDER_ID>` (new BASTs sit directly in it). The personal space key is not hardcoded: resolve it with `getConfluencePersonalSpace`. If the folder id is rejected or gone, find the folder titled `BAST` under the space's `Overview` page (`getConfluenceContentDescendants`) and tell the user the id changed.
+- Destination: the `BAST` folder of the user's personal space, folder ID `<BAST_FOLDER_ID>` (new BASTs sit directly in it; its `Archive` and `Datamart` subfolders are not used automatically). The personal space key is not hardcoded: resolve it with `getConfluencePersonalSpace`. If the folder id is rejected or gone, find the folder titled `BAST` under the space's `Overview` page (`getConfluenceContentDescendants`) and tell the user the id changed.
 - Title: `[BAST] <TICKET> - <Jira summary>`.
 
 ## Steps
@@ -34,7 +35,7 @@ Reference files (read them when the step says so, not up front):
 Take the ticket ID from the user's message. If absent, ask.
 
 - Fetch the ticket with `getJiraIssue` (`view: "full"`; the compact view omits `issuelinks`, `reporter` and custom fields).
-- Find the **"clones" link** (`issuelinks` entry of type Cloners, outward issue). That linked issue (e.g. `IN-3295`, a Change Request) is the original request. Fetch it with `view: "full"` too.
+- Find the **"clones" link** (`issuelinks` entry of type Cloners, outward issue). That linked issue (e.g. `IN-1234`, a Change Request) is the original request. Fetch it with `view: "full"` too.
 - Take from the **clone (IN)** ticket: `reporter` (this is the **requester**, with `accountId`), Directorate (`customfield_10042`), Department (`customfield_10043`), Type Dev (`customfield_10052`), and the description.
 - Take from the **DA** ticket: summary, description (fallback if the IN has none), and the Development field (PR state) for the source-repo note.
 - If there is no clones link, leave requester, Directorate, Department and Type empty and say so in the preview. Do not guess from comments; approvers named in free-text comments are not parsed.
@@ -85,8 +86,17 @@ Print a compact preview and wait for the user's OK:
 - The DDCL rows, exactly as they will appear, with every `⚠` marked.
 - What stays empty on purpose.
 - Anything unresolved (missing clone link, missing deployment-target docs).
+- If an existing page with the target title was found: whether it qualified as still-a-template (filled in place) or not (new page with the proposed scope-suffixed title) — state which, and the suffix, so the user can correct it before anything is written.
 
 ### 7. Create, fill, verify
+
+0. **Check for an existing page with the target title before copying anything.** `searchConfluence` with a CQL title search scoped to the destination space. If one exists, read it (`getConfluenceContent`, `detail: "full"`, `content_format: "html"`) and judge whether it is still a template — by content, never by word count or section count (those can look identical to a filled page). All four of these must hold for it to count as still-a-template. The template itself is prefilled with the engineer's constant fields (see `references/template-map.md`, "Prefilled in the template"): the Engineer mention, the CAB Deployment Methods PIC mention, and the ticked `Internal <COMPANY>` (Scope) and `Data Analytic` (Type) boxes. Ignore exactly those four cells in this check:
+   - No other checkbox anywhere in the page is ticked.
+   - No other mention span holds a real accountId — only placeholder text (`@ mention name approval`, `use '@' to assign to someone.`).
+   - A template prompt string is still present (`Isi dengan informasi dari kebutuhan...`, `Isi dengan copas url epic`).
+   - The CAB section is still empty/template: Deployment Methods' PIC cell holds only the prefilled engineer mention, its Date is still the sample `January 21, 2022`, and `leads CAB`/`Date CAB` are empty or the sample date.
+
+   If all four hold: skip `copyConfluenceContent` and fill this page in place (its id feeds directly into step 7.3's read). If even one shows real content, the page is not a template — leave it completely untouched, and continue to step 7.1 with a title that adds a short scope suffix to disambiguate (e.g. `[BAST] <TICKET> - <summary> - <scope>`; confirm the exact suffix with the user in the preview, step 6).
 
 1. Copy: `executeWrite` with `name: "copyConfluenceContent"`, `contentId: "<BAST_TEMPLATE_PAGE_ID>"`, `title`, `parentContentId: "<BAST_FOLDER_ID>"` (the `BAST` folder), top-level `cloudId`. If the copy rejects a folder as parent, copy with `destinationSpaceKey` instead and then `moveConfluenceContent` (`id` = the new page, `position: "append"`, `targetId: "<BAST_FOLDER_ID>"`), and confirm with `getConfluenceContentAncestors` that the page ended up under `BAST`.
 2. Load the format guide once: `executeRead` `getContentFormatGuide` with `inputs: {toolName: "updateConfluencePage"}`.
@@ -106,4 +116,4 @@ Then propose a logbook row (`/logbook`, `ticket` = the ticket key, `type` = `doc
 
 - Template unreadable: stop and tell the user. Do not fall back to a hardcoded copy of the template.
 - Copy succeeds but an edit fails: report the page link and which cells are still unfilled. Do not delete the copy.
-- Never overwrite or edit a page that already has the target title without asking.
+- Never overwrite or edit a page that already has the target title without running the template-check in step 7.0 first. A page that fails any part of that check has real content — leave it alone and create a separate page with a scope-suffixed title instead.
