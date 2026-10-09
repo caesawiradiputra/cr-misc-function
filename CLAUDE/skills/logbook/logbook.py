@@ -535,7 +535,15 @@ def cmd_publish(args: argparse.Namespace) -> None:
         ).lower()
     )
     body = render_html(items, cfg, cache, hold=hold)
-    note = f"<p>Generated {dt.date.today().isoformat()} from the local logbook ({args.which}).</p>"
+    legend = {
+        "main": (
+            " Ordered by project, then last update. Tickets on hold are in the child page"
+            " <strong>Weekly DA Interface - On Hold</strong>. Colour: Start Date = my court"
+            " (open too long); LastUpdate = waiting on others (time to follow up)."
+        ),
+        "hold": " Tickets paused in Jira; <strong>Before Hold</strong> is the status each had when paused.",
+    }.get(args.which, "")
+    note = f"<p>Generated {dt.date.today().isoformat()} from the local logbook ({args.which}).{legend}</p>"
     out = note + "\n" + body
     if args.out:
         Path(args.out).write_text(out, encoding="utf-8")
