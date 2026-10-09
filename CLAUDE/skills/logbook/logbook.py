@@ -307,8 +307,17 @@ def cmd_rename(args: argparse.Namespace) -> None:
     if not JIRA_KEY.fullmatch(args.to) and not args.force:
         sys.exit(f"--to {args.to!r} is not a Jira key; pass --force to allow it.")
     moved = 0
-    for path in (LOGBOOK, ARCHIVE):
-        rows = read_rows(path)
+    loaded = {path: read_rows(path) for path in (LOGBOOK, ARCHIVE)}
+    taken = {(r["date"], r["ticket"]) for rows in loaded.values() for r in rows}
+    clash = sorted(
+        r["date"] for rows in loaded.values() for r in rows
+        if r["ticket"] == args.old and (r["date"], args.to) in taken
+    )  # fmt: skip
+    if clash:
+        sys.exit(
+            f"{args.to} already has rows on {', '.join(clash)}; merge those by hand first."
+        )
+    for path, rows in loaded.items():
         for row in rows:
             if row["ticket"] == args.old:
                 row["ticket"] = args.to
@@ -382,7 +391,7 @@ def git_evidence(
             for key in set(keys):
                 note(key, repo, date, "")
         prs = _run(
-            ["gh", "pr", "list", "--state", "all", "--author", "@me", "--limit", "60",
+            ["gh", "pr", "list", "--state", "all", "--author", "@me", "--limit", "200",
              "--json", "title,state,baseRefName,headRefName,mergedAt,updatedAt"], path
         )  # fmt: skip
         if prs is None:
@@ -498,9 +507,12 @@ def cmd_archive(args: argparse.Namespace) -> None:
             "task": info.get("summary") or ticket, "status": "Done", "notes": "",
         })  # fmt: skip
         info["track"] = False
+    # Archive first: a crash duplicates, never loses. Skipping keys already archived
+    # makes a retry after a partial failure idempotent.
+    have = {(r["date"], r["ticket"]) for r in archived}
     write_rows(
-        archived + moved, ARCHIVE
-    )  # archive first: a crash duplicates, never loses
+        archived + [r for r in moved if (r["date"], r["ticket"]) not in have], ARCHIVE
+    )
     write_rows([r for r in rows if r["ticket"] not in moving])
     if jira_done:
         save_cache(cache)

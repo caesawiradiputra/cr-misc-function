@@ -56,8 +56,8 @@ nothing like that, keep it to one or two sentences, and don't restate the requir
    | Fixing a defect found after release or testing | `Fixing` |
    | Blocked or on hold | `Hold` |
 5. **Windows copy:** `sync` copies the master and archive CSVs, each only when it differs
-   from the Windows file, so it is safe to run often. Run it the first time the logbook is touched in
-   a session and whenever the user asks, not after every edit.
+   from the Windows file, so repeating it is harmless (idempotent). Policy: run it once the first time
+   the logbook is touched in a session and whenever the user asks, not after every edit.
 
 ## Archive and weekly Confluence page
 
@@ -146,7 +146,9 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
    page** (another team, or a restart): copy the `Weekly DA Interface TEMPLATE` page
    (`weekly_template_page_id`, in the `Template` folder) with `copyConfluenceContent`, then
    publish into the copy. `publish main --empty` prints just the header table.
-5. Read the page back to confirm the table rendered, report the links, and run `sync`.
+5. Confirm the write: the returned version must be the old one plus 1. Read the page back only when
+   the user changes the layout or the write looks wrong; a version bump alone does not prove the
+   table rendered, so say so when you skip the read. Report the links and run `sync`.
 
 ## Recheck (`/logbook check`)
 
@@ -193,6 +195,11 @@ and its date, a decision and why, or a concern or known gap. Write it in one or 
 on the day it happened (use `add --date` so a ticket gets one row per day with its own note),
 and skip anything the task line already says. Commit bodies are a second source when there
 is no release folder. Show the proposed notes to the user before writing them.
+
+When the backfill is written, run `check --since <monday>` straight away and show what it
+reports: it catches rows whose status lags a PR (an open PR the commits did not show) before
+the period is treated as done. `gh pr list` is capped at 200 per repo; `check` reports no gap
+beyond that, so narrow `--since` on a very busy repo.
 
 Commits miss non-code work (meetings, investigations, Confluence pages, reviews),
 so ask the user what to add.
