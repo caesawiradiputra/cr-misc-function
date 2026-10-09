@@ -100,7 +100,7 @@ Print a compact preview and wait for the user's OK:
 
 Give the page link and a to-do list of what only the user can do: screenshots for the Scenario Test rows and for each `[Upload screenshot: …]` placeholder, and the script file for each `[Attach file: …]` placeholder (delete the placeholder text once uploaded), every `⚠ TO CONFIRM` line, and the cells intentionally left for Data Ops, the user, CAB and IT. Mention the MCP cannot upload attachments.
 
-Then propose a logbook row (`/logbook`, `ticket` = the ticket key, `type` = `docs`, `task` = "Created the BAST page for <ticket>", `notes` = the page link) and write it after the user's OK.
+Then propose a logbook row (`/logbook`, `ticket` = the ticket key, `type` = `docs`, `task` = "Created the BAST page for <ticket>") and write it after the user's OK.
 
 ## Failure handling
 

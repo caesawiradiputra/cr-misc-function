@@ -319,7 +319,7 @@ Skip when there is no ticket (slug-keyed ad-hoc work).
 5. The PR is opened by the user, so transition when they confirm it is open, and add
    the PR link as a Jira comment (`addOrEditJiraIssueComment`).
 6. Report the status the transition returned, then update the logbook row
-   (`/logbook add`, `status` = `PR to dev` / `PR to master`, with `pr_url`).
+   (`/logbook add`, `status` = `PR to dev` / `PR to master`).
 
 ---
 

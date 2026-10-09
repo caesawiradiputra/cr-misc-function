@@ -17,7 +17,13 @@ Personal tracking file used for weekly reporting.
   Never hand-edit the CSV; use the helper so quoting, the ISO `week`, the header check
   and the atomic write stay correct. It refuses to write if the header or a row is malformed.
 
-Columns: `date, week, ticket, repo, branch, type, task, status, pr_url, notes`.
+Columns: `date, ticket, repo, type, task, status, notes`. The week is derived from
+`date` (ISO week), never stored; in Sheets use `=ISOWEEKNUM(A2)`.
+
+`notes` is **not** a PR link or a progress log. It holds Jira context that differs
+from or adds to the original ticket or requirement: a scope change, a decision and its
+reason, a concern, or the outcome of a discussion. Leave it empty when there is
+nothing like that, keep it to one or two sentences, and don't restate the requirement.
 
 ## Rules
 
@@ -26,7 +32,7 @@ Columns: `date, week, ticket, repo, branch, type, task, status, pr_url, notes`.
    add (ticket, task, status) and write it after the user's OK. Write immediately
    only when the user asked for it. Do not propose after minor intermediate steps, and
    if the ticket already has a row today, propose only a change that matters (new
-   status, PR link, a materially different outcome).
+   status or a materially different outcome).
 2. **One row per ticket per day.** `add` upserts on `date` + `ticket`; non-empty
    fields overwrite, empty ones keep the old value. Without a ticket, use a
    short slug (e.g. `refactor-logging`) as `ticket`.
@@ -55,7 +61,7 @@ are tens of MB per week and hold far more noise than signal. Per repo, run
 `git log --all --since=<monday> --author="$(git config user.name)" --date=short
 --format='%ad|%D|%s'` and, where `gh` works, `gh pr list --author @me --state all`.
 Group by ticket key from the branch or subject (`bug-<n>` when there is no key).
-Use the ticket's last-activity date, set `status` from merges using the table above, and mark tickets with no PR `In progress` with a note to verify.
+Use the ticket's last-activity date, set `status` from merges using the table above, and mark tickets with no PR `In progress`, telling the user in chat to verify them (not in `notes`).
 Commits miss non-code work (meetings, investigations, Confluence pages, reviews),
 so ask the user what to add.
 
@@ -63,8 +69,8 @@ so ask the user what to add.
 
 ```bash
 python3 ~/.claude/skills/logbook/logbook.py add --ticket PROJ-1234 --repo da-negative-list \
-  --branch fea/PROJ-1234 --type fea --task "Added X so Y" --status "PR to dev" \
-  --pr-url https://github.com/... --notes "optional"
+  --type fea --task "Added X so Y" --status "PR to dev" \
+  --notes "Decided to keep the old key: downstream reports join on it"
 python3 ~/.claude/skills/logbook/logbook.py week              # current ISO week
 python3 ~/.claude/skills/logbook/logbook.py week --week 2026-W41
 python3 ~/.claude/skills/logbook/logbook.py sync              # copy if the master changed

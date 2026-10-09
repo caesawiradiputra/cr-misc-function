@@ -21,10 +21,7 @@ LOGBOOK = Path(
     os.environ.get("LOGBOOK_PATH") or Path.home() / ".claude/logbook/logbook.csv"
 )
 WINDOWS_DIR_FILE = LOGBOOK.parent / "windows_dir.txt"
-COLUMNS = [
-    "date", "week", "ticket", "repo", "branch", "type",
-    "task", "status", "pr_url", "notes",
-]  # fmt: skip
+COLUMNS = ["date", "ticket", "repo", "type", "task", "status", "notes"]
 TYPES = ["fea", "fix", "chore", "docs", "refactor", "ops"]
 STATUSES = [
     "In progress", "PR to dev", "Merged to dev", "Merged to sit",
@@ -59,11 +56,9 @@ def row_problem(row: dict[str, str]) -> str:
         if not row[name].strip():
             return f"empty {name}"
     try:
-        week = iso_week(row["date"])
+        iso_week(row["date"])
     except SystemExit:
         return f"invalid date {row['date']!r}"
-    if row["week"] != week:
-        return f"week {row['week']!r} does not match date (expected {week})"
     if row["type"] and row["type"] not in TYPES:
         return f"unknown type {row['type']!r}"
     if row["status"] and row["status"] not in STATUSES:
@@ -115,12 +110,10 @@ def windows_copy_path() -> Path:
 
 def cmd_add(args: argparse.Namespace) -> None:
     date = args.date or dt.date.today().isoformat()
-    week = iso_week(date)  # also rejects an invalid date before anything is written
+    iso_week(date)  # rejects an invalid date before anything is written
     new = {
-        "date": date, "week": week, "ticket": args.ticket,
-        "repo": args.repo, "branch": args.branch, "type": args.type,
-        "task": args.task, "status": args.status, "pr_url": args.pr_url,
-        "notes": args.notes,
+        "date": date, "ticket": args.ticket, "repo": args.repo, "type": args.type,
+        "task": args.task, "status": args.status, "notes": args.notes,
     }  # fmt: skip
     rows = read_rows()
     for row in rows:
@@ -146,7 +139,7 @@ def cmd_week(args: argparse.Namespace) -> None:
         sys.exit(f"Invalid week {week!r}; use YYYY-Www, e.g. 2026-W41.")
     by_ticket: dict[str, list[dict[str, str]]] = {}
     for row in sorted(read_rows(), key=lambda r: r["date"]):  # stable: ties keep order
-        if row["week"] == week:
+        if iso_week(row["date"]) == week:
             by_ticket.setdefault(row["ticket"], []).append(row)
     if not by_ticket:
         print(f"No entries for {week}.")
@@ -155,10 +148,7 @@ def cmd_week(args: argparse.Namespace) -> None:
     for ticket, rows in by_ticket.items():
         last = rows[-1]
         print(f"- **{ticket}** ({last['repo']}, {last['type']}): {last['task']}")
-        print(
-            f"  - status: {last['status'] or '-'}"
-            + (f" | PR: {last['pr_url']}" if last["pr_url"] else "")
-        )
+        print(f"  - status: {last['status'] or '-'}")
         for row in rows:
             if row["notes"]:
                 print(f"  - {row['date']}: {row['notes']}")
@@ -183,7 +173,7 @@ def main() -> None:
     add = sub.add_parser("add", help="Add or update the row for date+ticket")
     for name in ("ticket", "task"):
         add.add_argument(f"--{name}", required=True)
-    for name in ("repo", "branch", "pr-url", "notes", "date"):
+    for name in ("repo", "notes", "date"):
         add.add_argument(f"--{name}", default="")
     add.add_argument("--type", default="", choices=["", *TYPES])
     add.add_argument("--status", default="", choices=["", *STATUSES])

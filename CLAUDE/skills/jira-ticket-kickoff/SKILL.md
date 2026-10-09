@@ -307,8 +307,8 @@ No branch operations, no brainstorming hand-off — this path ends at reporting 
 ## Logbook
 
 After the kickoff or resume recap, propose a logbook row for the ticket (`/logbook`:
-`status` = `In progress`, `task` from the ticket summary, `branch`; Path C uses the
-slug as `ticket`). Write it after the user's OK. On Path B, update the existing row
+`status` = `In progress`, `task` from the ticket summary; Path C uses the
+slug as `ticket`; `notes` only for a requirement difference or decision worth keeping). Write it after the user's OK. On Path B, update the existing row
 instead of adding one. Path D (recheck only) logs nothing.
 
 ## Pre-completion checklist
