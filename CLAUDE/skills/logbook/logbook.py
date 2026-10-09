@@ -43,10 +43,22 @@ PAGE_STATUS = {
     "Hold": "HOLD",
 }  # fmt: skip
 FINISHED = {"Released", "Done"}
+## Jira workflow status -> page status, for assigned tickets the user has not logged work on.
+JIRA_STATUS = {
+    "Hold": "HOLD", "Testing": "TESTING", "Ready For Release": "READY FOR RELEASE",
+    "In Progress": "DEVELOPMENT", "Data Development": "DEVELOPMENT",
+    "Data Analysis": "ANALYST", "Revisi SRF Data": "ANALYST",
+    "[BU] Todo": "TODO", "TODO": "TODO", "To Do": "TODO", "Backlog": "TODO",
+    "PAT": "DONE", "Done": "DONE",
+}  # fmt: skip
+## Start-date cell fill once unfinished work gets old: tiers light to strong.
+AGING_COLORS = ["#FFFAE6", "#FFF0B3", "#FF8F73"]
+AGING_DAYS = [30, 60, 90]  # override with "aging_days" in config.json
+NO_AGING = {"DONE", "HOLD"}  # finished, or deliberately paused: never highlighted
 ## Lozenge colour per page status (Confluence status macro colours).
 STATUS_COLOR = {
     "ANALYST": "purple", "DEVELOPMENT": "blue", "FIXING": "red", "TESTING": "yellow",
-    "READY FOR RELEASE": "green", "DONE": "green", "HOLD": "neutral",
+    "READY FOR RELEASE": "green", "DONE": "green", "HOLD": "neutral", "TODO": "neutral",
 }  # fmt: skip
 
 
@@ -243,8 +255,30 @@ def cmd_cache(args: argparse.Namespace) -> None:
         entry["source"] = args.source
     if args.description:
         entry["description"] = args.description
+    for name in ("summary", "jira_status", "updated", "project"):
+        if getattr(args, name):
+            entry[name] = getattr(args, name)
+    if args.updated:
+        iso_week(args.updated)  # validates YYYY-MM-DD
+    if args.track:
+        entry["track"] = args.track == "yes"
     save_cache(cache)
     print(f"cached {args.ticket}: {', '.join(entry)}")
+
+
+def tracked_only_items(cache: dict, logged: set[str]) -> list[list[dict[str, str]]]:
+    """Assigned, open DA tickets with no logbook row yet: one synthetic row each."""
+    archived = {r["ticket"] for r in read_rows(ARCHIVE)}
+    items = []
+    for ticket, info in cache.items():
+        if not info.get("track") or ticket in logged or ticket in archived:
+            continue
+        date = info.get("updated") or info.get("created") or dt.date.today().isoformat()
+        items.append([{
+            "date": date, "ticket": ticket, "repo": "", "type": "",
+            "task": info.get("summary") or ticket, "status": "", "notes": "",
+        }])  # fmt: skip
+    return items
 
 
 def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
@@ -356,17 +390,31 @@ def render_html(
                 for r in noted
             )
             todo += expand("Update", entries)
-        status = PAGE_STATUS.get(last["status"], last["status"].upper() or "-")
+        status = PAGE_STATUS.get(last["status"]) or JIRA_STATUS.get(
+            info.get("jira_status", ""),
+            (last["status"] or info.get("jira_status", "")).upper() or "-",
+        )
         color = STATUS_COLOR.get(status, "neutral")
         lozenge = (
             f'<span data-type="status" data-color="{color}" '
             f'data-status-style="bold">{esc(status)}</span>'
         )
-        project = cfg.get("projects", {}).get(last["repo"], last["repo"])
+        project = (
+            cfg.get("projects", {}).get(last["repo"])
+            or info.get("project")
+            or last["repo"]
+        )
         pic = esc(cfg.get("pic", ""))
         if cfg.get("pic_account_id"):
             uid = esc(cfg["pic_account_id"])
             pic = f'<span data-type="mention" data-user-id="{uid}">@{pic}</span>'
+        fill = ""
+        if status not in NO_AGING:
+            age = (dt.date.today() - dt.date.fromisoformat(start)).days
+            tiers = cfg.get("aging_days", AGING_DAYS)
+            reached = [c for d, c in zip(tiers, AGING_COLORS, strict=False) if age >= d]
+            if reached:
+                fill = f' data-background="{reached[-1]}" style="background-color: {reached[-1]}"'
         cells = [
             time_tag(start), esc(project), todo, lozenge, pic, link,
             time_tag(last["date"]),
@@ -374,7 +422,9 @@ def render_html(
         lines.append(
             "<tr>"
             + "".join(
-                f"<td {c}><p>{v}</p></td>" if i != 2 else f"<td {c}>{v}</td>"
+                f"<td {c}{fill if i == 0 else ''}><p>{v}</p></td>"
+                if i != 2
+                else f"<td {c}>{v}</td>"
                 for i, (v, c) in enumerate(zip(cells, cols, strict=True))
             )
             + "</tr>"
@@ -394,6 +444,8 @@ def cmd_publish(args: argparse.Namespace) -> None:
             print(out)
         return
     items = group_items(read_rows(ARCHIVE if archive else LOGBOOK))
+    if not archive:
+        items += tracked_only_items(load_cache(), {i[0]["ticket"] for i in items})
     if args.year:
         items = [i for i in items if i[-1]["date"].startswith(f"{args.year}-")]
     if not items:
@@ -454,6 +506,18 @@ def main() -> None:
     cache.add_argument("--source", default="", help="linked IN/other key, e.g. IN-3247")
     cache.add_argument(
         "--description", default="", help="short SRF/requirement summary"
+    )
+    cache.add_argument(
+        "--summary", default="", help="Jira title (rows with no logbook entry)"
+    )
+    cache.add_argument("--jira-status", default="", help="Jira workflow status")
+    cache.add_argument("--updated", default="", help="Jira updated date, YYYY-MM-DD")
+    cache.add_argument("--project", default="", help="project name on the page")
+    cache.add_argument(
+        "--track",
+        default="",
+        choices=["", "yes", "no"],
+        help="yes: DA ticket assigned to the user and open, so list it",
     )
     cache.set_defaults(func=cmd_cache)
 

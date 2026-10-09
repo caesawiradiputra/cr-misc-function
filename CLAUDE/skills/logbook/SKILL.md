@@ -78,6 +78,13 @@ bold, followed by **collapsed expands** (`Description` first: a one or two sente
 user's old tracker): `Task List` (only when the ticket has rows on several days: one dated
 line per day) and `Update` (only when a row has `notes`: dated entries split by a divider).
 
+`Start Date` cell fill: unfinished work is highlighted by age (today minus the start date):
+30+ days light yellow `#FFFAE6`, 60+ days yellow `#FFF0B3`, 90+ days dark red `#FF8F73`
+(`aging_days` in `config.json` changes the thresholds). `DONE` and `HOLD` rows are never
+highlighted. Assigned DA tickets with no logbook row are listed too, with the Jira title, the Jira
+status mapped to the page words (`[BU] Todo`/`TODO` → `TODO`, `Data Analysis` → `ANALYST`, ...) and the
+Jira updated date as `LastUpdate`.
+
 Layout follows what the user set on the live page: no `#` column (Confluence's automatic
 row numbers are on), fixed column widths, centered table, bold status lozenges, dates shown
 as "October 5, 2026". If the user changes the layout on the page again, read the page's HTML
@@ -86,6 +93,16 @@ resets it.
 
 Publish procedure (run only when the user asks to publish / "update the weekly page"):
 
+0a. **List the assigned DA tickets** (so work not started yet is tracked too). Run
+   `searchJiraIssuesUsingJql` with `project = DA AND assignee = currentUser() AND statusCategory != Done`
+   (fields `summary`, `status`, `created`, `updated`, `issuelinks`; `view: full`). Only DA tickets
+   are listed: open IN/TDF tickets with no DA clone yet belong to `jira-in-da-sync`, and an IN/TDF
+   ticket that already has a DA clone only supplies the `--source` key and start date. For each ticket
+   run `cache set --track yes --ticket DA-n --summary ... --jira-status "<Jira status>" --updated
+   <date> --project <name>` (plus `--created`/`--source`/`--description` as in step 0). Cached
+   tickets that are no longer in the result (done, reassigned) get `cache set --track no`. A ticket
+   with logbook rows keeps the logbook status; the Jira status only drives rows with no logbook row.
+   Mention any ticket whose Jira status disagrees with its logbook status.
 0. **Refresh the Jira data** (`jira-cache.json`, never typed by hand). Run `cache missing`; for each
    listed Jira key fetch it with `searchJiraIssuesUsingJql` (`key in (...)`, fields `summary`,
    `created`, `issuelinks`, `description`, `view: full`). The linked ticket of type "Cloners" that
