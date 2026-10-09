@@ -297,6 +297,15 @@ already known to be wrong.
   byte-for-byte match), state explicitly whether it's functionally material.
   Don't burn tool calls reproducing something whose relevance was never
   established.
+- **Check the cost before a large read.** Before reading a large source
+  (session transcripts, a full Confluence page, a big Jira result), estimate
+  its size and likely cost. Prefer efficient, authoritative sources: local
+  files, git history, PRs, changelogs and targeted Jira queries. Use larger or
+  more expensive sources when necessary; if the only viable route has
+  significant cost, explain the trade-off and ask before proceeding. (Added
+  2026-10-09, logbook session: the user asked not to scan a week of
+  transcripts, then chose a local CSV as the source of truth over re-reading
+  the Confluence page, both to save tokens.)
 - **Trust but verify the reference itself.** When checking reconstructed or
   new content against an existing "reference" (another file, a prior commit,
   a doc), confirm that reference is actually authoritative before diffing
@@ -449,8 +458,10 @@ The user's tracking of what they did, used for weekly reporting. Master file:
   the same row.
 - Skills that finish a unit of work (`/generate-pr-message`, `jira-ticket-kickoff`,
   `bast-generator`) propose the row themselves at their last step.
-- To backfill a period, summarize from git commits and PRs, never from session
-  transcripts (too large, and the PR/commit record is more accurate).
+- To backfill a period, summarize from git commits, PRs and release docs
+  (`release/<TICKET>/CHANGELOG.md`, including its requirement-update and
+  decision sections), never from session transcripts (too large, and the
+  PR/commit record is more accurate).
 - The weekly Confluence tracker page is generated from the CSVs only when asked
   (`/logbook` publish procedure); finished work idle for 7 days moves to the archive CSV, and paused tickets go to an On Hold child page.
 - The CSVs and `jira-cache.json` are the source of truth; to recheck, run `/logbook check` (CSV vs
