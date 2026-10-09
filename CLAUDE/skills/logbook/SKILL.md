@@ -68,11 +68,19 @@ meeting), never after each edit. Manual edits on the page are overwritten, so te
 user to change rows through the logbook instead.
 
 How a ticket becomes a row: `Start Date` = its first date, `LastUpdate` = its last date,
-`To Do` = the latest `task` in bold plus each non-empty `notes` as a dated bullet,
 `Status` = the latest status mapped to the page words (`In progress` → `DEVELOPMENT`,
 `PR to`/`Merged to dev`/`sit` → `TESTING`, `PR to master` → `READY FOR RELEASE`,
 `Released`/`Done` → `DONE`, `Analysis` → `ANALYST`, plus `FIXING` and `HOLD`), `Project`
-from `config.json` `projects` (repo name when unmapped).
+from `config.json` `projects` (repo name when unmapped). `To Do` is the latest `task` in
+bold, followed by **collapsed expands** that keep rows compact (the same pattern as the
+user's old tracker): `Task List` (only when the ticket has rows on several days: one dated
+line per day) and `Update` (only when a row has `notes`: dated entries split by a divider).
+
+Layout follows what the user set on the live page: no `#` column (Confluence's automatic
+row numbers are on), fixed column widths, centered table, bold status lozenges, dates shown
+as "October 5, 2026". If the user changes the layout on the page again, read the page's HTML
+first and update `COL_WIDTHS` / `TABLE_OPEN` in `logbook.py` to match, or the next publish
+resets it.
 
 Publish procedure (run only when the user asks to publish / "update the weekly page"):
 

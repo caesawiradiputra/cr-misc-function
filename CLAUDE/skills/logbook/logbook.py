@@ -232,28 +232,47 @@ def cmd_archive(args: argparse.Namespace) -> None:
     write_rows([r for r in rows if r["ticket"] not in moving])
 
 
+## Table layout the user set on the Confluence page (auto row numbers, fixed widths).
+COL_WIDTHS = [120, 140, 600, 130, 119, 218, 126]
+TABLE_OPEN = '<table data-layout="center" data-width="1468" data-number-column="true">'
+
+
+def long_date(date: str) -> str:
+    """2026-10-05 -> 'October 5, 2026' (the way Confluence shows a date field)."""
+    d = dt.date.fromisoformat(date)
+    return f"{d:%B} {d.day}, {d.year}"
+
+
+def time_tag(date: str) -> str:
+    return f'<time datetime="{date}">{long_date(date)}</time>'
+
+
+def expand(title: str, body: str) -> str:
+    """A collapsed nested expand, used to keep table rows compact."""
+    return (
+        f'<details data-type="nested-expand"><summary>{title}</summary>{body}</details>'
+    )
+
+
 def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
-    """One table row per ticket, in the column layout of the Confluence weekly page.
+    """One table row per ticket, in the layout of the Confluence weekly page.
 
     Uses native Confluence elements: <time> dates, status lozenges, a mention for the
-    PIC (when config has pic_account_id) and inline smart-link cards for Jira keys.
+    PIC (when config has pic_account_id), inline smart-link cards for Jira keys, and
+    collapsed expands in the To Do cell: "Task List" (a ticket worked on over several
+    days, one dated line per day) and "Update" (dated notes), so rows stay short.
     """
     esc = html.escape
-    head = [
-        "#",
-        "Start Date",
-        "Project",
-        "To Do",
-        "Status",
-        "PIC",
-        "JIRA",
-        "LastUpdate",
-    ]
+    head = ["Start Date", "Project", "To Do", "Status", "PIC", "JIRA", "LastUpdate"]
+    cols = [f'data-colwidth="{w}"' for w in COL_WIDTHS]
     lines = [
-        "<table><thead><tr>" + "".join(f"<th>{h}</th>" for h in head) + "</tr></thead>",
+        TABLE_OPEN,
+        "<thead><tr>"
+        + "".join(f"<th {c}><p>{h}</p></th>" for h, c in zip(head, cols, strict=True))
+        + "</tr></thead>",
         "<tbody>",
     ]
-    for number, item in enumerate(items, start=1):
+    for item in items:
         first, last = item[0], item[-1]
         ticket = first["ticket"]
         link = esc(ticket)
@@ -261,28 +280,42 @@ def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
         if base and re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", ticket):
             url = esc(base + ticket)
             link = f'<a href="{url}" data-card-appearance="inline"></a>'
-        notes = "".join(
-            f"<li>{esc(r['date'])}: {esc(r['notes'])}</li>" for r in item if r["notes"]
-        )
-        todo = f"<p><strong>{esc(last['task'])}</strong></p>" + (
-            f"<ul>{notes}</ul>" if notes else ""
-        )
+        todo = f"<p><strong>{esc(last['task'])}</strong></p>"
+        if len(item) > 1:
+            days = "".join(
+                f"<li><p>{time_tag(r['date'])} {esc(r['task'])}</p></li>" for r in item
+            )
+            todo += expand("Task List", f"<ul>{days}</ul>")
+        noted = [r for r in item if r["notes"]]
+        if noted:
+            entries = "<hr>".join(
+                f"<p>{time_tag(r['date'])}</p><ul><li><p>{esc(r['notes'])}</p></li></ul>"
+                for r in noted
+            )
+            todo += expand("Update", entries)
         status = PAGE_STATUS.get(last["status"], last["status"].upper() or "-")
         color = STATUS_COLOR.get(status, "neutral")
-        style = ' data-status-style="bold"' if status == "READY FOR RELEASE" else ""
         lozenge = (
-            f'<span data-type="status" data-color="{color}"{style}>{esc(status)}</span>'
+            f'<span data-type="status" data-color="{color}" '
+            f'data-status-style="bold">{esc(status)}</span>'
         )
         project = cfg.get("projects", {}).get(last["repo"], last["repo"])
         pic = esc(cfg.get("pic", ""))
         if cfg.get("pic_account_id"):
-            pic = f'<span data-type="mention" data-user-id="{esc(cfg["pic_account_id"])}">@{pic}</span>'
+            uid = esc(cfg["pic_account_id"])
+            pic = f'<span data-type="mention" data-user-id="{uid}">@{pic}</span>'
         cells = [
-            str(number), f'<time datetime="{first["date"]}">{first["date"]}</time>',
-            esc(project), todo, lozenge, pic, link,
-            f'<time datetime="{last["date"]}">{last["date"]}</time>',
+            time_tag(first["date"]), esc(project), todo, lozenge, pic, link,
+            time_tag(last["date"]),
         ]  # fmt: skip
-        lines.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
+        lines.append(
+            "<tr>"
+            + "".join(
+                f"<td {c}><p>{v}</p></td>" if i != 2 else f"<td {c}>{v}</td>"
+                for i, (v, c) in enumerate(zip(cells, cols, strict=True))
+            )
+            + "</tr>"
+        )
     lines += ["</tbody>", "</table>"]
     return "\n".join(lines)
 
