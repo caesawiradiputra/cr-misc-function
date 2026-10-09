@@ -436,12 +436,40 @@ Rules VS Code cannot auto-fix — apply these manually when writing or editing M
 
 ---
 
+## Work Logbook (weekly reporting)
+
+The user's tracking of what they did, used for weekly reporting. Master file:
+`~/.claude/logbook/logbook.csv`; Windows copy:
+`/mnt/c/Users/<WINDOWS_USERNAME>/Documents/Work/Logbook/logbook.csv`. Use the `logbook` skill
+(`~/.claude/skills/logbook/`) and its helper; never hand-edit the CSV.
+
+- When a task finishes, or a PR is opened or merged, **propose** a logbook row
+  (ticket, one-line outcome-first task, status) and write it after the user's OK.
+- One row per ticket per day; the helper upserts, so later status changes update
+  the same row.
+- Copy to the Windows folder only daily (`sync --daily`) or when asked, not on
+  every edit.
+
+---
+
+## Jira Status on PRs
+
+When a PR is prepared or opened, check the ticket's Jira status (Atlassian MCP):
+PR to `dev` → `Testing`; PR to `master` → `Ready to Release`. Notify and ask before
+transitioning (never silently), pick the transition by its target status, and skip
+when the ticket is already at or past it. Details: the "Jira Status Check" phase of
+`/generate-pr-message`. If a repo's workflow lacks these statuses, report the
+available transitions instead of guessing.
+
+---
+
 ## Available Slash Commands
 
 | Command | Description |
 | --- | --- |
 | `/commit` | Generate Conventional Commit + gitmoji message, review/refine, and commit |
 | `/generate-pr-message` | Generate PR messages + release folder for a branch deployment |
+| `/logbook` | Add/update a weekly-report logbook row, print the weekly summary, copy the CSV to Windows |
 | `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees |
 | `/refactor-python` | Refactor Python code while preserving behavior |
 | `/refactor-repositories` | Refactor repository classes to mandatory structure |

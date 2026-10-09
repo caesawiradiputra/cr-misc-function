@@ -97,7 +97,7 @@ file into `~/.claude/`:
 
 | Placeholder | Where | Replace with |
 | --- | --- | --- |
-| `<WINDOWS_USERNAME>` | `windows/settings.json`, `CLAUDE.md`, `skills/jira-ticket-kickoff`, `skills/jira-in-da-sync` | The Windows account name |
+| `<WINDOWS_USERNAME>` | `windows/settings.json`, `CLAUDE.md`, `skills/jira-ticket-kickoff`, `skills/jira-in-da-sync`, `skills/logbook` | The Windows account name |
 | `<ATLASSIAN_SITE>` | `skills/jira-ticket-kickoff`, `skills/bast-*` | The Atlassian site name (`<site>.atlassian.net`) |
 | `<ATLASSIAN_CLOUD_ID>` | `skills/bast-*` | The site's cloud ID (from `getAccessibleAtlassianResources`) |
 | `PROJ` (as in `PROJ-1234`) | `skills/jira-ticket-kickoff`, `skills/bast-*` | Your own Jira project key |

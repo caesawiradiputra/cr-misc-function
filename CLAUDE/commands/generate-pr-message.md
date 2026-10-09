@@ -296,6 +296,33 @@ Semantic versioning: **X** major/breaking, **Y** minor/feature, **Z** patch/fix.
 
 ---
 
+## Jira Status Check (Phase 5)
+
+After the PR messages are shown, check the Jira ticket parsed from the branch
+(resolve the site and `cloudId` once via `getAccessibleAtlassianResources`; don't hardcode them).
+Skip when there is no ticket (slug-keyed ad-hoc work).
+
+| PR target | Target Jira status |
+| --- | --- |
+| Feature → `dev` | `Testing` |
+| `dev` → `master` | `Ready to Release` |
+
+1. Read the ticket's current status (`getJiraIssue`).
+2. Already at or past the target status: say so and change nothing.
+3. Otherwise **notify and ask** (`Move PROJ-1234 from "<current>" to "Testing"?`), and
+   transition only after the user confirms. Jira changes are visible to others.
+4. Transition by **status, not by name**: the transition name often differs from the
+   target status. Read the ticket's allowed transitions (`discover` →
+   `executeRead`), pick the one whose target status matches, then
+   `transitionJiraIssue` with that `transitionId`. If no allowed transition reaches
+   the target, report the available ones instead of guessing.
+5. The PR is opened by the user, so transition when they confirm it is open, and add
+   the PR link as a Jira comment (`addOrEditJiraIssueComment`).
+6. Report the status the transition returned, then update the logbook row
+   (`/logbook add`, `status` = `PR to dev` / `PR to master`, with `pr_url`).
+
+---
+
 ## User Action (after review)
 
 The agent creates files and displays both PR messages; the user runs git:
@@ -327,3 +354,5 @@ Then open the **Feature → Dev** PR with PR Message 1. Later, when promoting `d
 - [ ] Testing section only if test files in diff or explicitly requested
 - [ ] PR messages within line limits (25 / 20)
 - [ ] No git commands run by the agent — user handles add/commit/push/tag
+- [ ] Jira status checked (`Testing` for → dev, `Ready to Release` for → master); transition only after the user confirmed
+- [ ] Logbook row proposed/updated with the PR status and link
