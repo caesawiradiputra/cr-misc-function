@@ -301,6 +301,28 @@ def tracked_only_items(cache: dict, logged: set[str]) -> list[list[dict[str, str
     return items
 
 
+def cmd_rename(args: argparse.Namespace) -> None:
+    """Re-key a ticket (e.g. a slug that later got a Jira key) in rows, archive and cache."""
+    if not JIRA_KEY.fullmatch(args.to) and not args.force:
+        sys.exit(f"--to {args.to!r} is not a Jira key; pass --force to allow it.")
+    moved = 0
+    for path in (LOGBOOK, ARCHIVE):
+        rows = read_rows(path)
+        for row in rows:
+            if row["ticket"] == args.old:
+                row["ticket"] = args.to
+                moved += 1
+        if rows:
+            write_rows(rows, path)
+    cache = load_cache()
+    if args.old in cache:
+        cache.setdefault(args.to, {}).update(cache.pop(args.old))
+        save_cache(cache)
+    print(
+        f"renamed {args.old} -> {args.to}: {moved} row(s), cache {'moved' if args.old in cache or args.to in cache else 'unchanged'}"
+    )
+
+
 def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
     """Group rows by ticket, each group in date order (a ticket is one page row)."""
     items: dict[str, list[dict[str, str]]] = {}
@@ -585,6 +607,14 @@ def main() -> None:
     )
     arch.add_argument("--dry-run", action="store_true")
     arch.set_defaults(func=cmd_archive)
+
+    rename = sub.add_parser("rename", help="Re-key a ticket in rows, archive and cache")
+    rename.add_argument("old")
+    rename.add_argument("to")
+    rename.add_argument(
+        "--force", action="store_true", help="allow a non-Jira target key"
+    )
+    rename.set_defaults(func=cmd_rename)
 
     cache = sub.add_parser("cache", help="Per-ticket Jira data for the weekly page")
     cache.add_argument("action", choices=["set", "missing"])

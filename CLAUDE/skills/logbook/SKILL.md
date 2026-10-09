@@ -176,6 +176,7 @@ so ask the user what to add.
 python3 ~/.claude/skills/logbook/logbook.py add --ticket PROJ-1234 --repo da-negative-list \
   --type fea --task "Added X so Y" --status "PR to dev" \
   --notes "Decided to keep the old key: downstream reports join on it"
+python3 ~/.claude/skills/logbook/logbook.py rename <slug> PROJ-1234   # a slug that later got a Jira key (rows, archive, cache)
 python3 ~/.claude/skills/logbook/logbook.py week              # current ISO week
 python3 ~/.claude/skills/logbook/logbook.py week --week 2026-W41
 python3 ~/.claude/skills/logbook/logbook.py sync              # copy CSVs if they changed
