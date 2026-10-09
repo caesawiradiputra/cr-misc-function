@@ -11,7 +11,8 @@ Personal tracking file used for weekly reporting.
 - **Windows copy:** an export of the master, never edited by hand. Its folder comes from
   `LOGBOOK_WINDOWS_DIR`, or the first line of `~/.claude/logbook/windows_dir.txt`
   (e.g. `/mnt/c/Users/<you>/Documents/Work/Logbook`). `sync` fails with a clear
-  message if neither is set, so create `windows_dir.txt` once per machine.
+  message if neither is set, so create `windows_dir.txt` once per machine. `sync` creates
+  the last folder but not missing parents (a missing parent is treated as a typo).
 - **Helper:** `~/.claude/skills/logbook/logbook.py` (stdlib only, run with `python3`).
   Never hand-edit the CSV; use the helper so quoting, the ISO `week`, the header check
   and the atomic write stay correct. It refuses to write if the header or a row is malformed.

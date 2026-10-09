@@ -47,7 +47,28 @@ def read_rows() -> list[dict[str, str]]:
     for number, row in enumerate(rows, start=2):
         if None in row or None in row.values():
             sys.exit(f"{LOGBOOK}: line {number} has the wrong number of fields.")
+        problem = row_problem(row)
+        if problem:
+            sys.exit(f"{LOGBOOK}: line {number}: {problem}. Nothing was changed.")
     return rows
+
+
+def row_problem(row: dict[str, str]) -> str:
+    """Return what is wrong with a stored row, or an empty string."""
+    for name in ("date", "ticket", "task"):
+        if not row[name].strip():
+            return f"empty {name}"
+    try:
+        week = iso_week(row["date"])
+    except SystemExit:
+        return f"invalid date {row['date']!r}"
+    if row["week"] != week:
+        return f"week {row['week']!r} does not match date (expected {week})"
+    if row["type"] and row["type"] not in TYPES:
+        return f"unknown type {row['type']!r}"
+    if row["status"] and row["status"] not in STATUSES:
+        return f"unknown status {row['status']!r}"
+    return ""
 
 
 def write_rows(rows: list[dict[str, str]]) -> None:
@@ -83,6 +104,10 @@ def windows_copy_path() -> Path:
             f"on the first line of {WINDOWS_DIR_FILE}."
         )
     path = Path(folder)
+    ## Only the last folder is created; a missing parent usually means a typo in a
+    ## /mnt/c path, so fail instead of creating a whole stray tree.
+    if path.exists() and not path.is_dir():
+        sys.exit(f"Windows destination is not a folder: {path}")
     if not path.parent.is_dir():
         sys.exit(f"Windows destination parent does not exist: {path.parent}")
     return path / LOGBOOK.name
@@ -112,6 +137,13 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 def cmd_week(args: argparse.Namespace) -> None:
     week = args.week or iso_week(dt.date.today().isoformat())
+    try:
+        dt.date.fromisocalendar(int(week[:4]), int(week[6:]), 1)
+        valid = week[4:6] == "-W" and len(week) == 8
+    except ValueError:
+        valid = False
+    if not valid:
+        sys.exit(f"Invalid week {week!r}; use YYYY-Www, e.g. 2026-W41.")
     by_ticket: dict[str, list[dict[str, str]]] = {}
     for row in sorted(read_rows(), key=lambda r: r["date"]):  # stable: ties keep order
         if row["week"] == week:
