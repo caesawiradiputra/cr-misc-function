@@ -47,7 +47,7 @@ FINISHED = {"Released", "Done"}
 JIRA_STATUS = {
     "Hold": "HOLD", "Testing": "TESTING", "Ready For Release": "READY FOR RELEASE",
     "In Progress": "DEVELOPMENT", "Data Development": "DEVELOPMENT",
-    "Data Analysis": "ANALYST", "Revisi SRF Data": "ANALYST",
+    "Data Analysis": "ANALYST", "Revisi SRF Data": "ANALYST", "Bug Fixing": "FIXING",
     "[BU] Todo": "TODO", "TODO": "TODO", "To Do": "TODO", "Backlog": "TODO",
     "PAT": "DONE", "Done": "DONE",
 }  # fmt: skip
@@ -55,6 +55,13 @@ JIRA_STATUS = {
 AGING_COLORS = ["#FFFAE6", "#FFF0B3", "#FF8F73"]
 AGING_DAYS = [30, 60, 90]  # override with "aging_days" in config.json
 NO_AGING = {"DONE", "HOLD"}  # finished, or deliberately paused: never highlighted
+## Statuses where the ball is in someone else's court. Their age is shown on the LastUpdate
+## cell (time since anything moved, i.e. when to follow up) instead of on Start Date.
+OTHER_COURT = [
+    "TESTING",
+    "READY FOR RELEASE",
+]  # override with "other_court" in config.json
+FOLLOWUP_DAYS = [7, 14, 30]  # override with "followup_days" in config.json
 ## Lozenge colour per page status (Confluence status macro colours).
 STATUS_COLOR = {
     "ANALYST": "purple", "DEVELOPMENT": "blue", "FIXING": "red", "TESTING": "yellow",
@@ -255,11 +262,19 @@ def cmd_cache(args: argparse.Namespace) -> None:
         entry["source"] = args.source
     if args.description:
         entry["description"] = args.description
-    for name in ("summary", "jira_status", "updated", "project"):
+    for name in (
+        "summary",
+        "jira_status",
+        "updated",
+        "project",
+        "before_hold",
+        "hold_since",
+    ):
         if getattr(args, name):
             entry[name] = getattr(args, name)
-    if args.updated:
-        iso_week(args.updated)  # validates YYYY-MM-DD
+    for date in (args.updated, args.hold_since):
+        if date:
+            iso_week(date)  # validates YYYY-MM-DD
     if args.track:
         entry["track"] = args.track == "yes"
     save_cache(cache)
@@ -290,28 +305,49 @@ def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
 
 
 def cmd_archive(args: argparse.Namespace) -> None:
-    """Move finished tickets whose last activity is older than --days to the archive."""
+    """Move finished tickets idle for --days (default 7) to the archive.
+
+    Logged tickets count from their last logbook date. Assigned DA tickets with no
+    logbook row count from the Jira updated date once Jira shows them done.
+    """
     cutoff = dt.date.today() - dt.timedelta(days=args.days)
-    rows, archived = read_rows(), read_rows(ARCHIVE)
+    rows, archived, cache = read_rows(), read_rows(ARCHIVE), load_cache()
     moving = {
         item[0]["ticket"]
         for item in group_items(rows)
         if item[-1]["status"] in FINISHED
         and dt.date.fromisoformat(item[-1]["date"]) <= cutoff
     }
-    if not moving:
+    logged = {r["ticket"] for r in rows}
+    jira_done = sorted(
+        ticket
+        for ticket, info in cache.items()
+        if info.get("track")
+        and ticket not in logged
+        and JIRA_STATUS.get(info.get("jira_status", "")) == "DONE"
+        and info.get("updated", "9999-12-31") <= cutoff.isoformat()
+    )
+    if not moving and not jira_done:
         print(f"nothing to archive (finished and last active on/before {cutoff}).")
         return
-    print(
-        f"{'would archive' if args.dry_run else 'archiving'}: {', '.join(sorted(moving))}"
-    )
+    names = sorted(moving) + jira_done
+    print(f"{'would archive' if args.dry_run else 'archiving'}: {', '.join(names)}")
     if args.dry_run:
         return
     moved = [r for r in rows if r["ticket"] in moving]
+    for ticket in jira_done:
+        info = cache[ticket]
+        moved.append({
+            "date": info["updated"], "ticket": ticket, "repo": "", "type": "",
+            "task": info.get("summary") or ticket, "status": "Done", "notes": "",
+        })  # fmt: skip
+        info["track"] = False
     write_rows(
         archived + moved, ARCHIVE
     )  # archive first: a crash duplicates, never loses
     write_rows([r for r in rows if r["ticket"] not in moving])
+    if jira_done:
+        save_cache(cache)
 
 
 ## Table layout the user set on the Confluence page (auto row numbers, fixed widths).
@@ -336,8 +372,25 @@ def expand(title: str, body: str) -> str:
     )
 
 
+def item_status(last: dict[str, str], info: dict) -> str:
+    """Page status word for a ticket: logbook status first, else the Jira status."""
+    return PAGE_STATUS.get(last["status"]) or JIRA_STATUS.get(
+        info.get("jira_status", ""),
+        (last["status"] or info.get("jira_status", "")).upper() or "-",
+    )
+
+
+def item_project(last: dict[str, str], info: dict, cfg: dict) -> str:
+    return (
+        cfg.get("projects", {}).get(last["repo"]) or info.get("project") or last["repo"]
+    )
+
+
 def render_html(
-    items: list[list[dict[str, str]]], cfg: dict, cache: dict | None = None
+    items: list[list[dict[str, str]]],
+    cfg: dict,
+    cache: dict | None = None,
+    hold: bool = False,
 ) -> str:
     """One table row per ticket, in the layout of the Confluence weekly page.
 
@@ -349,7 +402,11 @@ def render_html(
     esc = html.escape
     cache = cache or {}
     head = ["Start Date", "Project", "To Do", "Status", "PIC", "JIRA", "LastUpdate"]
-    cols = [f'data-colwidth="{w}"' for w in COL_WIDTHS]
+    widths = list(COL_WIDTHS)
+    if hold:  # the hold page also shows what the ticket was before it was paused
+        head.insert(4, "Before Hold")
+        widths = [120, 140, 460, 110, 190, 119, 200, 126]
+    cols = [f'data-colwidth="{w}"' for w in widths]
     lines = [
         TABLE_OPEN,
         "<thead><tr>"
@@ -390,28 +447,27 @@ def render_html(
                 for r in noted
             )
             todo += expand("Update", entries)
-        status = PAGE_STATUS.get(last["status"]) or JIRA_STATUS.get(
-            info.get("jira_status", ""),
-            (last["status"] or info.get("jira_status", "")).upper() or "-",
-        )
+        status = item_status(last, info)
         color = STATUS_COLOR.get(status, "neutral")
         lozenge = (
             f'<span data-type="status" data-color="{color}" '
             f'data-status-style="bold">{esc(status)}</span>'
         )
-        project = (
-            cfg.get("projects", {}).get(last["repo"])
-            or info.get("project")
-            or last["repo"]
-        )
+        project = item_project(last, info, cfg)
         pic = esc(cfg.get("pic", ""))
         if cfg.get("pic_account_id"):
             uid = esc(cfg["pic_account_id"])
             pic = f'<span data-type="mention" data-user-id="{uid}">@{pic}</span>'
-        fill = ""
+        fill, fill_last = "", False
         if status not in NO_AGING:
-            age = (dt.date.today() - dt.date.fromisoformat(start)).days
-            tiers = cfg.get("aging_days", AGING_DAYS)
+            fill_last = status in cfg.get("other_court", OTHER_COURT)
+            anchor = last["date"] if fill_last else start
+            tiers = (
+                cfg.get("followup_days", FOLLOWUP_DAYS)
+                if fill_last
+                else cfg.get("aging_days", AGING_DAYS)
+            )
+            age = (dt.date.today() - dt.date.fromisoformat(anchor)).days
             reached = [c for d, c in zip(tiers, AGING_COLORS, strict=False) if age >= d]
             if reached:
                 fill = f' data-background="{reached[-1]}" style="background-color: {reached[-1]}"'
@@ -419,10 +475,20 @@ def render_html(
             time_tag(start), esc(project), todo, lozenge, pic, link,
             time_tag(last["date"]),
         ]  # fmt: skip
+        if hold:
+            before = info.get("before_hold", "")
+            word = JIRA_STATUS.get(before, before.upper()) or "-"
+            since = info.get("hold_since")
+            cell = (
+                f'<span data-type="status" data-color="{STATUS_COLOR.get(word, "neutral")}" '
+                f'data-status-style="bold">{esc(word)}</span>'
+                + (f"<br>on hold since {time_tag(since)}" if since else "")
+            )
+            cells.insert(4, cell)
         lines.append(
             "<tr>"
             + "".join(
-                f"<td {c}{fill if i == 0 else ''}><p>{v}</p></td>"
+                f"<td {c}{fill if i == (len(cells) - 1 if fill_last else 0) else ''}><p>{v}</p></td>"
                 if i != 2
                 else f"<td {c}>{v}</td>"
                 for i, (v, c) in enumerate(zip(cells, cols, strict=True))
@@ -434,8 +500,9 @@ def render_html(
 
 
 def cmd_publish(args: argparse.Namespace) -> None:
-    """Print Confluence-ready HTML for the main or archive logbook."""
+    """Print Confluence-ready HTML for the main, hold or archive page."""
     archive = args.which == "archive"
+    hold = args.which == "hold"
     if args.empty:
         out = render_html([], {})
         if args.out:
@@ -444,8 +511,15 @@ def cmd_publish(args: argparse.Namespace) -> None:
             print(out)
         return
     items = group_items(read_rows(ARCHIVE if archive else LOGBOOK))
+    cache, cfg = load_cache(), load_config()
     if not archive:
-        items += tracked_only_items(load_cache(), {i[0]["ticket"] for i in items})
+        items += tracked_only_items(cache, {i[0]["ticket"] for i in items})
+        on_hold = [
+            i
+            for i in items
+            if item_status(i[-1], cache.get(i[0]["ticket"], {})) == "HOLD"
+        ]
+        items = on_hold if hold else [i for i in items if i not in on_hold]
     if args.year:
         items = [i for i in items if i[-1]["date"].startswith(f"{args.year}-")]
     if not items:
@@ -453,16 +527,14 @@ def cmd_publish(args: argparse.Namespace) -> None:
             f"No rows in the {args.which} logbook"
             + (f" for {args.year}." if args.year else ".")
         )
-    # Active page: oldest work first. Archive: most recently finished first.
-    cache = load_cache()
-
-    def sort_key(item: list[dict[str, str]]) -> str:
-        if archive:
-            return item[-1]["date"]
-        return cache.get(item[0]["ticket"], {}).get("created") or item[0]["date"]
-
-    items.sort(key=sort_key, reverse=archive)
-    body = render_html(items, load_config(), load_cache())
+    # Orderly: by project (A-Z), then the most recently updated first.
+    items.sort(key=lambda item: item[-1]["date"], reverse=True)
+    items.sort(
+        key=lambda item: item_project(
+            item[-1], cache.get(item[0]["ticket"], {}), cfg
+        ).lower()
+    )
+    body = render_html(items, cfg, cache, hold=hold)
     note = f"<p>Generated {dt.date.today().isoformat()} from the local logbook ({args.which}).</p>"
     out = note + "\n" + body
     if args.out:
@@ -495,7 +567,9 @@ def main() -> None:
     sync.set_defaults(func=cmd_sync)
 
     arch = sub.add_parser("archive", help="Move old finished tickets to the archive")
-    arch.add_argument("--days", type=int, default=14, help="age cut-off (default 14)")
+    arch.add_argument(
+        "--days", type=int, default=7, help="idle days before archiving (default 7)"
+    )
     arch.add_argument("--dry-run", action="store_true")
     arch.set_defaults(func=cmd_archive)
 
@@ -514,6 +588,12 @@ def main() -> None:
     cache.add_argument("--updated", default="", help="Jira updated date, YYYY-MM-DD")
     cache.add_argument("--project", default="", help="project name on the page")
     cache.add_argument(
+        "--before-hold", default="", help="Jira status before the ticket went on hold"
+    )
+    cache.add_argument(
+        "--hold-since", default="", help="date it went on hold, YYYY-MM-DD"
+    )
+    cache.add_argument(
         "--track",
         default="",
         choices=["", "yes", "no"],
@@ -522,7 +602,7 @@ def main() -> None:
     cache.set_defaults(func=cmd_cache)
 
     pub = sub.add_parser("publish", help="Render Confluence HTML (does not post it)")
-    pub.add_argument("which", choices=["main", "archive"])
+    pub.add_argument("which", choices=["main", "hold", "archive"])
     pub.add_argument(
         "--empty", action="store_true", help="header row only (page template)"
     )

@@ -78,10 +78,17 @@ bold, followed by **collapsed expands** (`Description` first: a one or two sente
 user's old tracker): `Task List` (only when the ticket has rows on several days: one dated
 line per day) and `Update` (only when a row has `notes`: dated entries split by a divider).
 
-`Start Date` cell fill: unfinished work is highlighted by age (today minus the start date):
-30+ days light yellow `#FFFAE6`, 60+ days yellow `#FFF0B3`, 90+ days dark red `#FF8F73`
-(`aging_days` in `config.json` changes the thresholds). `DONE` and `HOLD` rows are never
-highlighted. Assigned DA tickets with no logbook row are listed too, with the Jira title, the Jira
+Age highlighting follows **whose court the ball is in**, so it shows what to act on:
+- **Your court** (`TODO`, `ANALYST`, `DEVELOPMENT`, `FIXING`): the `Start Date` cell is filled by how
+  long the work has been open (today minus the start date): 30+ days light yellow `#FFFAE6`,
+  60+ days yellow `#FFF0B3`, 90+ days dark red `#FF8F73` (`aging_days` in `config.json`).
+- **Someone else's court** (`TESTING`, `READY FOR RELEASE`; `other_court` in `config.json`): the
+  `LastUpdate` cell is filled by how long nothing has moved (today minus the last update), so it
+  is clear when to follow up with the counterpart: 7+ days light yellow, 14+ yellow, 30+ dark red
+  (`followup_days` in `config.json`).
+- `DONE` and `HOLD` rows are never highlighted.
+
+Assigned DA tickets with no logbook row are listed too, with the Jira title, the Jira
 status mapped to the page words (`[BU] Todo`/`TODO` → `TODO`, `Data Analysis` → `ANALYST`, ...) and the
 Jira updated date as `LastUpdate`.
 
