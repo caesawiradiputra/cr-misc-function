@@ -4,6 +4,19 @@ Template page ID `<BAST_TEMPLATE_PAGE_ID>`. This lists each cell of the template
 
 Lozenges such as `DI ISI OLEH IT QA` and `DI ISI OLEH engineer` stay as they are; they are part of the template.
 
+## Prefilled in the template
+
+The `BAST DATA` template itself already holds the engineer's constant values , so a fresh copy needs no work for them:
+
+| Cell | Prefilled value |
+| --- | --- |
+| **PROJECT TEAM → Engineer** | `mention` of the engineer |
+| **CAB → Deployment Methods → PIC** | `mention` of the engineer |
+| **Scope** | `Internal BFI` ticked |
+| **Type** | `Data Analytic` ticked |
+
+On every run, check these four in the copy: if one is empty or different (an older template, or a ticket that needs another value), fill or correct it as the "Filled by this skill" table says; if it is already right, leave it alone. They are also the only filled cells the step-7.0 "still a template?" check ignores.
+
 ## Filled by this skill
 
 | Section / anchor text | Fill | Source |

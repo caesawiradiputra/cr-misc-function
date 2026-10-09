@@ -1,6 +1,7 @@
 {
   "jira_base": "https://<ATLASSIAN_SITE>.atlassian.net/browse/",
   "pic": "<Your Name>",
+  "pic_account_id": "<YOUR_ATLASSIAN_ACCOUNT_ID>",
   "projects": {
     "<repo-name>": "<Project name on the weekly page>"
   },
@@ -9,6 +10,7 @@
     "space_key": "<PERSONAL_SPACE_KEY>",
     "logbook_folder_id": "<LOGBOOK_FOLDER_ID>",
     "main_page_id": "<WEEKLY_PAGE_ID>",
+    "weekly_template_page_id": "<WEEKLY_TEMPLATE_PAGE_ID>",
     "archive_pages": { "<YYYY>": "<ARCHIVE_PAGE_ID_FOR_THAT_YEAR>" }
   }
 }

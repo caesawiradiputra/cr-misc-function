@@ -41,6 +41,11 @@ PAGE_STATUS = {
     "Hold": "HOLD",
 }  # fmt: skip
 FINISHED = {"Released", "Done"}
+## Lozenge colour per page status (Confluence status macro colours).
+STATUS_COLOR = {
+    "ANALYST": "purple", "DEVELOPMENT": "blue", "FIXING": "red", "TESTING": "yellow",
+    "READY FOR RELEASE": "green", "DONE": "green", "HOLD": "neutral",
+}  # fmt: skip
 
 
 def read_rows(path: Path = LOGBOOK) -> list[dict[str, str]]:
@@ -228,7 +233,11 @@ def cmd_archive(args: argparse.Namespace) -> None:
 
 
 def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
-    """One table row per ticket, in the column layout of the Confluence weekly page."""
+    """One table row per ticket, in the column layout of the Confluence weekly page.
+
+    Uses native Confluence elements: <time> dates, status lozenges, a mention for the
+    PIC (when config has pic_account_id) and inline smart-link cards for Jira keys.
+    """
     esc = html.escape
     head = [
         "#",
@@ -241,8 +250,8 @@ def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
         "LastUpdate",
     ]
     lines = [
-        "<table><tbody>",
-        "<tr>" + "".join(f"<th>{h}</th>" for h in head) + "</tr>",
+        "<table><thead><tr>" + "".join(f"<th>{h}</th>" for h in head) + "</tr></thead>",
+        "<tbody>",
     ]
     for number, item in enumerate(items, start=1):
         first, last = item[0], item[-1]
@@ -250,7 +259,8 @@ def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
         link = esc(ticket)
         base = cfg.get("jira_base", "")
         if base and re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", ticket):
-            link = f'<a href="{esc(base + ticket)}">{esc(ticket)}</a>'
+            url = esc(base + ticket)
+            link = f'<a href="{url}" data-card-appearance="inline"></a>'
         notes = "".join(
             f"<li>{esc(r['date'])}: {esc(r['notes'])}</li>" for r in item if r["notes"]
         )
@@ -258,20 +268,35 @@ def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
             f"<ul>{notes}</ul>" if notes else ""
         )
         status = PAGE_STATUS.get(last["status"], last["status"].upper() or "-")
+        color = STATUS_COLOR.get(status, "neutral")
+        style = ' data-status-style="bold"' if status == "READY FOR RELEASE" else ""
+        lozenge = (
+            f'<span data-type="status" data-color="{color}"{style}>{esc(status)}</span>'
+        )
         project = cfg.get("projects", {}).get(last["repo"], last["repo"])
+        pic = esc(cfg.get("pic", ""))
+        if cfg.get("pic_account_id"):
+            pic = f'<span data-type="mention" data-user-id="{esc(cfg["pic_account_id"])}">@{pic}</span>'
         cells = [
-            str(number), first["date"], esc(project), todo,
-            f"<strong>{esc(status)}</strong>", esc(cfg.get("pic", "")), link,
-            last["date"],
+            str(number), f'<time datetime="{first["date"]}">{first["date"]}</time>',
+            esc(project), todo, lozenge, pic, link,
+            f'<time datetime="{last["date"]}">{last["date"]}</time>',
         ]  # fmt: skip
         lines.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
-    lines.append("</tbody></table>")
+    lines += ["</tbody>", "</table>"]
     return "\n".join(lines)
 
 
 def cmd_publish(args: argparse.Namespace) -> None:
     """Print Confluence-ready HTML for the main or archive logbook."""
     archive = args.which == "archive"
+    if args.empty:
+        out = render_html([], {})
+        if args.out:
+            Path(args.out).write_text(out, encoding="utf-8")
+        else:
+            print(out)
+        return
     items = group_items(read_rows(ARCHIVE if archive else LOGBOOK))
     if args.year:
         items = [i for i in items if i[-1]["date"].startswith(f"{args.year}-")]
@@ -324,6 +349,9 @@ def main() -> None:
 
     pub = sub.add_parser("publish", help="Render Confluence HTML (does not post it)")
     pub.add_argument("which", choices=["main", "archive"])
+    pub.add_argument(
+        "--empty", action="store_true", help="header row only (page template)"
+    )
     pub.add_argument(
         "--year", type=int, default=0, help="archive only: items last active that year"
     )

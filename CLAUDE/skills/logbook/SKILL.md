@@ -82,17 +82,20 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
 2. `publish main --out <scratchpad>/main.html`, and for each year that has archived
    work `publish archive --year <YYYY> --out <scratchpad>/archive-<YYYY>.html`
    (HTML only; the helper never talks to Confluence).
-3. Pages live in the user's personal space, in the `Logbook` folder, as siblings: the
-   main page `Weekly DA Interface` and one archive page per year,
-   `Weekly DA Interface - Archived - <YYYY>`. Their ids are in `config.json` under
-   `confluence` (`main_page_id`, `archive_pages` keyed by year). Read the page's current
-   version, then replace its body with the new HTML (`updateConfluenceContent`), and say
-   the whole body is replaced.
-4. **A new year with no archive page yet:** ask the user to create the empty page in the
-   `Logbook` folder with that title and send the link (they did this for 2026), or create
-   it under `confluence.logbook_folder_id` (if a folder is rejected as parent, create it in
-   the space and `moveConfluenceContent` it with `position: append` to the folder). Then
-   record the id in `archive_pages`.
+3. Pages live in the user's personal space, in the `Logbook` folder: the main page
+   `Weekly DA Interface`, and under it one **child** archive page per year,
+   `Weekly DA Interface - Archived - <YYYY>` (the archive follows its parent if the page
+   is copied or the user changes team). Ids are in `config.json` under `confluence`
+   (`main_page_id`, `archive_pages` keyed by year). Read the page's current version, then
+   replace its body with the new HTML (`updateConfluenceContent`), and say the whole body
+   is replaced. The HTML uses native elements (dates, status lozenges, a mention for the
+   PIC, Jira smart-link cards), so the page looks like the user's old tracker.
+4. **A new year with no archive page yet:** create it as a child of `main_page_id`
+   (`createConfluenceContent` with `parent.parentContentId`), seeded from
+   `publish archive --year <YYYY>`, and record its id in `archive_pages`. **A new tracker
+   page** (another team, or a restart): copy the `Weekly DA Interface TEMPLATE` page
+   (`weekly_template_page_id`, in the `Template` folder) with `copyConfluenceContent`, then
+   publish into the copy. `publish main --empty` prints just the header table.
 5. Read the page back to confirm the table rendered, report the links, and run `sync`.
 
 ## Backfill from git and PRs (preferred source)
