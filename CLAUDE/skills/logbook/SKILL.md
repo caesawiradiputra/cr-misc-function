@@ -67,12 +67,14 @@ LastUpdate`. It is **generated** from the CSVs, only when the user asks (for the
 meeting), never after each edit. Manual edits on the page are overwritten, so tell the
 user to change rows through the logbook instead.
 
-How a ticket becomes a row: `Start Date` = its first date, `LastUpdate` = its last date,
+How a ticket becomes a row: `Start Date` = the Jira **created date** (of the linked IN ticket when
+there is one, else of the DA ticket; the first logbook date only when there is no Jira ticket),
+`LastUpdate` = its last logbook date,
 `Status` = the latest status mapped to the page words (`In progress` → `DEVELOPMENT`,
 `PR to`/`Merged to dev`/`sit` → `TESTING`, `PR to master` → `READY FOR RELEASE`,
 `Released`/`Done` → `DONE`, `Analysis` → `ANALYST`, plus `FIXING` and `HOLD`), `Project`
 from `config.json` `projects` (repo name when unmapped). `To Do` is the latest `task` in
-bold, followed by **collapsed expands** that keep rows compact (the same pattern as the
+bold, followed by **collapsed expands** (`Description` first: a one or two sentence summary of the SRF/requirement) that keep rows compact (the same pattern as the
 user's old tracker): `Task List` (only when the ticket has rows on several days: one dated
 line per day) and `Update` (only when a row has `notes`: dated entries split by a divider).
 
@@ -84,6 +86,16 @@ resets it.
 
 Publish procedure (run only when the user asks to publish / "update the weekly page"):
 
+0. **Refresh the Jira data** (`jira-cache.json`, never typed by hand). Run `cache missing`; for each
+   listed Jira key fetch it with `searchJiraIssuesUsingJql` (`key in (...)`, fields `summary`,
+   `created`, `issuelinks`, `description`, `view: full`). The linked ticket of type "Cloners" that
+   starts with a different project (usually `IN-`) is the `--source`; `--created` is the created
+   date of that IN ticket (fetch it too), or of the DA ticket when nothing is linked. Write the
+   `--description` yourself in 1-2 sentences: what the SRF asks for and why, not a copy of the
+   ticket, in English. Save with `cache set --ticket ... --created ... --source ... --description ...`.
+   For work with no Jira ticket (`bug-<n>`, slugs), write the description from commit bodies and
+   leave out `--created`. Existing entries are reused; refresh one only if the user says the Jira
+   text changed. Jira statuses are not copied: the page status comes from the logbook.
 1. `archive --dry-run` and show the tickets (finished and last active more than 14
    days ago). After the user's OK, `archive` moves all their rows to
    `logbook-archive.csv`. Unfinished work is never archived, however old.

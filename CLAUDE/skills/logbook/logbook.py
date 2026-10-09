@@ -26,6 +26,8 @@ LOGBOOK = Path(
 )
 ARCHIVE = LOGBOOK.with_name("logbook-archive.csv")
 CONFIG_FILE = LOGBOOK.parent / "config.json"
+CACHE_FILE = LOGBOOK.parent / "jira-cache.json"
+JIRA_KEY = re.compile(r"[A-Z][A-Z0-9]+-\d+")
 WINDOWS_DIR_FILE = LOGBOOK.parent / "windows_dir.txt"
 COLUMNS = ["date", "ticket", "repo", "type", "task", "status", "notes"]
 TYPES = ["fea", "fix", "chore", "docs", "refactor", "ops"]
@@ -199,6 +201,52 @@ def load_config() -> dict:
         sys.exit(f"{CONFIG_FILE}: invalid JSON ({exc}).")
 
 
+def load_cache() -> dict[str, dict[str, str]]:
+    """jira-cache.json: ticket -> {created, source, description} for the weekly page."""
+    if not CACHE_FILE.exists():
+        return {}
+    try:
+        return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        sys.exit(f"{CACHE_FILE}: invalid JSON ({exc}).")
+
+
+def save_cache(cache: dict[str, dict[str, str]]) -> None:
+    fd, tmp = tempfile.mkstemp(dir=CACHE_FILE.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2, ensure_ascii=False, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp, CACHE_FILE)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def cmd_cache(args: argparse.Namespace) -> None:
+    """Manage the page cache: set one ticket, or list tickets that still lack one."""
+    cache = load_cache()
+    if args.action == "missing":
+        tickets = {r["ticket"] for r in read_rows() + read_rows(ARCHIVE)}
+        todo = sorted(t for t in tickets if t not in cache)
+        print("\n".join(todo) if todo else "all tickets have a cache entry.")
+        return
+    if not args.ticket:
+        sys.exit("cache set needs --ticket.")
+    entry = cache.setdefault(args.ticket, {})
+    if args.created:
+        iso_week(args.created)  # validates YYYY-MM-DD
+        entry["created"] = args.created
+    if args.source:
+        if not JIRA_KEY.fullmatch(args.source):
+            sys.exit(f"--source must be a Jira key like IN-1234, got {args.source!r}.")
+        entry["source"] = args.source
+    if args.description:
+        entry["description"] = args.description
+    save_cache(cache)
+    print(f"cached {args.ticket}: {', '.join(entry)}")
+
+
 def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
     """Group rows by ticket, each group in date order (a ticket is one page row)."""
     items: dict[str, list[dict[str, str]]] = {}
@@ -254,7 +302,9 @@ def expand(title: str, body: str) -> str:
     )
 
 
-def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
+def render_html(
+    items: list[list[dict[str, str]]], cfg: dict, cache: dict | None = None
+) -> str:
     """One table row per ticket, in the layout of the Confluence weekly page.
 
     Uses native Confluence elements: <time> dates, status lozenges, a mention for the
@@ -263,6 +313,7 @@ def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
     days, one dated line per day) and "Update" (dated notes), so rows stay short.
     """
     esc = html.escape
+    cache = cache or {}
     head = ["Start Date", "Project", "To Do", "Status", "PIC", "JIRA", "LastUpdate"]
     cols = [f'data-colwidth="{w}"' for w in COL_WIDTHS]
     lines = [
@@ -275,12 +326,24 @@ def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
     for item in items:
         first, last = item[0], item[-1]
         ticket = first["ticket"]
-        link = esc(ticket)
+        info = cache.get(ticket, {})
         base = cfg.get("jira_base", "")
-        if base and re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", ticket):
-            url = esc(base + ticket)
-            link = f'<a href="{url}" data-card-appearance="inline"></a>'
+        keys = [
+            k for k in (info.get("source"), ticket) if k
+        ]  # IN key first, like the old page
+        links = []
+        for key in keys:
+            if base and JIRA_KEY.fullmatch(key):
+                links.append(
+                    f'<a href="{esc(base + key)}" data-card-appearance="inline"></a>'
+                )
+            else:
+                links.append(esc(key))
+        link = " ".join(links)
+        start = info.get("created") or first["date"]  # Jira created date (IN if linked)
         todo = f"<p><strong>{esc(first['task'])}</strong></p>"
+        if info.get("description"):
+            todo += expand("Description", f"<p>{esc(info['description'])}</p>")
         if len(item) > 1:
             days = "".join(
                 f"<li><p>{time_tag(r['date'])} {esc(r['task'])}</p></li>" for r in item
@@ -305,7 +368,7 @@ def render_html(items: list[list[dict[str, str]]], cfg: dict) -> str:
             uid = esc(cfg["pic_account_id"])
             pic = f'<span data-type="mention" data-user-id="{uid}">@{pic}</span>'
         cells = [
-            time_tag(first["date"]), esc(project), todo, lozenge, pic, link,
+            time_tag(start), esc(project), todo, lozenge, pic, link,
             time_tag(last["date"]),
         ]  # fmt: skip
         lines.append(
@@ -339,11 +402,15 @@ def cmd_publish(args: argparse.Namespace) -> None:
             + (f" for {args.year}." if args.year else ".")
         )
     # Active page: oldest work first. Archive: most recently finished first.
-    items.sort(
-        key=lambda item: item[-1]["date"] if archive else item[0]["date"],
-        reverse=archive,
-    )
-    body = render_html(items, load_config())
+    cache = load_cache()
+
+    def sort_key(item: list[dict[str, str]]) -> str:
+        if archive:
+            return item[-1]["date"]
+        return cache.get(item[0]["ticket"], {}).get("created") or item[0]["date"]
+
+    items.sort(key=sort_key, reverse=archive)
+    body = render_html(items, load_config(), load_cache())
     note = f"<p>Generated {dt.date.today().isoformat()} from the local logbook ({args.which}).</p>"
     out = note + "\n" + body
     if args.out:
@@ -379,6 +446,16 @@ def main() -> None:
     arch.add_argument("--days", type=int, default=14, help="age cut-off (default 14)")
     arch.add_argument("--dry-run", action="store_true")
     arch.set_defaults(func=cmd_archive)
+
+    cache = sub.add_parser("cache", help="Per-ticket Jira data for the weekly page")
+    cache.add_argument("action", choices=["set", "missing"])
+    cache.add_argument("--ticket", default="")
+    cache.add_argument("--created", default="", help="Jira created date, YYYY-MM-DD")
+    cache.add_argument("--source", default="", help="linked IN/other key, e.g. IN-3247")
+    cache.add_argument(
+        "--description", default="", help="short SRF/requirement summary"
+    )
+    cache.set_defaults(func=cmd_cache)
 
     pub = sub.add_parser("publish", help="Render Confluence HTML (does not post it)")
     pub.add_argument("which", choices=["main", "archive"])
