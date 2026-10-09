@@ -261,7 +261,7 @@ echo "/mnt/c/Users/<WINDOWS_USERNAME>/Documents/Work/Logbook" > ~/.claude/logboo
 cp ~/.claude/skills/logbook/config.example.json ~/.claude/logbook/config.json
 ```
 
-Edit `config.json` (the `<...>` values; the page ids exist after the first publish, see the
+Edit `config.json` (the `<...>` values, including `repo_paths`, the local clone of each repo that `/logbook check` should read; the page ids exist after the first publish, see the
 skill's "Archive and weekly Confluence page"). On native Windows without WSL, set
 `LOGBOOK_WINDOWS_DIR` instead of `windows_dir.txt`.
 

@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -323,6 +324,134 @@ def cmd_rename(args: argparse.Namespace) -> None:
     )
 
 
+## How far along a logbook status is; used to spot a row that lags behind its PR.
+STAGE = {
+    "": 0, "Analysis": 1, "In progress": 1, "Fixing": 1, "Hold": 1,
+    "PR to dev": 2, "Merged to dev": 3, "Merged to sit": 3,
+    "PR to master": 4, "Released": 5, "Done": 5,
+}  # fmt: skip
+TICKET_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b|\bbug-\d+\b")
+
+
+def _run(cmd: list[str], cwd: str) -> str | None:
+    try:
+        done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def pr_stage(pr: dict[str, Any]) -> str:
+    """Logbook status a pull request implies."""
+    merged, is_open = bool(pr.get("mergedAt")), pr.get("state") == "OPEN"
+    if pr.get("baseRefName") in ("master", "main"):
+        return "Released" if merged else ("PR to master" if is_open else "")
+    if pr.get("baseRefName") == "sit":
+        return "Merged to sit" if merged else ("PR to dev" if is_open else "")
+    return "Merged to dev" if merged else ("PR to dev" if is_open else "")
+
+
+def git_evidence(
+    repo_paths: dict[str, str], since: str
+) -> tuple[dict[str, dict], list[str]]:
+    """ticket -> {stage, last, repos} from local commits and GitHub PRs since a date."""
+    evidence: dict[str, dict] = {}
+    notes: list[str] = []
+
+    def note(ticket: str, repo: str, date: str, stage: str) -> None:
+        ev = evidence.setdefault(ticket, {"stage": "", "last": "", "repos": set()})
+        ev["repos"].add(repo)
+        ev["last"] = max(ev["last"], date)
+        if STAGE.get(stage, 0) > STAGE.get(ev["stage"], 0):
+            ev["stage"] = stage
+
+    for repo, path in repo_paths.items():
+        author = (_run(["git", "config", "user.name"], path) or "").strip()
+        log = _run(
+            ["git", "log", "--all", f"--since={since}", f"--author={author}",
+             "--date=short", "--format=%ad|%s"], path
+        )  # fmt: skip
+        if log is None:
+            notes.append(f"{repo}: git log failed at {path}")
+            continue
+        for line in log.splitlines():
+            date, _, subject = line.partition("|")
+            keys = TICKET_RE.findall(subject) + [
+                f"bug-{n}" for n in re.findall(r"bug #(\d+)", subject)
+            ]
+            for key in set(keys):
+                note(key, repo, date, "")
+        prs = _run(
+            ["gh", "pr", "list", "--state", "all", "--author", "@me", "--limit", "60",
+             "--json", "title,state,baseRefName,headRefName,mergedAt,updatedAt"], path
+        )  # fmt: skip
+        if prs is None:
+            notes.append(f"{repo}: gh pr list unavailable (commits only)")
+            continue
+        for pr in json.loads(prs):
+            when = (pr.get("mergedAt") or pr["updatedAt"])[:10]
+            if when < since:
+                continue
+            for key in set(TICKET_RE.findall(f"{pr['headRefName']} {pr['title']}")):
+                note(key, repo, when, pr_stage(pr))
+    return evidence, notes
+
+
+def cmd_check(args: argparse.Namespace) -> None:
+    """Compare the CSVs with git/PR activity and the Jira cache. Reports only; writes nothing."""
+    cfg, cache = load_config(), load_cache()
+    since = args.since or (dt.date.today() - dt.timedelta(days=7)).isoformat()
+    iso_week(since)
+    items = {i[0]["ticket"]: i for i in group_items(read_rows())}
+    archived = {r["ticket"] for r in read_rows(ARCHIVE)}
+    evidence, notes = git_evidence(cfg.get("repo_paths", {}), since)
+    findings: list[str] = []
+    for ticket, ev in sorted(evidence.items()):
+        item = items.get(ticket)
+        where = ", ".join(sorted(ev["repos"]))
+        if item is None:
+            if ticket not in archived:
+                findings.append(
+                    f"{ticket}: activity on {ev['last']} in {where}"
+                    f"{' (' + ev['stage'] + ')' if ev['stage'] else ''}, but no logbook row"
+                )
+            continue
+        last = item[-1]
+        if STAGE.get(last["status"], 0) < STAGE.get(ev["stage"], 0):
+            findings.append(
+                f"{ticket}: logbook says '{last['status'] or '-'}' but a PR is at '{ev['stage']}' ({where})"
+            )
+        if ev["last"] > last["date"]:
+            findings.append(
+                f"{ticket}: git activity on {ev['last']} is newer than the last logbook row ({last['date']})"
+            )
+    for ticket, item in sorted(items.items()):
+        info = cache.get(ticket, {})
+        jira = JIRA_STATUS.get(info.get("jira_status", ""))
+        mine = PAGE_STATUS.get(item[-1]["status"], "")
+        if jira and mine and jira != mine:
+            updated = info.get("updated", "")
+            if not updated:
+                verdict = "Jira date unknown, refresh the cache (step 0a)"
+            elif updated > item[-1]["date"]:
+                verdict = "Jira is newer"
+            elif updated < item[-1]["date"]:
+                verdict = "the logbook is newer"
+            else:
+                verdict = "same day, decide by hand"
+            findings.append(
+                f"{ticket}: Jira '{info['jira_status']}' ({jira}, updated {updated or '?'}) vs logbook "
+                f"'{item[-1]['status']}' ({mine}, {item[-1]['date']}) -> {verdict}"
+            )
+    print(f"## Recheck since {since} (CSV vs git/PRs vs Jira cache)\n")
+    print(
+        "\n".join(f"- {n}" for n in notes) if notes else "", end="\n" if notes else ""
+    )
+    print("\n".join(f"- {f}" for f in findings) if findings else "Nothing to flag.")
+    if findings:
+        print("\nFix with `add` after confirming; nothing was changed.")
+
+
 def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
     """Group rows by ticket, each group in date order (a ticket is one page row)."""
     items: dict[str, list[dict[str, str]]] = {}
@@ -607,6 +736,12 @@ def main() -> None:
     )
     arch.add_argument("--dry-run", action="store_true")
     arch.set_defaults(func=cmd_archive)
+
+    check = sub.add_parser(
+        "check", help="Compare the CSVs with git/PRs and the Jira cache"
+    )
+    check.add_argument("--since", default="", help="YYYY-MM-DD (default: 7 days ago)")
+    check.set_defaults(func=cmd_check)
 
     rename = sub.add_parser("rename", help="Re-key a ticket in rows, archive and cache")
     rename.add_argument("old")

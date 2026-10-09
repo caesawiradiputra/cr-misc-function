@@ -5,6 +5,9 @@
   "projects": {
     "<repo-name>": "<Project name on the weekly page>"
   },
+  "repo_paths": {
+    "<repo-name>": "/home/<you>/repo/<path-to-the-local-clone>"
+  },
   "aging_days": [30, 60, 90],
   "followup_days": [7, 14, 30],
   "other_court": ["TESTING", "READY FOR RELEASE"],

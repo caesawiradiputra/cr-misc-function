@@ -1,6 +1,6 @@
 ---
 name: logbook
-description: Track what the user did, for weekly reporting. Adds or updates a row in the personal work logbook CSV (one row per ticket per day), prints a weekly summary, and copies the CSV to the Windows work folder. Use when the user says "/logbook", "log this", "add to my logbook", "catat ke logbook", "weekly report", "what did I do this week", "sync the logbook", or when a task finishes or a PR is opened or merged and a row should be proposed.
+description: Track what the user did, for weekly reporting. Adds or updates a row in the personal work logbook CSV (one row per ticket per day), prints a weekly summary, and copies the CSV to the Windows work folder. Use when the user says "/logbook", "log this", "add to my logbook", "catat ke logbook", "weekly report", "what did I do this week", "sync the logbook", or when a task finishes or a PR is opened or merged and a row should be proposed. Also "/logbook check", "recheck the logbook", "reconcile with git/Jira", "is my logbook up to date".
 ---
 
 # Logbook
@@ -148,6 +148,33 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
    publish into the copy. `publish main --empty` prints just the header table.
 5. Read the page back to confirm the table rendered, report the links, and run `sync`.
 
+## Recheck (`/logbook check`)
+
+The **local files are the source of truth** (`logbook.csv`, `logbook-archive.csv`, `jira-cache.json`,
+`config.json`). The Confluence page is generated output, so a recheck **never reads the page** for
+state; reading it costs a lot of tokens and adds nothing. Compare the files with the places where
+facts actually change:
+
+1. Refresh the Jira side with step 0a of the publish procedure (always pass `--updated`, so dates
+   can be compared). Skip this only if the cache was refreshed today.
+2. `check --since <date>` (default: 7 days ago). It reads, per repo in `config.json` `repo_paths`,
+   the local commits and the GitHub PRs (`gh`), and compares them with the CSV and the cache. It
+   reports and never writes: tickets with activity but no row, a row whose status lags its PR, git
+   activity newer than the last row, and Jira vs logbook status differences.
+3. Show the findings and apply fixes with `add` only after the user confirms each one.
+
+Which source wins when they disagree:
+
+| Fact | Source |
+| --- | --- |
+| Ticket status, created date, title, hold history | Jira |
+| What happened: PR open or merged, branch, commits | Git and GitHub |
+| Task wording, notes, decisions, descriptions | The CSV (only the user curates these) |
+| Page status when Jira and the logbook differ | Whichever changed more recently (`check` says which) |
+
+Before a publish the only page read is a summary read for the version token (about 500 tokens). Read the
+page's HTML only when the user changes its layout by hand, and pull a hand edit into the CSV first.
+
 ## Backfill from git and PRs (preferred source)
 
 To fill a past period, read **commits and PRs, not session transcripts**: transcripts
@@ -176,6 +203,7 @@ so ask the user what to add.
 python3 ~/.claude/skills/logbook/logbook.py add --ticket PROJ-1234 --repo da-negative-list \
   --type fea --task "Added X so Y" --status "PR to dev" \
   --notes "Decided to keep the old key: downstream reports join on it"
+python3 ~/.claude/skills/logbook/logbook.py check --since 2026-10-05   # CSV vs git/PRs vs Jira cache (reports only)
 python3 ~/.claude/skills/logbook/logbook.py rename <slug> PROJ-1234   # a slug that later got a Jira key (rows, archive, cache)
 python3 ~/.claude/skills/logbook/logbook.py week              # current ISO week
 python3 ~/.claude/skills/logbook/logbook.py week --week 2026-W41
