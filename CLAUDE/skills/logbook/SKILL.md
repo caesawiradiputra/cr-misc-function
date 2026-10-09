@@ -109,7 +109,10 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
    <date> --project <name>` (plus `--created`/`--source`/`--description` as in step 0). Cached
    tickets that are no longer in the result (done, reassigned) get `cache set --track no`. A ticket
    with logbook rows keeps the logbook status; the Jira status only drives rows with no logbook row.
-   Mention any ticket whose Jira status disagrees with its logbook status.
+   Mention any ticket whose Jira status disagrees with its logbook status. For a ticket whose Jira
+   status is `Hold`, read its changelog (`getJiraIssue` with `expand: changelog`, newest first) and
+   record `--before-hold "<status it had before the latest move to Hold>" --hold-since <date of that
+   move>` so the hold page can show what it was before it was paused.
 0. **Refresh the Jira data** (`jira-cache.json`, never typed by hand). Run `cache missing`; for each
    listed Jira key fetch it with `searchJiraIssuesUsingJql` (`key in (...)`, fields `summary`,
    `created`, `issuelinks`, `description`, `view: full`). The linked ticket of type "Cloners" that
@@ -119,18 +122,21 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
    ticket, in English. Save with `cache set --ticket ... --created ... --source ... --description ...`.
    For work with no Jira ticket (`bug-<n>`, slugs), write the description from commit bodies and
    leave out `--created`. Existing entries are reused; refresh one only if the user says the Jira
-   text changed. Jira statuses are not copied: the page status comes from the logbook.
-1. `archive --dry-run` and show the tickets (finished and last active more than 14
-   days ago). After the user's OK, `archive` moves all their rows to
-   `logbook-archive.csv`. Unfinished work is never archived, however old.
-2. `publish main --out <scratchpad>/main.html`, and for each year that has archived
-   work `publish archive --year <YYYY> --out <scratchpad>/archive-<YYYY>.html`
-   (HTML only; the helper never talks to Confluence).
+   text changed. For logged tickets the page status comes from the logbook; only rows with no logbook row use the mapped Jira status (step 0a).
+1. `archive --dry-run` and show the tickets (finished and idle for more than 7 days: last
+   logbook date, or for Jira-only tickets the Jira updated date once Jira shows them done). After
+   the user's OK, `archive` moves them to `logbook-archive.csv`. Unfinished work is never archived,
+   however old.
+2. `publish main --out <scratchpad>/main.html`, `publish hold --out <scratchpad>/hold.html`, and for
+   each year that has archived work `publish archive --year <YYYY> --out <scratchpad>/archive-<YYYY>.html`
+   (HTML only; the helper never talks to Confluence). Every page is ordered by project (A-Z),
+   then most recently updated first.
 3. Pages live in the user's personal space, in the `Logbook` folder: the main page
-   `Weekly DA Interface`, and under it one **child** archive page per year,
-   `Weekly DA Interface - Archived - <YYYY>` (the archive follows its parent if the page
-   is copied or the user changes team). Ids are in `config.json` under `confluence`
-   (`main_page_id`, `archive_pages` keyed by year). Read the page's current version, then
+   `Weekly DA Interface` (active work, no `HOLD`), and under it two kinds of **child** page:
+   `Weekly DA Interface - On Hold` (paused tickets, with an extra `Before Hold` column showing the
+   status before the hold and the date it began) and one `Weekly DA Interface - Archived - <YYYY>` per
+   year (children follow their parent if the page is copied or the user changes team). Ids are in
+   `config.json` under `confluence` (`main_page_id`, `hold_page_id`, `archive_pages` keyed by year). Read the page's current version, then
    replace its body with the new HTML (`updateConfluenceContent`), and say the whole body
    is replaced. The HTML uses native elements (dates, status lozenges, a mention for the
    PIC, Jira smart-link cards), so the page looks like the user's old tracker.

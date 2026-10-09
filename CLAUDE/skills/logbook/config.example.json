@@ -5,11 +5,15 @@
   "projects": {
     "<repo-name>": "<Project name on the weekly page>"
   },
+  "aging_days": [30, 60, 90],
+  "followup_days": [7, 14, 30],
+  "other_court": ["TESTING", "READY FOR RELEASE"],
   "confluence": {
     "space_id": "<PERSONAL_SPACE_ID>",
     "space_key": "<PERSONAL_SPACE_KEY>",
     "logbook_folder_id": "<LOGBOOK_FOLDER_ID>",
     "main_page_id": "<WEEKLY_PAGE_ID>",
+    "hold_page_id": "<ON_HOLD_PAGE_ID>",
     "weekly_template_page_id": "<WEEKLY_TEMPLATE_PAGE_ID>",
     "archive_pages": { "<YYYY>": "<ARCHIVE_PAGE_ID_FOR_THAT_YEAR>" }
   }

@@ -248,6 +248,23 @@ the template doesn't carry the real values). The table is in
 grep -rn "<WINDOWS_USERNAME>\|<ATLASSIAN_SITE>\|<BAST_TEMPLATE_PAGE_ID>\|<COMPANY>" ~/.claude/skills
 ```
 
+#### Logbook skill setup
+
+The `logbook` skill keeps its data in `~/.claude/logbook/` (not in this repo). Needs `python3`
+only. Create the folder and the two small config files once per machine:
+
+```bash
+mkdir -p ~/.claude/logbook
+# Where `logbook sync` copies the CSVs on the Windows side (the folder, not a file):
+echo "/mnt/c/Users/<WINDOWS_USERNAME>/Documents/Work/Logbook" > ~/.claude/logbook/windows_dir.txt
+# Jira base URL, your name and account id, repo -> project names, Confluence page ids:
+cp ~/.claude/skills/logbook/config.example.json ~/.claude/logbook/config.json
+```
+
+Edit `config.json` (the `<...>` values; the page ids exist after the first publish, see the
+skill's "Archive and weekly Confluence page"). On native Windows without WSL, set
+`LOGBOOK_WINDOWS_DIR` instead of `windows_dir.txt`.
+
 ### 4.4 Plugins and MCP servers
 
 Start `claude` and run `/plugin`. The settings file enables these plugins from
@@ -415,6 +432,7 @@ For repos that aren't on uv yet, or need a newer Python:
 - [ ] `claude --version` works and `claude doctor` shows no settings errors
 - [ ] `~/.claude/` has `CLAUDE.md`, `commands/`, `skills/`, `hooks/`, `settings.json`, `statusline-command.sh`
 - [ ] No `<WINDOWS_USERNAME>` / `<ATLASSIAN_SITE>` placeholders left in `~/.claude`
+- [ ] `python3 ~/.claude/skills/logbook/logbook.py week` runs (and `sync` once `windows_dir.txt` and `config.json` exist)
 - [ ] In a session: status line visible, `/commit` listed, `/plugin` and `/mcp` healthy
 - [ ] Opening a repo under the umbrella shows the SessionStart repo context
 - [ ] IDE: Claude Code panel opens; on WSL it runs in the WSL window
