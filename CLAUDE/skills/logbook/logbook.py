@@ -20,6 +20,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 LOGBOOK = Path(
     os.environ.get("LOGBOOK_PATH") or Path.home() / ".claude/logbook/logbook.csv"
@@ -210,27 +211,31 @@ def cmd_sync(_: argparse.Namespace) -> None:
         print(f"copied to {dest}")
 
 
-def load_config() -> dict:
+def load_config() -> dict[str, Any]:
     """Optional config.json: jira_base, pic, projects (repo -> project name)."""
     if not CONFIG_FILE.exists():
         return {}
     try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        config: dict[str, Any] = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        return config
     except json.JSONDecodeError as exc:
         sys.exit(f"{CONFIG_FILE}: invalid JSON ({exc}).")
 
 
-def load_cache() -> dict[str, dict[str, str]]:
+def load_cache() -> dict[str, dict[str, Any]]:
     """jira-cache.json: ticket -> {created, source, description} for the weekly page."""
     if not CACHE_FILE.exists():
         return {}
     try:
-        return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+        cache: dict[str, dict[str, Any]] = json.loads(
+            CACHE_FILE.read_text(encoding="utf-8")
+        )
+        return cache
     except json.JSONDecodeError as exc:
         sys.exit(f"{CACHE_FILE}: invalid JSON ({exc}).")
 
 
-def save_cache(cache: dict[str, dict[str, str]]) -> None:
+def save_cache(cache: dict[str, dict[str, Any]]) -> None:
     fd, tmp = tempfile.mkstemp(dir=CACHE_FILE.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
