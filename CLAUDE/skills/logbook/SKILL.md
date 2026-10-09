@@ -79,15 +79,21 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
 1. `archive --dry-run` and show the tickets (finished and last active more than 14
    days ago). After the user's OK, `archive` moves all their rows to
    `logbook-archive.csv`. Unfinished work is never archived, however old.
-2. `publish main --out <scratchpad>/main.html` and `publish archive --out <scratchpad>/archive.html`
+2. `publish main --out <scratchpad>/main.html`, and for each year that has archived
+   work `publish archive --year <YYYY> --out <scratchpad>/archive-<YYYY>.html`
    (HTML only; the helper never talks to Confluence).
-3. Look in `config.json` for `confluence.main_page_id` and `confluence.archive_page_id`.
-   - **Missing:** create the two pages in the user's personal Confluence space (confirm
-     the titles first; the archive page is a child of the main page), then record the
-     ids and `space_id` under `confluence` in `config.json`.
-   - **Present:** read the page's current version, then replace its body with the new
-     HTML (`updateConfluenceContent`). Say that the whole body is replaced.
-4. Read the page back to confirm the table rendered, report the links, and run `sync`.
+3. Pages live in the user's personal space, in the `Logbook` folder, as siblings: the
+   main page `Weekly DA Interface` and one archive page per year,
+   `Weekly DA Interface - Archived - <YYYY>`. Their ids are in `config.json` under
+   `confluence` (`main_page_id`, `archive_pages` keyed by year). Read the page's current
+   version, then replace its body with the new HTML (`updateConfluenceContent`), and say
+   the whole body is replaced.
+4. **A new year with no archive page yet:** ask the user to create the empty page in the
+   `Logbook` folder with that title and send the link (they did this for 2026), or create
+   it under `confluence.logbook_folder_id` (if a folder is rejected as parent, create it in
+   the space and `moveConfluenceContent` it with `position: append` to the folder). Then
+   record the id in `archive_pages`.
+5. Read the page back to confirm the table rendered, report the links, and run `sync`.
 
 ## Backfill from git and PRs (preferred source)
 

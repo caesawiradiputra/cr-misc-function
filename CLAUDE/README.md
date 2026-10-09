@@ -102,6 +102,8 @@ file into `~/.claude/`:
 | `<ATLASSIAN_CLOUD_ID>` | `skills/bast-*` | The site's cloud ID (from `getAccessibleAtlassianResources`) |
 | `PROJ` (as in `PROJ-1234`) | `skills/jira-ticket-kickoff`, `skills/bast-*` | Your own Jira project key |
 | `<BAST_TEMPLATE_PAGE_ID>` | `skills/bast-generator` | The Confluence page ID of your `BAST DATA` template copy |
+| `<BAST_FOLDER_ID>` | `skills/bast-generator` | The Confluence folder ID of your `BAST` folder (new BAST pages are copied into it) |
+| `<PERSONAL_SPACE_ID>`, `<PERSONAL_SPACE_KEY>`, `<LOGBOOK_FOLDER_ID>`, `<WEEKLY_PAGE_ID>`, `<ARCHIVE_PAGE_ID_FOR_THAT_YEAR>` | `skills/logbook/config.example.json` (copy to `~/.claude/logbook/config.json`) | Your Confluence personal space and the weekly/archive page ids |
 | `<COMPANY>` | `skills/bast-generator/references/template-map.md` | The company name used in the BAST Scope checkbox |
 
 Only `CLAUDE.md` and `commands/` are synced automatically

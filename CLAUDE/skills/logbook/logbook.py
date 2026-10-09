@@ -273,8 +273,13 @@ def cmd_publish(args: argparse.Namespace) -> None:
     """Print Confluence-ready HTML for the main or archive logbook."""
     archive = args.which == "archive"
     items = group_items(read_rows(ARCHIVE if archive else LOGBOOK))
+    if args.year:
+        items = [i for i in items if i[-1]["date"].startswith(f"{args.year}-")]
     if not items:
-        sys.exit(f"No rows in the {args.which} logbook.")
+        sys.exit(
+            f"No rows in the {args.which} logbook"
+            + (f" for {args.year}." if args.year else ".")
+        )
     # Active page: oldest work first. Archive: most recently finished first.
     items.sort(
         key=lambda item: item[-1]["date"] if archive else item[0]["date"],
@@ -319,6 +324,9 @@ def main() -> None:
 
     pub = sub.add_parser("publish", help="Render Confluence HTML (does not post it)")
     pub.add_argument("which", choices=["main", "archive"])
+    pub.add_argument(
+        "--year", type=int, default=0, help="archive only: items last active that year"
+    )
     pub.add_argument("--out", default="", help="write to a file instead of stdout")
     pub.set_defaults(func=cmd_publish)
 

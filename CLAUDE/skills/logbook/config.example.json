@@ -3,5 +3,12 @@
   "pic": "<Your Name>",
   "projects": {
     "<repo-name>": "<Project name on the weekly page>"
+  },
+  "confluence": {
+    "space_id": "<PERSONAL_SPACE_ID>",
+    "space_key": "<PERSONAL_SPACE_KEY>",
+    "logbook_folder_id": "<LOGBOOK_FOLDER_ID>",
+    "main_page_id": "<WEEKLY_PAGE_ID>",
+    "archive_pages": { "<YYYY>": "<ARCHIVE_PAGE_ID_FOR_THAT_YEAR>" }
   }
 }

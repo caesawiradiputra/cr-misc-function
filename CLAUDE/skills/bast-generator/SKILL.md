@@ -23,8 +23,8 @@ Reference files (read them when the step says so, not up front):
 ## Constants
 
 - Site `cloudId`: `<ATLASSIAN_CLOUD_ID>` (<ATLASSIAN_SITE>.atlassian.net). If a call rejects it, call `getAccessibleAtlassianResources` once.
-- Template page ID: `<BAST_TEMPLATE_PAGE_ID>` (the user's own copy of the `BAST DATA` template, in their personal space). Read it live on every run so template changes carry over.
-- Destination: the top-level of the user's personal space. Resolve its key with `getConfluencePersonalSpace` (do not hardcode). Use `destinationSpaceKey`, not `parentContentId`.
+- Template page ID: `<BAST_TEMPLATE_PAGE_ID>` (the user's own copy of the `BAST DATA` template, in the `Template` folder of their personal space). Read it live on every run so template changes carry over.
+- Destination: the `BAST` folder of the user's personal space, folder ID `<BAST_FOLDER_ID>` (new BASTs sit directly in it). The personal space key is not hardcoded: resolve it with `getConfluencePersonalSpace`. If the folder id is rejected or gone, find the folder titled `BAST` under the space's `Overview` page (`getConfluenceContentDescendants`) and tell the user the id changed.
 - Title: `[BAST] <TICKET> - <Jira summary>`.
 
 ## Steps
@@ -88,7 +88,7 @@ Print a compact preview and wait for the user's OK:
 
 ### 7. Create, fill, verify
 
-1. Copy: `executeWrite` with `name: "copyConfluenceContent"`, `contentId: "<BAST_TEMPLATE_PAGE_ID>"`, `title`, `destinationSpaceKey`, top-level `cloudId`.
+1. Copy: `executeWrite` with `name: "copyConfluenceContent"`, `contentId: "<BAST_TEMPLATE_PAGE_ID>"`, `title`, `parentContentId: "<BAST_FOLDER_ID>"` (the `BAST` folder), top-level `cloudId`. If the copy rejects a folder as parent, copy with `destinationSpaceKey` instead and then `moveConfluenceContent` (`id` = the new page, `position: "append"`, `targetId: "<BAST_FOLDER_ID>"`), and confirm with `getConfluenceContentAncestors` that the page ended up under `BAST`.
 2. Load the format guide once: `executeRead` `getContentFormatGuide` with `inputs: {toolName: "updateConfluencePage"}`.
 3. Read the **copy** (`getConfluenceContent`, `detail: "full"`, `content_format: "html"`). Take its `snapshotToken`. A server-side `copyConfluenceContent` preserves the template's `data-local-id`s, but a page copied some other way (for example by hand in the UI) may regenerate the short 12-hex ids. So locate each cell by its anchor text in the copy you just read (see `references/template-map.md`), and take the `localId` from that read, not from memory.
 4. Apply the fills with `updateConfluenceContent` using `edits`: an array of `{"name": "replaceNode", "localId": "<id>", "value": "<html>"}` objects (verified working on PROJ-1845; numeric ids such as `"5"` on checkbox `<li>` items work too). Pass the copy's `snapshotToken`. Run the same array once with `dryRun: true` first and inspect the returned HTML, then repeat with `dryRun` omitted. Replaced nodes get new local ids, so take a fresh `snapshotToken` (from the update result) before any further edit, and re-read the page for current ids before editing a node you already replaced (a stale id is rejected with a 422 `granular_edit_unresolved` and changes nothing). To remove a node use `{"name": "deleteNode", "localId": "<id>"}` (also verified); prefer deleting or replacing the smallest node that holds the text, not the whole cell.
