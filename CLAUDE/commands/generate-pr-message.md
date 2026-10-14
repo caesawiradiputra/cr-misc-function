@@ -55,6 +55,8 @@ It also creates or updates a single per-ticket changelog at `release/<TICKET-ID>
 5. **Testing section only if** test files appear in the diff OR the user explicitly asks. Describe only tests actually present.
 6. **Version never carries a `v` prefix** — use `1.2.0`, not `v1.2.0`, everywhere (changelog, PR messages, tags).
 7. **Agent creates files only.** Do **not** run `git add`/`commit`/`push`/`tag` — the user does that after review.
+8. **Release folder keeps only what changes.** When a release folder starts from a previous ticket's artifacts, keep only files whose content differs for this ticket: diff each against its source, delete empty-diff copies, and name the baseline ticket in the CHANGELOG. Files new to the ticket (docs, the requirement PDF) stay.
+9. **Continue the ticket's own release.** A change to files that already belong to a ticket's `release/<TICKET-ID>/` folder (for example revising its DDL before it was ever deployed) is a new version entry in that ticket's existing `CHANGELOG.md`, not a new standalone `release/<slug>/` folder. Infer the ticket from the files being changed when the request does not name it.
 
 ---
 
