@@ -15,7 +15,7 @@ Personal tracking file used for weekly reporting.
   (e.g. `/mnt/c/Users/<you>/Documents/Work/Logbook`). `sync` fails with a clear
   message if neither is set, so create `windows_dir.txt` once per machine. `sync` creates
   the last folder but not missing parents (a missing parent is treated as a typo).
-- **Helper:** `~/.claude/skills/logbook/logbook.py` (stdlib only, run with `python3`).
+- **Helper:** `~/.claude/skills/logbook/logbook.py` (stdlib only, run with `python3`; it works on Python 3.9 and newer, so no `uv run --python` wrapper is needed).
   Never hand-edit the CSV; use the helper so quoting, the ISO `week`, the header check
   and the atomic write stay correct. It refuses to write if the header or a row is malformed.
 

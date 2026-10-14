@@ -8,6 +8,8 @@ Paths (override for tests with environment variables):
                        (fallback: first line of ~/.claude/logbook/windows_dir.txt)
 """
 
+from __future__ import annotations
+
 import argparse
 import csv
 import datetime as dt
@@ -22,6 +24,15 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+
+def _zip_strict(*iterables):
+    """zip() that raises on unequal lengths (zip(strict=True) needs Python 3.10)."""
+    lists = [list(it) for it in iterables]
+    if len({len(x) for x in lists}) > 1:
+        raise ValueError("zip() arguments have different lengths")
+    return zip(*lists)
+
 
 LOGBOOK = Path(
     os.environ.get("LOGBOOK_PATH") or Path.home() / ".claude/logbook/logbook.csv"
@@ -578,7 +589,7 @@ def render_html(
     lines = [
         TABLE_OPEN,
         "<thead><tr>"
-        + "".join(f"<th {c}><p>{h}</p></th>" for h, c in zip(head, cols, strict=True))
+        + "".join(f"<th {c}><p>{h}</p></th>" for h, c in _zip_strict(head, cols))
         + "</tr></thead>",
         "<tbody>",
     ]
@@ -636,7 +647,7 @@ def render_html(
                 else cfg.get("aging_days", AGING_DAYS)
             )
             age = (dt.date.today() - dt.date.fromisoformat(anchor)).days
-            reached = [c for d, c in zip(tiers, AGING_COLORS, strict=False) if age >= d]
+            reached = [c for d, c in zip(tiers, AGING_COLORS) if age >= d]
             if reached:
                 fill = f' data-background="{reached[-1]}" style="background-color: {reached[-1]}"'
         cells = [
@@ -659,7 +670,7 @@ def render_html(
                 f"<td {c}{fill if i == (len(cells) - 1 if fill_last else 0) else ''}><p>{v}</p></td>"
                 if i != 2
                 else f"<td {c}>{v}</td>"
-                for i, (v, c) in enumerate(zip(cells, cols, strict=True))
+                for i, (v, c) in enumerate(_zip_strict(cells, cols))
             )
             + "</tr>"
         )
