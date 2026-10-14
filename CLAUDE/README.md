@@ -239,7 +239,7 @@ description. You can also call them by name.
 | `documentation_auditor` | Audit docstrings and comments |
 | `logging_auditor` | Audit logging strategy and log quality |
 | `process-skill-auditor` | Audit how a skill or agent was used in a session |
-| `extract-session-preferences-core` | Distill durable preferences from a session into memory / `CLAUDE.md`, keeping a cross-session ledger (`~/.claude/preference-registry.md`, personal and not part of this template). The `/extract-session-preferences` command runs it on Opus; the skill carries `-core` so its name doesn't clash with the command |
+| `extract-session-preferences-core` | Distill durable preferences from a session into memory / `CLAUDE.md`, keeping a cross-session evidence ledger in `~/.claude/preference-registry/` (CSV files plus the `registry.py` helper shipped with the skill; the data is personal and not part of this template; see the skill's `REGISTRY.md`). The `/extract-session-preferences` command runs it on Opus; the skill carries `-core` so its name doesn't clash with the command |
 | `formal_document_reviewer` | Review formal documents (EN/ID) for unusual or high-impact terms |
 
 ---

@@ -100,22 +100,50 @@ independently create a preference.
 
 ## Step 1b: Check the registry
 
-Read `~/.claude/preference-registry.md` (create it from the header in that file's
-format if missing). It is the cross-session, cross-repo ledger of every preference
-seen so far, saved or not. For each candidate from Step 1:
+The registry is a cross-session, cross-repo **evidence ledger**, not the
+authoritative configuration: each record points at the `CLAUDE.md` section, skill
+or memory where the rule is actually enforced. It lives in
+`~/.claude/preference-registry/` as `registry-shared.csv` (approved GLOBAL and
+DOMAIN records), `registry-project.csv` (PROJECT records, candidates, conflicts) and
+`registry-archive.csv`. Use the helper; never hand-edit the CSVs. Its commands and
+columns are in `~/.claude/preference-registry/README.md`.
 
-- Match it to an existing row by meaning, not wording. A match is **independent
-  evidence** only when it comes from a different session or repo than the row's
-  last sighting; the same conversation counts once.
-- A `candidate` row that now has Seen >= 2 independent sightings meets Step 2's
-  "independent moments" bar and may be proposed for saving or for promotion.
-- A `saved` PROJECT or DOMAIN row seen again in a different repo or domain is a
-  promotion candidate to the next scope up (PROJECT -> DOMAIN -> GLOBAL); propose it
-  in the report, never promote silently.
-- A `dropped` row is not proposed again unless the user restates it.
-- Do not read the registry's absence of a row as evidence against a preference.
+```bash
+python3 ~/.claude/skills/extract-session-preferences-core/registry.py find --keywords a,b --text "short rule" [--repo R] [--domain D] [--archive]
+python3 ~/.claude/skills/extract-session-preferences-core/registry.py report        # conflicts, promotion eligibility, gaps
+```
 
-The registry never overrides Step 2: a high Seen count is evidence, not permission.
+**Lookup order** for each candidate from Step 1:
+
+1. `find` by keywords and meaning (shared records rank first).
+2. Compare the behavior the rule describes, not the wording. Exact keyword hits alone
+   are not a match.
+3. No match: it is a new candidate (Step 7 adds it). Search the archive only to look at
+   history, a conflict, a dropped rule, or a rule the user restated.
+
+**If a record matches, do not create a duplicate.** A match prevents duplicates; it does
+not suppress new evidence:
+
+- Decide whether the evidence is an independent sighting (below) and record it with
+  `update --sighting --session <id>`; `Seen` counts each session once.
+- Compare the wording. If the new evidence supports a clearer rule, propose a refinement
+  to the existing record.
+- If it contradicts the rule, mark the record `conflict` and stop promotion until the
+  user resolves it.
+- A matching GLOBAL record: check refinement or contradiction, then stop.
+
+**Independent sightings.** A sighting is one session in which the user explicitly states,
+corrects or confirms the underlying preference.
+
+- Repetition inside one session counts once; the session ID is the dedup key.
+- A preference inferred from behavior is not explicit evidence. Silence is not approval.
+- Accepting one implementation without confirming the general principle is not a sighting.
+- A `dropped` record is not proposed again unless the user restates it or asks to
+  reconsider; the restatement is new evidence on the same record, not a new ID.
+- A missing record is not evidence against a preference.
+
+The registry never overrides Step 2: eligibility is a proposal, a high `Seen` is
+evidence, not permission.
 
 ## Step 2: Scope each candidate
 
@@ -177,6 +205,35 @@ bar above is clearly met.
 Rejections and approvals both deserve the same check: was the user
 reacting to *this instance* or to *the pattern in general*? Only the
 latter clears GLOBAL/DOMAIN scope.
+
+### Promotion eligibility (a proposal, never an automatic scope change)
+
+Track evidence, scope and persistence separately: a rule can have strong evidence and
+stay PROJECT, and a user can state a global preference once. `Status` says what happened
+to it: `candidate`, `approved` (user agreed, not yet written), `saved` (written to the
+stated place), `conflict`, `dropped`, `superseded`.
+
+- **New -> PROJECT candidate:** one explicit statement or correction. An inferred
+  candidate stays unconfirmed until a second independent sighting that includes at least
+  one explicit statement or confirmation.
+- **PROJECT -> DOMAIN:** at least two independent sessions, plus either evidence from two
+  repositories in the same domain or an explicit statement that it applies generally to
+  that domain. The wording must describe domain behavior, not one repo's implementation.
+- **DOMAIN -> GLOBAL:** evidence across at least two distinct domains, or an explicit
+  statement that it applies across projects. Remove domain terms from the wording.
+- **Safety fast-track:** an explicit correction about a consequential or destructive
+  mistake triggers an immediate review of a protective rule. Decide its scope from the
+  real risk; severity alone never makes it GLOBAL.
+- Every scope change and every write needs the user's approval. `promote` moves the
+  record without changing its ID, dates or history.
+
+**Conflicts.** A contradiction blocks promotion. Keep both the rule and the conflicting
+evidence, do not silently replace the wording, and ask the user to resolve it. An
+explicitly superseded rule may be revised after approval with its provenance kept.
+
+**Staleness.** Never expire a preference by age alone. Flag it when its tool, platform,
+configuration or project changes, or when the user contradicts it. Archive records of
+retired projects.
 
 ## Step 3: Normalize each surviving candidate
 
@@ -247,9 +304,8 @@ SESSION items are shown above for transparency but are not meant to
 persist anywhere.]
 
 # Registry Updates
-[Rows to add or update in ~/.claude/preference-registry.md: new candidates,
-Seen counts raised by independent sightings, status changes, and any
-promotion candidates (PROJECT -> DOMAIN -> GLOBAL) with the evidence.]
+[Registry changes: new candidates, independent sightings to record, conflicts,
+refinements, and the `report` promotion-eligibility list with the evidence.]
 ```
 
 If the conversation genuinely contains no durable signal (e.g. it was purely
@@ -299,21 +355,29 @@ memory system permits it.
 
 ## Step 7: Update the registry
 
-After the user has answered Step 6, update `~/.claude/preference-registry.md` so
-the next session, in any repo, can build on this one. Ask once with the Step 6
-question ("Save 1 and 2, and update the registry?"); the registry is a ledger and
-changes no behavior, so it does not need a per-item decision.
+After the user has answered Step 6, update the registry through the helper so the next
+session, in any repo, can build on this one. Ask once with the Step 6 question ("Save 1
+and 2, and update the registry?"); the registry is a ledger and changes no behavior, so
+it needs no per-item decision.
 
-- Add a row for every kept candidate that is not SESSION scope, including items
-  the user declined to save as `candidate` (or `dropped` if they rejected the
-  preference itself). One short behavioral rule per row; no task facts, no
-  secrets, no personal details.
-- For a match from Step 1b, raise Seen only for an independent sighting, update
-  last seen and the Repos list, and keep the first-seen date.
-- Set Status to `saved` and fill "Saved in" only for items actually written in
-  Step 6. Never mark an item saved that was not.
-- Record promotion candidates in the Preference column ("promotion candidate to
-  DOMAIN") rather than changing Scope; Scope changes only when the user approves
-  the promotion and the preference is rewritten at the wider scope.
-- Keep the file small: merge near-duplicates, and remove `dropped` rows older than
-  a year.
+```bash
+python3 ~/.claude/skills/extract-session-preferences-core/registry.py add --preference "..." --keywords a,b,c --scope PROJECT --session <id> \
+    --repo R --domain D [--explicit] [--evidence "..."]
+python3 ~/.claude/skills/extract-session-preferences-core/registry.py update P-012 --sighting --session <id> --repo R [--explicit]
+python3 ~/.claude/skills/extract-session-preferences-core/registry.py update P-012 --status saved --saved-in "global CLAUDE.md, Section X"
+python3 ~/.claude/skills/extract-session-preferences-core/registry.py promote P-012 --to DOMAIN --saved-in "skill Y"     # only after approval and the write
+python3 ~/.claude/skills/extract-session-preferences-core/registry.py archive P-012 --reason "user rejected it" --status dropped
+```
+
+- Add a record for every kept candidate that is not SESSION scope, including items the
+  user declined to save (`candidate`, or `dropped` with `archive` if they rejected the
+  rule itself). One short behavioral rule per record; no task facts, secrets or personal
+  details. Pass `--explicit` only when the user said it.
+- `add` refuses a near-duplicate and shows the existing record: update that one instead.
+- Set `saved` only with `--saved-in`, and only for items actually written in Step 6.
+  Approval alone is `approved`.
+- Scope changes only through `promote`, after the user approves and the rule has been
+  rewritten at the wider scope.
+- Use the real session ID (the conversation's session file name) so a re-run in the same
+  session is not counted twice.
+- Keep keywords to 3-6 lowercase tags and reuse existing ones (`find` shows them).
