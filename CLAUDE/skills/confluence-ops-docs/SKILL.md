@@ -152,6 +152,17 @@ If confidence is Low, say so plainly and recommend a follow-up with the
 project owner rather than letting the page's polish imply more certainty
 than the underlying evidence supports.
 
+## Language
+
+Pages written in Bahasa keep technical terms in English; translate only the
+connecting prose. SQL and code comments are written in English. (Added
+2026-10-14, a whitelist ops page: a fully translated first draft was rewritten at the
+user's request.)
+
+## Editing pages the user is editing
+
+Never write to a Confluence page the user says they are editing until they say it is saved. A page can hold an unpublished draft that the API does not show, so a small diff or a snapshot token that keeps changing does not mean nobody is editing. If the user has edited a page, re-read it right before each change, use the current ids and token, and change only what was asked. Offer to apply the change after they save, or give the exact edit to make by hand.
+
 ## Documentation maintenance
 
 Write pages that survive the system's normal rate of change without going

@@ -55,6 +55,8 @@ It also creates or updates a single per-ticket changelog at `release/<TICKET-ID>
 5. **Testing section only if** test files appear in the diff OR the user explicitly asks. Describe only tests actually present.
 6. **Version never carries a `v` prefix** — use `1.2.0`, not `v1.2.0`, everywhere (changelog, PR messages, tags).
 7. **Agent creates files only.** Do **not** run `git add`/`commit`/`push`/`tag` — the user does that after review.
+8. **Release folder keeps only what changes.** When a release folder starts from a previous ticket's artifacts, keep only files whose content differs for this ticket: diff each against its source, delete empty-diff copies, and name the baseline ticket in the CHANGELOG. Files new to the ticket (docs, the requirement PDF) stay.
+9. **Continue the ticket's own release.** A change to files that already belong to a ticket's `release/<TICKET-ID>/` folder (for example revising its DDL before it was ever deployed) is a new version entry in that ticket's existing `CHANGELOG.md`, not a new standalone `release/<slug>/` folder. Infer the ticket from the files being changed when the request does not name it.
 
 ---
 
@@ -296,6 +298,33 @@ Semantic versioning: **X** major/breaking, **Y** minor/feature, **Z** patch/fix.
 
 ---
 
+## Jira Status Check (Phase 5)
+
+After the PR messages are shown, check the Jira ticket parsed from the branch
+(resolve the site and `cloudId` once via `getAccessibleAtlassianResources`; don't hardcode them).
+Skip when there is no ticket (slug-keyed ad-hoc work).
+
+| PR target | Target Jira status |
+| --- | --- |
+| Feature → `dev` | `Testing` |
+| `dev` → `master` | `Ready to Release` |
+
+1. Read the ticket's current status (`getJiraIssue`).
+2. Already at or past the target status: say so and change nothing.
+3. Otherwise **notify and ask** (`Move PROJ-1234 from "<current>" to "Testing"?`), and
+   transition only after the user confirms. Jira changes are visible to others.
+4. Transition by **status, not by name**: the transition name often differs from the
+   target status. Read the ticket's allowed transitions (`discover` →
+   `executeRead`), pick the one whose target status matches, then
+   `transitionJiraIssue` with that `transitionId`. If no allowed transition reaches
+   the target, report the available ones instead of guessing.
+5. The PR is opened by the user, so transition when they confirm it is open, and add
+   the PR link as a Jira comment (`addOrEditJiraIssueComment`).
+6. Report the status the transition returned, then update the logbook row
+   (`/logbook add`, `status` = `PR to dev` / `PR to master`).
+
+---
+
 ## User Action (after review)
 
 The agent creates files and displays both PR messages; the user runs git:
@@ -327,3 +356,5 @@ Then open the **Feature → Dev** PR with PR Message 1. Later, when promoting `d
 - [ ] Testing section only if test files in diff or explicitly requested
 - [ ] PR messages within line limits (25 / 20)
 - [ ] No git commands run by the agent — user handles add/commit/push/tag
+- [ ] Jira status checked (`Testing` for → dev, `Ready to Release` for → master); transition only after the user confirmed
+- [ ] Logbook row proposed/updated with the PR status and link

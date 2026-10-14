@@ -102,6 +102,8 @@ file into `~/.claude/`:
 | `<ATLASSIAN_CLOUD_ID>` | `skills/bast-*` | The site's cloud ID (from `getAccessibleAtlassianResources`) |
 | `PROJ` (as in `PROJ-1234`) | `skills/jira-ticket-kickoff`, `skills/bast-*` | Your own Jira project key |
 | `<BAST_TEMPLATE_PAGE_ID>` | `skills/bast-generator` | The Confluence page ID of your `BAST DATA` template copy |
+| `<BAST_FOLDER_ID>` | `skills/bast-generator` | The Confluence folder ID of your `BAST` folder (new BAST pages are copied into it) |
+| `<PERSONAL_SPACE_ID>`, `<PERSONAL_SPACE_KEY>`, `<LOGBOOK_FOLDER_ID>`, `<WEEKLY_PAGE_ID>`, `<ON_HOLD_PAGE_ID>`, `<ARCHIVE_PAGE_ID_FOR_THAT_YEAR>` | `skills/logbook/config.example.json` (copy to `~/.claude/logbook/config.json`) | Your Confluence personal space and the weekly/archive page ids |
 | `<COMPANY>` | `skills/bast-generator/references/template-map.md` | The company name used in the BAST Scope checkbox |
 
 Only `CLAUDE.md` and `commands/` are synced automatically
@@ -237,7 +239,7 @@ description. You can also call them by name.
 | `documentation_auditor` | Audit docstrings and comments |
 | `logging_auditor` | Audit logging strategy and log quality |
 | `process-skill-auditor` | Audit how a skill or agent was used in a session |
-| `extract-session-preferences` | Distill durable preferences from a session into memory / `CLAUDE.md` |
+| `extract-session-preferences-core` | Distill durable preferences from a session into memory / `CLAUDE.md`, keeping a cross-session evidence ledger in `~/.claude/preference-registry/` (CSV files plus the `registry.py` helper shipped with the skill; the data is personal and not part of this template; see the skill's `REGISTRY.md`). The `/extract-session-preferences` command runs it on Opus; the skill carries `-core` so its name doesn't clash with the command |
 | `formal_document_reviewer` | Review formal documents (EN/ID) for unusual or high-impact terms |
 
 ---

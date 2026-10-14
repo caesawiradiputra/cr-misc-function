@@ -96,6 +96,9 @@
     "type": "command",
     "command": "sh ~/.claude/statusline-command.sh"
   },
+  "env": {
+    "NO_PROXY": "api.anthropic.com,claude.ai,claude.com,platform.claude.com,.anthropic.com,.claude.ai,.claude.com,mcp.context7.com"
+  },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
