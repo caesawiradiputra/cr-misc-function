@@ -3,4 +3,4 @@ description: Extract durable preferences and lessons from this session (runs on 
 model: opus
 ---
 
-Invoke the `extract-session-preferences` skill and follow it exactly.
+Invoke the `extract-session-preferences-core` skill and follow it exactly.
