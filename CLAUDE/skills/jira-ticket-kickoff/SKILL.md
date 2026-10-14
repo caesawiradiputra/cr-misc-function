@@ -173,6 +173,54 @@ The user keeps each ticket's SRF PDFs and other supporting files outside the rep
 
 When the user says PDFs have been added there, read them locally. The Read tool's PDF mode needs `pdftoppm`, which isn't installed here, so use `uv run --with pypdf python` with `pypdf.PdfReader(...).pages[i].extract_text()` and collapse whitespace with `re.sub(r'\s+', ' ', text)` (the raw text comes out one word per line). Record what the PDF says in `requirement.md` as an appended dated section. Table-layout PDFs may lose structure, so say so if a table looks garbled.
 
+### Step 6a-iii: Gather reference context into `scratch/<TICKET-ID>/`
+
+Before brainstorming, collect what already exists that relates to this change, so the design matches the repo's earlier work instead of starting from a blank page. Everything gathered goes into `scratch/<TICKET-ID>/` (gitignored, one folder per ticket). Run this in Path A, in Path B only if `scratch/<TICKET-ID>/CONTEXT.md` is missing, and in Path C keyed by the slug (`scratch/<slug>/`). Never in Path D.
+
+**1. Classify the ask** from the ticket summary and description (the pasted text in Path C): **create/new** (new variable, table, field, pipeline, DAG, script) or **update/modify** (change, adjust, fix, extend, deprecate something that exists). Say which in one line. If it is genuinely mixed or unclear, ask.
+
+**2. Search** with keywords taken from the ticket: variable, table, column and field names, pipeline or DAG names, the feature noun. Look in, in this order:
+
+- `release/*/` of older tickets in this repo (`ddl/`, `docs/`, `config/`, `data/`, `CHANGELOG.md`), plus `git log --all --oneline -i --grep=<keyword>` to find the ticket that touched it
+- `sql_scripts/` (`variables/`, `migrations/`, `database_setup/`) and the app code that the ticket touches
+- existing `scratch/*/` folders, which may hold earlier DataWorks or DDL exports
+- sibling repos under the same umbrella folder (e.g. `<repo>-consumer`): pipelines, DataWorks nodes, Airflow DAGs, DDL
+- the local `Documents/Work/{Domain}/Jira/` folders of related older tickets (SRF PDFs, exports)
+
+Prefer `Grep`/`Glob` and `git log` over reading whole directories. Report what you searched, even when nothing matched.
+
+**3. Act on the class:**
+
+- **Create/new**: show the closest similar items found (path, ticket, one line on why it's similar) and **ask** whether the user has a reference or similar work in mind, since they may know one the search can't see. If a reference exists (found or named), read it and note the conventions to match: naming, file layout, DDL style, variable SQL shape, `rule_type`/`return_type`, release-folder contents, DataWorks/DAG structure. If nothing is found and the user has none, say so plainly and continue; don't invent a reference.
+- **Update/modify**: search for the existing artifact to be changed (the current variable row/SQL, DDL, pipeline node, DAG, script). If found, show it and confirm it is the right one. If **not found, ask the user** for it (path, paste, or a DataWorks/DB export) before designing anything. Never reconstruct the "current state" from guesswork.
+
+**4. Save the context** by copying, never moving, so the originals stay untouched. Mirror the artifact type as a subfolder: `ddl/`, `scripts/`, `docs/`, `dataworks/`, `airflow/`, `config/`. Check `scratch/<TICKET-ID>/` first and don't overwrite a file already there (see the global "check state before writing" rule). Skip secrets (`.env`, credentials, tokens, vault files), and say so if one would have been relevant.
+
+Write `scratch/<TICKET-ID>/CONTEXT.md` as the index:
+
+```markdown
+# Context for <TICKET-ID>
+
+**Mode:** create | update
+**Searched:** <locations and keywords>
+
+## Files
+
+| File in scratch | Original location | Why it's relevant |
+| --- | --- | --- |
+| ddl/example.sql | release/PROJ-1234/ddl/example.sql | similar new column on the same table |
+
+## Conventions to match
+
+<bullets, create mode only; "None found" if there is no reference>
+
+## Gaps
+
+<anything the user still needs to supply, e.g. the existing DataWorks node for an update; "None" if complete>
+```
+
+Tell the user the folder path and list the gaps. Carry the findings, including the conventions and gaps, into the Step 7a/7c summary and the brainstorming seed. Anything that should ship is still written fresh under `release/<TICKET-ID>/`, not copied out of scratch without asking.
+
 ### Step 7a: Summarize and brainstorm — don't jump to a plan
 
 Present a short summary: what the ticket asks for, the acceptance criteria, anything pulled from a linked `IN-` ticket that changes the picture, and anything ambiguous or worth double-checking against the codebase.
@@ -190,6 +238,8 @@ Do not touch `dev`, `master`, or run the sync script — the ticket branch is al
 ### Step 5b: Leave the release folder alone
 
 If `release/<TICKET-ID>/` doesn't exist yet, scaffold it and write `requirement.md` as in Step 6a. If it already exists, don't touch it — don't overwrite `requirement.md`, and don't touch anything already dropped into `ddl/`, `data/`, `config/`, or `docs/`.
+
+If `scratch/<TICKET-ID>/CONTEXT.md` doesn't exist, run Step 6a-iii first. If it exists, read it instead of searching again, and mention any listed gaps in the recap.
 
 ### Step 6b: Progress recap instead of brainstorming
 
@@ -258,6 +308,10 @@ Write `release/<slug>/docs/spec.md` (not `requirement.md` — there's no JIRA so
 <the pasted description, plus the clarifying answers from Step 2c, written up as the working spec>
 ```
 
+### Step 6c-ii: Gather reference context
+
+Run Step 6a-iii with `scratch/<slug>/` as the folder (do the `.gitignore` check from Step 6a-i first). The classification can often be read straight from the pasted description; skip the question when it can.
+
 ### Step 7c: Brainstorm with the enriched context
 
 Present the working spec (pasted description + your clarifying answers) as a short summary, then invoke `superpowers:brainstorming` with it as the seed — same as Step 7a, just with a spec you helped assemble instead of one JIRA already had written down. Still no implementation plan yet.
@@ -304,6 +358,13 @@ Append only — never edit or delete the original Description/Acceptance Criteri
 
 No branch operations, no brainstorming hand-off — this path ends at reporting the drift (and the update note, if the user wants it recorded).
 
+## Logbook
+
+After the kickoff or resume recap, propose a logbook row for the ticket (`/logbook`:
+`status` = `In progress`, `task` from the ticket summary; Path C uses the
+slug as `ticket`; `notes` only for a requirement difference or decision worth keeping). Write it after the user's OK. On Path B, update the existing row
+instead of adding one. Path D (recheck only) logs nothing.
+
 ## Pre-completion checklist
 
 - [ ] Path chosen correctly: recheck phrasing → Path D; ticket ID present (not a recheck) → JIRA path (A or B); absent + change described directly → Path C
@@ -313,8 +374,10 @@ No branch operations, no brainstorming hand-off — this path ends at reporting 
 - [ ] Path A/B: attachment metadata (filename/size/date) recorded in `requirement.md`'s Attachments section for the `PROJ-` ticket and any linked `IN-` ticket — never attempted to read attachment content, since no tool here can retrieve it
 - [ ] Path A: existing-branch check ran before any dev sync; working tree was clean before the sync script ran; branch type/slug derived from JIRA data
 - [ ] Path A/B: local `Documents/Work/{Domain}/Jira/{TICKET-ID} - {Title}/docs` folder checked for (reused if a `{TICKET-ID}` folder already exists) or created, and the user told where to drop the SRF PDFs
+- [ ] Path A/B/C: reference context step ran: ask classified as create or update and stated; searched release/, sql_scripts/, scratch/, sibling repos and Jira docs folders, and said what was searched; create mode asked about a reference and noted conventions to match; update mode found the existing artifact or asked the user for it; files copied (not moved) into `scratch/<TICKET-ID>/` by artifact type with a `CONTEXT.md` index, nothing overwritten, no secrets copied; findings carried into the brainstorming seed
 - [ ] Path B: dev/master untouched; existing `release/<TICKET-ID>/` contents left alone; recap grounded in actual `git log`/`git diff` output; linked `IN-` ticket re-checked for drift since the branch was created
 - [ ] Path C: clarifying questions asked and answered *before* branching; `spec.md` (not `requirement.md`) written from the assembled spec; type/slug confirmed with the user, not assumed
 - [ ] Path D: re-fetched live rather than reasoning from memory; drift (if any) diffed against the existing `requirement.md`, not just re-summarized from scratch; attachment list diffed too, with any count/filename/date change flagged for manual review rather than guessed at; any update appended, original sections left untouched; no git or folder operations performed
 - [ ] Links: every URL and every ticket key in text written to a file, a Jira description or comment, or a PR body is a Markdown link (`[PROJ-1234](https://<ATLASSIAN_SITE>.atlassian.net/browse/PROJ-1234)`); none left bare (see "Writing links")
 - [ ] Session ends at a brainstorming discussion (Path A/C), a progress check-in (Path B), or a drift report (Path D) — never at a plan or code change
+- [ ] Logbook row proposed (Path A/B/C) and written only after the user's OK; none for Path D

@@ -193,6 +193,14 @@ marked "confirmed" were verified; the rest are hypotheses to test.
   direct (no `000`) before adding it. `env` is read once at Claude Code
   startup, so every running session needs restarting after this change;
   confirm with `/status`'s Proxy row.
+- **Atlassian MCP returning HTTP 503 / `upstream connect error ... Cannot
+  assign requested address`:** check the endpoints with shell `curl` before
+  retrying `/mcp` (an unauthenticated 401 from `mcp.atlassian.com` means the
+  endpoint is reachable). If the shell checks succeed but `/mcp` reconnects
+  keep failing, restart the Claude Code session. This is a recovery
+  procedure, not proof of where the fault is. (2026-10-14, a whitelist ticket: two
+  reconnects failed, a session restart restored the tools; the cause was not
+  established.)
 
 ---
 
@@ -263,7 +271,12 @@ hand-write a new variant.
   local development dependencies through pyproject.toml/uv rather than modifying the
   shared requirements file solely to resolve local dependency conflicts.
 - **Python style**: Google-style docstrings, PEP 8, snake_case functions/variables, PascalCase classes
-- **Commit format**: Conventional Commits + gitmoji (see `/commit`)
+- **Commit format**: Conventional Commits + gitmoji (see `/commit`). When
+  committing, commit all of my own changes and split them into logical commits
+  when they cover separate concerns.
+- **Multi-repo sessions**: commit and push only in the session's focus repo.
+  Leave edits made in other repos uncommitted, for those repos' own sessions to
+  commit and push.
 - **Type hints**: Match project Python version — check `pyproject.toml` first
 
 ---
@@ -274,7 +287,7 @@ This branch topology and its merge strategies apply to repos the user created th
 
 - **`master`/`main`** — the production state of the repo. Receives **merge commits from `dev`** (a regular merge, not squash) when `dev` is promoted to production.
 - **`dev`/staging** — based/reset from `master`; the pre-production stage and the final check before a PR to `master`. Feature/fix/chore branches PR into `dev` using a **squash merge**, specifically to keep `dev`'s history clean (one commit per ticket, not the working branch's full commit-by-commit history).
-- **`sit`** — based/reset from `dev`; the environment referred to for testing. Receives **merge commits (not squash)** directly from `fea`/`fix`/etc. branches — never from `dev`. Unlike `dev`, `sit` can carry commits from **multiple** feature/fix branches at once, since it exists for shared/simultaneous testing of several in-flight branches before each is individually ready to squash-merge into `dev`.
+- **`sit`** — based/reset from `dev`; the environment referred to for testing. Receives **merge commits (not squash)** directly from `fea`/`fix`/etc. branches — never from `dev`. Unlike `dev`, `sit` can carry commits from **multiple** feature/fix branches at once, since it exists for shared/simultaneous testing of several in-flight branches before each is individually ready to squash-merge into `dev`. If a feature PR into `sit` conflicts with it, reset `sit` to `dev` instead of resolving the conflict (the user's rule, 2026-10-02).
 - **`fea`/`fix`/`chore`/etc.** — the actual work branches, based off `dev`. PR target is `dev`, not `master`.
 
 **A PR opened against `dev` must be complete and final at the moment it's opened** — since it's expected to be squash-merged, nothing should need to land afterward. Concretely: generate and include the per-ticket release changelog (`release/<TICKET-ID>/CHANGELOG.md`, per the `/generate-pr-message` command) and any other doc updates *before* opening the PR, as part of the same branch, not as a follow-up once `dev` already has the feature merged. If something is missed after the squash-merge has already landed, fix it with a small new branch and a normal follow-up PR back into `dev` — **never** amend and force-push `dev` to fold a missed file into the already-merged commit. `dev`'s tip is shared history the moment a PR merges into it, and rewriting it is destructive even when the fix itself is trivial. (Learned 2026-09-24, a data-pipeline repo PROJ-1841 session: attempted exactly this — amending the just-merged squash commit and force-pushing `dev` to fold in a changelog file — and the user stopped it as destructive before it executed. The changelog shipped instead as a normal follow-up PR into `dev`.)
@@ -297,6 +310,15 @@ already known to be wrong.
   byte-for-byte match), state explicitly whether it's functionally material.
   Don't burn tool calls reproducing something whose relevance was never
   established.
+- **Check the cost before a large read.** Before reading a large source
+  (session transcripts, a full Confluence page, a big Jira result), estimate
+  its size and likely cost. Prefer efficient, authoritative sources: local
+  files, git history, PRs, changelogs and targeted Jira queries. Use larger or
+  more expensive sources when necessary; if the only viable route has
+  significant cost, explain the trade-off and ask before proceeding. (Added
+  2026-10-09, logbook session: the user asked not to scan a week of
+  transcripts, then chose a local CSV as the source of truth over re-reading
+  the Confluence page, both to save tokens.)
 - **Trust but verify the reference itself.** When checking reconstructed or
   new content against an existing "reference" (another file, a prior commit,
   a doc), confirm that reference is actually authoritative before diffing
@@ -319,6 +341,13 @@ already known to be wrong.
   retry/fallback policies: changing the value invalidates every comment,
   docstring, configuration description, and runbook line that describes the
   old one. Sweep for those as part of the same change, not as a follow-up.
+  Run the same sweep before asking the user to review a spec, design or
+  changelog: re-read it end to end and fix stale, resolved or contradicting
+  statements (decided questions still listed as open, "pending" notes that are
+  done) instead of leaving the user to find them. (Added 2026-10-02,
+  a negative-list repo PROJ-1874: the user asked twice, "why the open items still
+  open?" and "any stale section before i start reviewing?", and both times
+  stale text was there.)
   (Broadened 2026-08-12, PROJ-1768 session: the same rename silently missed a
   historical variant node, a final-table column, and a retired-but-not-removed
   column — three separate misses in one session, none of them prose claims.
@@ -326,6 +355,16 @@ already known to be wrong.
   count Airflow-Variable-driven left `retries=5` / `~25 min` claims stale in
   four places — two Confluence docs, a docstring, and a comment — none caught
   by the written plan, all caught later by review.)
+- **After fixing a bug, check the parallel code next to it.** A defect is often
+  one instance of a pattern (a missing fallback, an inconsistent join key, a
+  mismatched value repeated across sibling `CASE` branches, parallel joins or
+  similarly structured lookups). Before calling the fix done, scan the code
+  immediately adjacent to and parallel with what you changed for the same
+  pattern. This is a deliberate local check, not a repository-wide search.
+  Report siblings you found; fix them when they are the same defect, or ask
+  when they differ. (Added 2026-10-14, a lakehouse repo bug session: only one
+  arm of a `CASE` was fixed and the user asked why the identical arms were
+  left alone.)
 - **Add a new import in the same edit as its first usage — never as a
   separate, earlier edit.** If a lint-on-save hook (e.g. ruff) runs between
   edits, an import saved with no usage yet gets flagged unused and
@@ -406,6 +445,54 @@ already known to be wrong.
 
 ---
 
+## Data Lake / DataWorks Conventions
+
+Scoped to data-lake pipelines and DataWorks nodes; not rules for other work.
+(Added 2026-10-14, a data-pipeline repo PROJ-1869 session.)
+
+- **The `dt` partition key is plain `yyyymmdd`.** Don't append a suffix such as
+  `_full` or change the format. A one-off load (initial seed) gets a plain `dt`
+  that no scheduled run ever writes, so `writeMode: truncate` cannot replace it.
+  (The user rejected `_full` twice: "that broke the convention of dt =
+  yyyymmdd only".)
+- **DataWorks nodes receive `${bizdate}` only.** Derive any other date through
+  the node's scheduling parameter (for example `bizdate=$[yyyymmdd-182]` on the
+  odps node for a six-month cutoff) instead of inventing `${cutoff_date}`-style
+  parameters. Check the node's parameter against the run log before relying on it.
+- **Test a data fix along the lineage, layer by layer.** Check the upstream
+  inputs the fix depends on (columns exist, are populated, fresh, the right
+  row counts; a silver model can union several raw sources, so count each),
+  the changed model itself (the distribution the fix should change), and the
+  downstream models that read it (they still build, row counts and null rates
+  look sane, no fan-out; `dbt ls --select <model>+` lists dependents). Gather
+  evidence at each hop before trusting the next, because `COALESCE` and
+  `LEFT JOIN` fallbacks downstream can hide a wrong or empty upstream layer.
+  Keep runs scoped to the models involved. (Added 2026-10-14, seen in two
+  lakehouse sessions.)
+
+---
+
+## Claude Tooling
+
+- **Helper scripts under `~/.claude` must run on the WSL system `python3` (3.9)
+  and on 3.10+.** Avoid 3.10-only syntax (`X | None` in runtime-evaluated
+  positions, `zip(strict=...)`, `match`) or add `from __future__ import
+  annotations`, and verify on both (`uv run --python 3.9 python ...` and
+  `--python 3.12`) before calling a change done. This is for personal tooling;
+  project code follows that project's own `pyproject.toml`. (Added 2026-10-14,
+  logbook helper: it failed on `str | None` under the system 3.9.)
+- **Mirror `~/.claude` changes into the `cr-misc-function` template.** When a
+  skill, command or `CLAUDE.md` under `~/.claude` is changed, make the same
+  change in the matching `CLAUDE/` file of `cr-misc-function` on the same
+  branch, replacing company-specific values with the placeholders listed in
+  `CLAUDE/README.md` (the repo is public). Leave it uncommitted unless asked.
+  If the template has already drifted from the live file, fix that too in the
+  same pass instead of only reporting it. Logbook data and real config values
+  never go into the repo. (Added 2026-10-14, seen in two repos: the user asked
+  to mirror a skill change and to update the template in the same branch.)
+
+---
+
 ## Markdown Style
 
 Rules VS Code cannot auto-fix — apply these manually when writing or editing Markdown files:
@@ -413,6 +500,8 @@ Rules VS Code cannot auto-fix — apply these manually when writing or editing M
 - **Code blocks must always specify a language.** Use ` ```text ` for plain text or output; never leave the opening fence bare (` ``` `).
 - **Table separators must have spaces around dashes.** Use `| --- | --- |`, not `|---|---|`.
 - **Mermaid diagrams: use `<br/>` for line breaks, not `\n`.** `\n` inside a node or edge label renders as a literal backslash-n in some previewers (confirmed in VS Code's markdown preview) — use `<br/>` instead.
+- **Object names and code-related text go in backticks.** Tables, columns, schemas, hosts, databases, workspaces, node and workflow names, paths, file names, cron expressions, commands and SQL keywords are written as inline code, in chat replies and in documents. In Confluence HTML use `<code>…</code>`. Plain words, labels and ticket keys stay plain text. (Added 2026-10-09, a BAST session: the user asked for it, then confirmed the result.)
+- **Bahasa BAST and Confluence docs keep technical terms in English.** Translate only the connecting prose and instructions; words such as upload, folder, file, row, key, partition, delimiter, match, reject, delete, apply, promote, notice, alert, warning, mention, Variable, Connection, state, retry, re-run, cumulative list and un-release stay English. SQL and code comments are English. (Added 2026-10-14, a whitelist ops page: the first draft translated everything and the user asked for English technical terms.)
 
 ---
 
@@ -436,12 +525,50 @@ Rules VS Code cannot auto-fix — apply these manually when writing or editing M
 
 ---
 
+## Work Logbook (weekly reporting)
+
+The user's tracking of what they did, used for weekly reporting. Master file:
+`~/.claude/logbook/logbook.csv`; Windows copy:
+`/mnt/c/Users/<WINDOWS_USERNAME>/Documents/Work/Logbook/logbook.csv`. Use the `logbook` skill
+(`~/.claude/skills/logbook/`) and its helper; never hand-edit the CSV.
+
+- When a task finishes, or a PR is opened or merged, **propose** a logbook row
+  (ticket, one-line outcome-first task, status) and write it after the user's OK.
+- One row per ticket per day; the helper upserts, so later status changes update
+  the same row.
+- Skills that finish a unit of work (`/generate-pr-message`, `jira-ticket-kickoff`,
+  `bast-generator`) propose the row themselves at their last step.
+- To backfill a period, summarize from git commits, PRs and release docs
+  (`release/<TICKET>/CHANGELOG.md`, including its requirement-update and
+  decision sections), never from session transcripts (too large, and the
+  PR/commit record is more accurate).
+- The weekly Confluence tracker page is generated from the CSVs only when asked
+  (`/logbook` publish procedure); finished work idle for 7 days moves to the archive CSV, and paused tickets go to an On Hold child page.
+- The CSVs and `jira-cache.json` are the source of truth; to recheck, run `/logbook check` (CSV vs
+  git/PRs vs Jira) and never read the Confluence page back for state.
+- `sync` copies to the Windows folder only when the master changed; run it at the
+  first logbook touch of a session or when asked, not after every edit.
+
+---
+
+## Jira Status on PRs
+
+When a PR is prepared or opened, check the ticket's Jira status (Atlassian MCP):
+PR to `dev` → `Testing`; PR to `master` → `Ready to Release`. Notify and ask before
+transitioning (never silently), pick the transition by its target status, and skip
+when the ticket is already at or past it. Details: the "Jira Status Check" phase of
+`/generate-pr-message`. If a repo's workflow lacks these statuses, report the
+available transitions instead of guessing.
+
+---
+
 ## Available Slash Commands
 
 | Command | Description |
 | --- | --- |
 | `/commit` | Generate Conventional Commit + gitmoji message, review/refine, and commit |
 | `/generate-pr-message` | Generate PR messages + release folder for a branch deployment |
+| `/logbook` | Add/update a weekly-report logbook row, print the weekly summary, copy the CSV to Windows |
 | `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees |
 | `/refactor-python` | Refactor Python code while preserving behavior |
 | `/refactor-repositories` | Refactor repository classes to mandatory structure |

@@ -13,25 +13,5 @@
       "Edit(legacy/**)",
       "Write(legacy/**)"
     ]
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell.exe",
-            "args": [
-              "-NoProfile",
-              "-Command",
-              "$env:VIRTUAL_ENV=$null; $i=[Console]::In.ReadToEnd()|ConvertFrom-Json; $f=$i.tool_input.file_path; if($f -like '*.py' -and (Test-Path $f)){ Set-Location (Split-Path $f); uv run --no-sync ruff format $f; uv run --no-sync ruff check --fix $f }; exit 0"
-            ],
-            "timeout": 60,
-            "statusMessage": "ruff format + lint"
-          }
-        ]
-      }
-    ]
   }
 }

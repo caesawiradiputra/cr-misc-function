@@ -1,6 +1,6 @@
 ---
 name: process-skill-auditor
-description: Audit how a skill, agent, sub-agent, or instruction set was actually USED during a session — not a generic code review, and not a preference-extraction pass. Compares the target's own documented process (its SKILL.md, agent definition, prompt templates, or CLAUDE.md instruction block) against what the transcript shows actually happened, across three distinct dimensions — compliance (were the documented steps followed), efficiency (context accumulation, sub-agent/model-selection overhead, process redundancy, and session architecture — was execution unnecessarily expensive even when compliant), and effectiveness (did the process actually produce a better result, or was it disproportionate to task complexity). Produces evidence-cited findings per dimension, prioritized by a cost hierarchy so session-architecture and context findings aren't buried under small tool-call nitpicks, then classifies each recommendation as a skill/process change, an agent/instruction change, a global-configuration change, a project-specific change, no-change, or an observation-only note — never silently rewriting the audited skill's own rules. Use this whenever the user asks to review, audit, or grade how a session used a particular skill, agent, sub-agent, or workflow; asks whether a process was followed correctly, was "efficient", "streamlined", "worth the token cost", or "disproportionate" for the task; asks whether extra review/fix rounds actually helped; asks whether a session ran too long, accumulated too much context, should have been compacted/cleared/split, or used the wrong model tier for a delegated task; or asks whether to create a new skill vs. fold a capability into an existing one for this kind of process review — even if they don't name this skill directly. Do NOT use this to extract the user's own stated preferences/feedback for memory (that's extract-session-preferences — a finding here about execution should only become a saved preference if the auditor's own gate says so, never automatically). Do NOT use this to silently propose rewrites to the audited skill's own prose, especially for vendored/plugin skills under a no-edit-without-eval-evidence policy — determine first whether a deviation was justified, whether the skill itself was at fault, and whether modifying it is even allowed.
+description: Audit how a skill, agent, sub-agent, or instruction set was actually USED during a session — not a generic code review, and not a preference-extraction pass. Compares the target's own documented process (its SKILL.md, agent definition, prompt templates, or CLAUDE.md instruction block) against what the transcript shows actually happened, across three distinct dimensions — compliance (were the documented steps followed), efficiency (context accumulation, sub-agent/model-selection overhead, process redundancy, and session architecture — was execution unnecessarily expensive even when compliant), and effectiveness (did the process actually produce a better result, or was it disproportionate to task complexity). Produces evidence-cited findings per dimension, prioritized by a cost hierarchy so session-architecture and context findings aren't buried under small tool-call nitpicks, then classifies each recommendation as a skill/process change, an agent/instruction change, a global-configuration change, a project-specific change, no-change, or an observation-only note — never silently rewriting the audited skill's own rules. Use this whenever the user asks to review, audit, or grade how a session used a particular skill, agent, sub-agent, or workflow; asks whether a process was followed correctly, was "efficient", "streamlined", "worth the token cost", or "disproportionate" for the task; asks whether extra review/fix rounds actually helped; asks whether a session ran too long, accumulated too much context, should have been compacted/cleared/split, or used the wrong model tier for a delegated task; or asks whether to create a new skill vs. fold a capability into an existing one for this kind of process review — even if they don't name this skill directly. Do NOT use this to extract the user's own stated preferences/feedback for memory (that's extract-session-preferences-core — a finding here about execution should only become a saved preference if the auditor's own gate says so, never automatically). Do NOT use this to silently propose rewrites to the audited skill's own prose, especially for vendored/plugin skills under a no-edit-without-eval-evidence policy — determine first whether a deviation was justified, whether the skill itself was at fault, and whether modifying it is even allowed.
 ---
 
 # Process Skill Auditor
@@ -42,7 +42,7 @@ digraph audit {
 ```
 
 **Not this skill:** extracting the user's own stated preferences or
-feedback for memory — that's `extract-session-preferences`, which mines the
+feedback for memory — that's `extract-session-preferences-core`, which mines the
 *user's* words for durable behavioral instructions. This skill mines the
 *execution* (tool calls, dispatches, context passed, rounds taken) against
 a *target's own documented rules*. They read the same kind of input (a
@@ -391,7 +391,7 @@ to hedge with two:
   change.
 - **Global configuration improvement** — a standing, cross-project rule
   (CLAUDE.md-level) would prevent recurrence. Hold this to the same bar
-  `extract-session-preferences` uses for GLOBAL scope: real, generalizable
+  `extract-session-preferences-core` uses for GLOBAL scope: real, generalizable
   evidence, not a single incident dressed up as a rule.
 - **Project-specific improvement** — relevant only to this project's
   setup, conventions, or constraints.
@@ -459,7 +459,7 @@ materially higher-impact than something ranked above it, either reorder
 them or state the trade-off explicitly. A reader skimming top to bottom
 should never find the report's own prose contradicting its own ranking.
 
-## Step 7: The one gated path to extract-session-preferences
+## Step 7: The one gated path to extract-session-preferences-core
 
 This skill's output is an improvement plan, not a memory-save flow, and it
 must not auto-promote execution findings into user preferences — an
@@ -469,9 +469,9 @@ execution habit ("reread the plan 8 times") is not evidence about what the
 The one exception: if, across this audit or several, the same
 **Global configuration improvement** keeps recurring for the same target
 or pattern, that repetition is itself the kind of independent-moments
-evidence `extract-session-preferences` requires to promote something to
+evidence `extract-session-preferences-core` requires to promote something to
 GLOBAL scope. In that specific case — and only that case — surface it to
 the user as a candidate ("this has now shown up in two audits — want me to
-run extract-session-preferences on it, or save it directly?") rather than
+run extract-session-preferences-core on it, or save it directly?") rather than
 saving it yourself. Everything else stays a report the user reads and acts
 on manually.
