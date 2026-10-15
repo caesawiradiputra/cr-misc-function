@@ -420,9 +420,214 @@ def test_config_example_lists_the_four_waiting_stages() -> None:
     assert cfg["other_court"] == ["TESTING", "READY FOR RELEASE", "DEPLOYMENT", "PAT"]
 
 
+def ev(
+    stage: str = "",
+    last: str = "2026-10-14",
+    master: bool = False,
+    repos: tuple[str, ...] = ("r",),
+) -> dict:
+    return {"stage": stage, "last": last, "repos": set(repos), "master": master}
+
+
+def entry(
+    lb, status="", jira="", info_extra=None, evidence=None, live=True, today=TODAY
+):
+    info = {"jira_status": jira, **(info_extra or {})}
+    item = [row("2026-10-10", "DA-1", status)] if status else []
+    return lb.board_entry("DA-1", info, item, evidence, today, live)
+
+
+def flag_texts(e: dict) -> list[str]:
+    return [text for text, _ in e["flags"]]
+
+
+def test_word_comes_from_jira_then_logbook(lb: ModuleType) -> None:
+    assert entry(lb, "Testing", "Ready For Release")["word"] == "READY FOR RELEASE"
+    assert entry(lb, "Testing", "")["word"] == "TESTING"
+    assert entry(lb, "", "")["word"] == "TODO"
+
+
+def test_merged_dev_pr_with_jira_still_testing_is_flagged(lb: ModuleType) -> None:
+    e = entry(lb, "Testing", "Testing", evidence=ev("Ready For Release"))
+    assert any("merged into dev" in t for t in flag_texts(e))
+
+
+def test_master_pr_while_jira_testing_is_flagged_but_not_at_ready_for_release(
+    lb: ModuleType,
+) -> None:
+    assert entry(lb, "", "Testing", evidence=ev(master=True))["flags"]
+    assert entry(lb, "", "Ready For Release", evidence=ev(master=True))["flags"] == []
+
+
+def test_commits_while_jira_is_still_analysis_are_flagged(lb: ModuleType) -> None:
+    e = entry(lb, "", "Data Analysis", evidence=ev("Development"))
+    assert any("Data Analysis" in t for t in flag_texts(e))
+
+
+def test_pat_age_flag_boundary_and_unknown_date(lb: ModuleType) -> None:
+    old = entry(lb, "", "PAT", {"pat_since": "2026-10-08"})  # 7 days
+    young = entry(lb, "", "PAT", {"pat_since": "2026-10-09"})  # 6 days
+    unknown = entry(lb, "", "PAT")
+    assert any("Done" in fix for _, fix in old["flags"])
+    assert not any("Done" in fix for _, fix in young["flags"])
+    assert any("PAT date unknown" in t for t in flag_texts(unknown))
+    assert not any("Done" in fix for _, fix in unknown["flags"])
+
+
+def test_hold_wins_over_workflow_flags(lb: ModuleType) -> None:
+    e = entry(
+        lb, "Testing", "Hold", {"hold_since": "2026-10-01"},
+        evidence=ev("Ready For Release", master=True),
+    )  # fmt: skip
+    assert e["word"] == "HOLD"
+    assert "on hold since 2026-10-01" in e["next"]
+    assert all(t.startswith("note:") for t in flag_texts(e))
+
+
+def test_degraded_mode_suppresses_jira_dependent_flags(lb: ModuleType) -> None:
+    e = entry(lb, "Testing", "Testing", evidence=ev("Ready For Release"), live=False)
+    assert e["flags"] == []
+
+
+def test_jira_and_logbook_difference_proposes_the_add_command(lb: ModuleType) -> None:
+    e = entry(lb, "Testing", "Deployment")
+    assert any('--status "Deployment"' in fix for _, fix in e["flags"])
+
+
+def test_derive_board_orders_by_stage_and_detects_live_mode(lb: ModuleType) -> None:
+    today = TODAY.isoformat()
+    cache = {
+        "DA-2": {"track": True, "jira_status": "Testing", "refreshed": today},
+        "DA-1": {"track": True, "jira_status": "Data Development", "refreshed": today},
+    }
+    entries, live, refreshed = lb.derive_board(cache, [], {}, TODAY)
+    assert [e["ticket"] for e in entries] == ["DA-1", "DA-2"]
+    assert live is True and refreshed == today
+    cache["DA-1"]["refreshed"] = cache["DA-2"]["refreshed"] = "2026-10-01"
+    _, live, refreshed = lb.derive_board(cache, [], {}, TODAY)
+    assert live is False and refreshed == "2026-10-01"
+
+
+def test_derive_board_skips_finished_tickets(lb: ModuleType) -> None:
+    items = [[row("2026-10-01", "DA-9", "Done")]]
+    entries, _, _ = lb.derive_board({}, items, {}, TODAY)
+    assert entries == []
+
+
+def test_render_board_groups_by_stage_and_shows_flags(lb: ModuleType) -> None:
+    e = entry(lb, "Testing", "Testing", evidence=ev("Ready For Release"))
+    text = lb.render_board([e], True, TODAY.isoformat(), [])
+    assert "## TESTING (1)" in text
+    assert "DA-1" in text and "next:" in text
+    assert "PR merged into dev but Jira is still Testing" in text
+    assert "STALE" not in text
+
+
+def test_render_board_shows_the_stale_banner_in_degraded_mode(lb: ModuleType) -> None:
+    notes = ["r: gh pr list unavailable (commits only)"]
+    text = lb.render_board(
+        [entry(lb, "Testing", "Testing")], False, "2026-10-01", notes
+    )
+    assert "STALE" in text and "2026-10-01" in text
+    assert "gh pr list unavailable" in text
+
+
+def test_pipeline_command_prints_and_writes_nothing(
+    lb: ModuleType, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    write_csv(lb.LOGBOOK, [row("2026-10-10", "DA-1", "Testing")])
+    (tmp_path / "config.json").write_text(
+        json.dumps({"repo_paths": {"r": str(tmp_path)}})
+    )
+    cache = {"DA-1": {"track": True, "jira_status": "Testing",
+                      "refreshed": dt.date.today().isoformat()}}  # fmt: skip
+    (tmp_path / "jira-cache.json").write_text(json.dumps(cache))
+    monkeypatch.setattr(lb, "_run", fake_run_factory([]))
+    before = lb.LOGBOOK.read_text()
+    lb.cmd_pipeline(argparse.Namespace(since=""))
+    assert "## TESTING (1)" in capsys.readouterr().out
+    assert lb.LOGBOOK.read_text() == before
+
+
+def test_pipeline_works_without_gh(
+    lb: ModuleType, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    (tmp_path / "config.json").write_text(
+        json.dumps({"repo_paths": {"r": str(tmp_path)}})
+    )
+    cache = {"DA-1": {"track": True, "jira_status": "Data Development",
+                      "refreshed": dt.date.today().isoformat()}}  # fmt: skip
+    (tmp_path / "jira-cache.json").write_text(json.dumps(cache))
+
+    def no_gh(cmd: list[str], cwd: str) -> str | None:
+        if cmd[:2] == ["git", "config"]:
+            return "me\n"
+        if cmd[:2] == ["git", "log"]:
+            return ""
+        return None
+
+    monkeypatch.setattr(lb, "_run", no_gh)
+    lb.cmd_pipeline(argparse.Namespace(since=""))
+    out = capsys.readouterr().out
+    assert "gh pr list unavailable" in out and "DA-1" in out
+
+
+def test_pipeline_command_file_exists_and_calls_the_helper() -> None:
+    text = (ROOT / "CLAUDE/commands/pipeline.md").read_text(encoding="utf-8")
+    assert text.startswith("---\ndescription:")
+    assert "logbook.py pipeline" in text and "pat-since" in text
+
+
 def test_check_ignores_a_stale_jira_cache(lb, tmp_path, monkeypatch, capsys) -> None:
     make_check_env(lb, tmp_path, monkeypatch, "Done", "PAT", [], refreshed="2020-01-01")
     assert "Jira wins" not in run_check(lb, capsys)
+
+
+def test_board_live_is_decided_per_ticket(lb: ModuleType) -> None:
+    today = TODAY.isoformat()
+    cache = {
+        "DA-1": {"track": True, "jira_status": "Testing", "refreshed": today},
+        "DA-2": {"track": True, "jira_status": "Testing", "refreshed": "2026-09-25"},
+    }
+    evidence = {"DA-1": ev("Ready For Release"), "DA-2": ev("Ready For Release")}
+    entries, live, _ = lb.derive_board(cache, [], evidence, TODAY)
+    by = {e["ticket"]: e for e in entries}
+    assert live is True  # the newest refresh is today, so the banner stays off
+    assert by["DA-1"]["flags"] and by["DA-1"]["stale"] is False
+    assert by["DA-2"]["flags"] == [] and by["DA-2"]["stale"] is True
+
+
+def test_board_says_unknown_when_the_repo_is_not_scanned(lb: ModuleType) -> None:
+    today = TODAY.isoformat()
+    cache = {"DA-1": {"track": True, "jira_status": "Testing", "refreshed": today}}
+    items = [[row("2026-10-10", "DA-1", "Testing", repo="other")]]
+    entries, _, _ = lb.derive_board(cache, items, {}, TODAY, {"r": "/x"})
+    assert entries[0]["git"] == "unknown (repo not tracked)"
+    items = [[row("2026-10-10", "DA-1", "Testing", repo="r")]]
+    entries, _, _ = lb.derive_board(cache, items, {}, TODAY, {"r": "/x"})
+    assert entries[0]["git"] == "none"
+    items = [[row("2026-10-10", "DA-1", "Testing")]]
+    entries, _, _ = lb.derive_board(cache, items, {}, TODAY, {"r": "/x"})
+    assert entries[0]["git"] == "unknown (no repo)"
+
+
+def test_board_notes_a_repo_mismatch(lb: ModuleType) -> None:
+    item = [row("2026-10-10", "DA-1", "Testing", repo="old-repo")]
+    e = lb.board_entry(
+        "DA-1",
+        {"jira_status": "Testing"},
+        item,
+        ev("Testing", repos=("new-repo",)),
+        TODAY,
+        True,
+    )
+    assert any(t.startswith("note:") and "old-repo" in t for t in flag_texts(e))
+
+
+def test_render_marks_a_stale_ticket(lb: ModuleType) -> None:
+    e = entry(lb, "Testing", "Testing")
+    e["stale"] = True
+    assert "(stale)" in lb.render_board([e], True, TODAY.isoformat(), [])
 
 
 def test_trigger_prompts_are_in_the_skills() -> None:
@@ -433,3 +638,13 @@ def test_trigger_prompts_are_in_the_skills() -> None:
     assert "`Data Development`" in text("CLAUDE/skills/jira-ticket-kickoff/SKILL.md")
     assert "UAT" in text("CLAUDE/skills/bast-generator/SKILL.md")
     assert "CAB approval" in text("CLAUDE/commands/generate-pr-message.md")
+
+
+def test_non_jira_work_next_step_skips_cab(lb: ModuleType) -> None:
+    item = [row("2026-10-10", "dev-workflow", "Ready For Release")]
+    e = lb.board_entry("dev-workflow", {}, item, None, TODAY, False)
+    assert "CAB" not in e["next"] and "Done" in e["next"]
+    jira_e = lb.board_entry(
+        "DA-1", {}, [row("2026-10-10", "DA-1", "Ready For Release")], None, TODAY, False
+    )
+    assert "CAB" in jira_e["next"]
