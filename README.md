@@ -294,6 +294,7 @@ Sync `CLAUDE.md` + commands to the global folder after changes:
 | ----- | ------- | ------- |
 | commit | `/commit` | Conventional Commits + gitmoji message generation |
 | clean-gone | `/clean-gone` | Delete stale local branches and worktrees |
+| pipeline | `/pipeline` | Board of open tickets by stage with the next step and flags |
 | refactor-python | `/refactor-python` | Systematic Python code quality improvement |
 | refactor-repositories | `/refactor-repositories` | Repository pattern enforcement |
 | generate-pr-message | `/generate-pr-message` | PR messages + per-ticket changelog |

@@ -572,6 +572,7 @@ available transitions instead of guessing.
 | `/generate-pr-message` | Generate PR messages + release folder for a branch deployment |
 | `/logbook` | Add/update a weekly-report logbook row, print the weekly summary, copy the CSV to Windows |
 | `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees |
+| `/pipeline` | Board of open tickets by stage (Jira, git, logbook) with the next step and flags |
 | `/refactor-python` | Refactor Python code while preserving behavior |
 | `/refactor-repositories` | Refactor repository classes to mandatory structure |
 | `/validate-lint-config` | Validate and sync ruff.toml + mypy.ini with environment |

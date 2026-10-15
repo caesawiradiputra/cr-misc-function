@@ -160,6 +160,32 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
    the user changes the layout or the write looks wrong; a version bump alone does not prove the
    table rendered, so say so when you skip the read. Report the links and run `sync`.
 
+## Pipeline board and trigger prompts
+
+`/pipeline` (`logbook.py pipeline`) lists every open ticket by stage with its git state, the
+next action and flags. It is read-only. Jira supplies the status; git and GitHub evidence only
+raises flags; `Hold` shows only the hold date; missing evidence is shown as unknown. The board
+is live per ticket: a ticket's Jira status counts only when its cache entry was refreshed
+today (`cache set --jira-status` stamps `refreshed`); other tickets are marked `(stale)` and
+get no Jira-dependent flags, and a `STALE` banner appears when nothing was refreshed today.
+`check` likewise compares Jira and the logbook only for entries refreshed within 7 days.
+A ticket with no git evidence shows `none`, or `unknown (repo not tracked)` / `unknown (no repo)`. Refresh
+first (step 0a), and for tickets in `PAT` store `--pat-since`.
+
+Each event proposes the next step when it happens and never acts without an OK:
+
+| Event | Prompt |
+| --- | --- |
+| Assignment cloned (`jira-in-da-sync`) | Start the ticket (kickoff) or leave it |
+| Kickoff done | Jira to `Data Analysis` or `Data Development`; logbook `Analysis` or `Development` |
+| PR to `dev` opened | Jira to `Testing`; logbook `Testing`; offer `bast-generator` |
+| BAST generated | Remind to send for UAT; no status change |
+| PR to `dev` merged | Jira to `Ready For Release`; logbook `Ready For Release`; offer the `dev` to `master` PR and the BAST update |
+| PR to `master` opened or merged | No Jira change; remind that CAB approval moves the ticket to `Deployment` |
+| Ticket seen in `Deployment` | Logbook `Deployment` |
+| Ticket seen in `PAT` | Logbook `PAT`; note the date so day 7 is known |
+| 7 or more days in `PAT` | Jira and logbook to `Done`; offer `/clean-gone` |
+
 ## Recheck (`/logbook check`)
 
 The **local files are the source of truth** (`logbook.csv`, `logbook-archive.csv`, `jira-cache.json`,
@@ -223,6 +249,7 @@ python3 ~/.claude/skills/logbook/logbook.py add --ticket PROJ-1234 --repo da-neg
 python3 ~/.claude/skills/logbook/logbook.py check --since 2026-10-05   # CSV vs git/PRs vs Jira cache (reports only)
 python3 ~/.claude/skills/logbook/logbook.py rename <slug> PROJ-1234   # a slug that later got a Jira key (rows, archive, cache)
 python3 ~/.claude/skills/logbook/logbook.py migrate-statuses --dry-run   # one-off: old git-step words to the Jira stage words (--resolve TICKET=Status for rows it cannot decide)
+python3 ~/.claude/skills/logbook/logbook.py pipeline          # board of open tickets by stage (read-only)
 python3 ~/.claude/skills/logbook/logbook.py week              # current ISO week
 python3 ~/.claude/skills/logbook/logbook.py week --week 2026-W41
 python3 ~/.claude/skills/logbook/logbook.py sync              # copy CSVs if they changed
