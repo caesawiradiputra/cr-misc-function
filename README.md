@@ -417,6 +417,7 @@ Quick usage:
 - [Migration Guide](docs/deployment/MIGRATION_CONDA_TO_UV.md) - Conda to UV migration
 - [Bootstrap Guide](docs/bootstrap.md) - New project setup from this library
 - [WSL Migration](docs/guidelines/WSL-MIGRATION.md) - Moving to a new laptop: backup, WSL install, network, restore of repos, memory and secrets
+- [Windows Dev Laptop](docs/guidelines/WINDOWS-DEV-LAPTOP.md) - Windows side of a WSL laptop: mandatory and support tools, what to leave in WSL, tuning, moving to a new laptop
 - [Open Knowledge Format (OKF)](docs/guidelines/OKF-OPEN-KNOWLEDGE-FORMAT.md) - What OKF is, where it fits in skills and docs, and a starter template
 - [Claude Code WSL 2 Setup](docs/claude-code-wsl-setup.md) - WSL deep-dive: nvm/npm install route, proxies, troubleshooting
 - [Logging Configuration](docs/logging-configuration.md) - Structured logging setup

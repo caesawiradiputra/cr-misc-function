@@ -2,7 +2,7 @@
 
 The end-to-end runbook for leaving one WSL 2 / Ubuntu machine and rebuilding the same working setup on another: what to save, how to install WSL from nothing, how to set up the network, tools and Claude Code, and how to restore repos, memory and secrets. Work top to bottom.
 
-It builds on two existing guides and links to them instead of repeating them: [dev-machine-setup.md](../dev-machine-setup.md) (tools, Claude config, IDEs) and [wsl-performance-and-docker.md](../wsl-performance-and-docker.md) (`.wslconfig`, Docker). Values in angle brackets (`<PAC_URL>`, `<WINDOWS_USERNAME>`) are yours to fill in; this repo is public.
+It builds on two existing guides and links to them instead of repeating them: [dev-machine-setup.md](../dev-machine-setup.md) (tools, Claude config, IDEs) and [wsl-performance-and-docker.md](../wsl-performance-and-docker.md) (`.wslconfig`, Docker). Values in angle brackets (`<PAC_URL>`, `<WINDOWS_USERNAME>`) are yours to fill in; this repo is public. The Windows side (tools, support apps, tuning, moving it) is in [WINDOWS-DEV-LAPTOP.md](WINDOWS-DEV-LAPTOP.md).
 
 ## 1. What survives and how
 
