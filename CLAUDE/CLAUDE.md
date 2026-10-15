@@ -554,7 +554,9 @@ The user's tracking of what they did, used for weekly reporting. Master file:
 ## Jira Status on PRs
 
 When a PR is prepared or opened, check the ticket's Jira status (Atlassian MCP):
-PR to `dev` → `Testing`; PR to `master` → `Ready to Release`. Notify and ask before
+PR to `dev` → `Testing`; the PR merged into `dev` (user approval) → `Ready For Release`;
+a PR to `master` changes nothing (CAB approval moves the ticket to `Deployment` and the
+deployment to `PAT`; the user moves those). Notify and ask before
 transitioning (never silently), pick the transition by its target status, and skip
 when the ticket is already at or past it. Details: the "Jira Status Check" phase of
 `/generate-pr-message`. If a repo's workflow lacks these statuses, report the
