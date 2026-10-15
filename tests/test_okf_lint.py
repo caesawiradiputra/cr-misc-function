@@ -95,7 +95,7 @@ def test_verified_needs_actor_and_counts_trust(
 ) -> None:
     human = GOOD.replace(
         "status: draft",
-        "verified:\n  - by: human:caesa\n    at: 2026-10-15T09:00:00+07:00\nstatus: draft",
+        "verified:\n  - by: human:reviewer\n    at: 2026-10-15T09:00:00+07:00\nstatus: draft",
     )
     path = bundle(tmp_path, human)
     assert lint.main([str(path)]) == 0
