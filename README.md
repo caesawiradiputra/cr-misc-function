@@ -273,7 +273,7 @@ A snapshot of the global `~/.claude` config, installed per machine (see
 | --- | --- |
 | `CLAUDE.md` | Always-on instructions: environment detection (Windows vs WSL), uv, branch strategy, execution-discipline rules |
 | `commands/` | 21 slash commands: `/commit`, `/generate-pr-message`, `/clean-gone`, `/refactor-python`, CDE commands, `/setup-workspace`, and "runs on Opus" wrappers such as `/brainstorming` and `/systematic-debugging` |
-| `skills/` | `migrate-to-uv`, `upgrade-python-version`, `jira-ticket-kickoff`, `bast-generator`, `bast-learn`, `confluence-ops-docs`, auditors, and more |
+| `skills/` | `migrate-to-uv`, `upgrade-python-version`, `jira-ticket-kickoff`, `bast-generator`, `bast-learn`, `okf-writer`, `confluence-ops-docs`, auditors, and more |
 | `windows/`, `linux-wsl/` | Per-OS `settings.json` (deny rules, hooks, plugins) and the SessionStart / UserPromptSubmit hooks |
 
 Sync `CLAUDE.md` + commands to the global folder after changes:

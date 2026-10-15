@@ -78,9 +78,9 @@ Start small and measure before converting anything.
 
 1. **Pilot in one repo.** Create `docs/knowledge/` as an OKF bundle for one pipeline: an `index.md`, a `log.md`, and one concept file per table or node. Use the template in section 8.
 2. **Point agents at it.** Add two lines to that repo's `CLAUDE.md` (or `AGENTS.md`) saying where the bundle is and to read `index.md` first. Without this pointer nothing loads it.
-3. **Teach the existing skills to emit it.** `confluence-ops-docs` and the CDE commands are the natural producers. Add an optional "write an OKF bundle" step; keep the current output as the default until the pilot proves useful.
+3. **Use the `okf-writer` skill** (`CLAUDE/skills/okf-writer/`). It writes and updates concept files, `index.md` and `log.md` from the sources you point it at, marks new content `status: draft`, and never adds a human `verified` entry itself. `confluence-ops-docs` and the CDE commands are the natural producers: they can hand their output to it as an optional step, with their current output staying the default until the pilot proves useful.
 4. **Fill the trust fields honestly.** `generated.by` is the tool (`claude-code/<model>`), `verified` is added only after a person has reviewed the concept (`human:<id>`), and `stale_after` is set where the source changes on a schedule.
-5. **Add a lint check.** The upstream repo documents no validator. A 50-line script that checks frontmatter and a non-empty `type` per file is enough to enforce conformance; add it to CI only for repos that adopt a bundle.
+5. **Lint the bundle.** The upstream repo documents no validator, so `okf-writer` ships `scripts/okf_lint.py` (stdlib only, Python 3.9+). It errors on a missing `type`, a bad `status` or timestamp, a reserved file used as a concept, or a `log.md` that is not newest first, and warns on broken links, concepts missing from every `index.md`, missing title, description or tags, and stale dates. Run it with `--strict` in CI for repos that adopt a bundle.
 
 ## 6. What to borrow without adopting the format
 
@@ -97,6 +97,12 @@ These cost almost nothing and help even where no bundle exists:
 - **No validator upstream.** The repository documents a reference producer agent and an HTML viewer, not a linter.
 - **Not an instruction format.** It says what the knowledge is, not how an agent should behave.
 - **Verification of this document.** The spec fields in section 2 come from the v0.2 `SPEC.md` as summarised by a fetch tool, not read byte for byte. The wider description comes from secondary articles. Check `SPEC.md` directly before writing a validator or a skill that depends on exact field rules.
+
+### Staying current
+
+The upstream repository has no releases or tags, so the signal is the commit history of `SPEC.md`. `okf-writer` ships `scripts/okf_watch.py`, which compares the repository head with the last commit you reviewed and lists what changed (`check`), and records a review with `ack`. `check` keeps reporting a change until `ack` runs, so a change cannot be missed by checking twice. The state lives in `~/.claude/state/okf-watch.json`. When it reports a change, update the summary, the linter and its tests, the templates and this guide, then `ack`.
+
+Scheduling: the check runs on use only. The skill runs `check --max-age 14` before it writes or updates a bundle, so the upstream is looked at at most every 14 days, and only when OKF work happens. A WSL cron job plus a session-start notice was considered and deferred; add it if bundles start going long stretches without being touched.
 
 ## 8. Starter template
 
