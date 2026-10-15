@@ -59,6 +59,9 @@ nothing like that, keep it to one or two sentences, and don't restate the requir
    Jira): `check` reports the difference and proposes the `add`. A PR to `master` and a
    merge into `sit` do not move the status. Run `migrate-statuses` once to convert rows
    written with the old git-step words.
+
+   **Work with no Jira flow** (logbook tooling, personal or other non-company work) has no CAB,
+   `Deployment` or `PAT`: after its PR to `master` is merged, propose `Done`.
 5. **Windows copy:** `sync` copies the master and archive CSVs, each only when it differs
    from the Windows file, so repeating it is harmless (idempotent). Policy: run it once the first time
    the logbook is touched in a session and whenever the user asks, not after every edit.

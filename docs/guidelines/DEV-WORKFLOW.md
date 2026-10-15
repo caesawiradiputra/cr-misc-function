@@ -41,6 +41,9 @@ only after CAB approval.
 | `Fixing` | `FIXING` | none |
 | `Hold` | `HOLD` | `Hold` |
 
+Work with no Jira flow (logbook tooling and other personal, non-company work) skips the CAB,
+`Deployment` and `PAT` stages: set `Done` once its PR to `master` is merged.
+
 When Jira and the logbook disagree on status, Jira wins; `logbook.py check` reports the
 difference and proposes the logbook update.
 

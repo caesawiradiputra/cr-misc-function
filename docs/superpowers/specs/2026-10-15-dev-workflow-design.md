@@ -96,7 +96,9 @@ Decisions:
   as before: `Bug Fixing` to `FIXING`, `Revisi SRF Data` to `ANALYST`, `In Progress` to
   `DEVELOPMENT`.
 - Non-Jira work (slugs, `bug-<n>`) has no Jira flow; its `Done` means the work is finished,
-  and `Done` rows for it follow the same archive rule.
+  and `Done` rows for it follow the same archive rule. For logbook tooling and other work
+  that is not BFI work, `Done` is set once its PR to `master` is merged: there is no CAB,
+  `Deployment` or `PAT` for it.
 - "Someone else's court" (follow-up highlight on `LastUpdate`) becomes `TESTING`,
   `READY FOR RELEASE`, `DEPLOYMENT`, `PAT`; `DONE` and `HOLD` are never highlighted.
 - Lozenge colours: Confluence status lozenges only accept `neutral`, `purple`, `blue`,
