@@ -9,7 +9,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -648,3 +648,53 @@ def test_non_jira_work_next_step_skips_cab(lb: ModuleType) -> None:
         "DA-1", {}, [row("2026-10-10", "DA-1", "Ready For Release")], None, TODAY, False
     )
     assert "CAB" in jira_e["next"]
+
+
+def run_archive(lb: ModuleType, capsys: pytest.CaptureFixture[str]) -> str:
+    lb.cmd_archive(argparse.Namespace(days=7, dry_run=True))
+    return capsys.readouterr().out
+
+
+def archive_env(lb: ModuleType, rows: list[dict[str, str]], today: dt.date) -> None:
+    write_csv(lb.LOGBOOK, rows)
+    real = dt.date
+
+    class FixedDate(real):  # type: ignore[valid-type, misc]
+        @classmethod
+        def today(cls) -> dt.date:
+            return today
+
+    setattr(lb, "dt", SimpleNamespace(**{**vars(dt), "date": FixedDate}))
+
+
+def test_archive_counts_seven_days_from_done_not_from_last_activity(
+    lb: ModuleType, capsys
+) -> None:
+    rows = [
+        row("2026-10-01", "DA-1", "Done"),
+        row("2026-10-14", "DA-1", "Done"),  # a later note must not reset the clock
+    ]
+    archive_env(lb, rows, dt.date(2026, 10, 15))
+    assert "would archive: DA-1" in run_archive(lb, capsys)
+
+
+def test_archive_waits_until_seven_days_after_done(lb: ModuleType, capsys) -> None:
+    archive_env(lb, [row("2026-10-10", "DA-1", "Done")], dt.date(2026, 10, 15))
+    assert "nothing to archive" in run_archive(lb, capsys)
+
+
+def test_archive_boundary_is_exactly_seven_days(lb: ModuleType, capsys) -> None:
+    archive_env(lb, [row("2026-10-08", "DA-1", "Done")], dt.date(2026, 10, 15))
+    assert "would archive: DA-1" in run_archive(lb, capsys)
+
+
+def test_archive_restarts_the_clock_when_a_ticket_leaves_and_returns_to_done(
+    lb: ModuleType, capsys
+) -> None:
+    rows = [
+        row("2026-10-01", "DA-1", "Done"),
+        row("2026-10-05", "DA-1", "Testing"),
+        row("2026-10-12", "DA-1", "Done"),
+    ]
+    archive_env(lb, rows, dt.date(2026, 10, 15))
+    assert "nothing to archive" in run_archive(lb, capsys)
