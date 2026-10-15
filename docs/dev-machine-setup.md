@@ -478,5 +478,6 @@ through `/mnt/c` without meaning to.
 - [CLAUDE/README.md](../CLAUDE/README.md): what each global config file does, placeholders, exclusions
 - [claude-code-wsl-setup.md](claude-code-wsl-setup.md): WSL deep-dive (nvm/npm route, proxies)
 - [wsl-performance-and-docker.md](wsl-performance-and-docker.md): `.wslconfig` tuning, Docker-in-WSL setup, network speed diagnosis
+- [guidelines/WSL-MIGRATION.md](guidelines/WSL-MIGRATION.md): moving to a new laptop: backup, WSL install, network, restore of repos, memory and secrets
 - [scripts/bash/README.md](../scripts/bash/README.md) / [scripts/powershell/README.md](../scripts/powershell/README.md): script reference
 - Official docs: [Claude Code setup](https://code.claude.com/docs/en/setup), [VS Code extension](https://code.claude.com/docs/en/vs-code)
