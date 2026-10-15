@@ -273,7 +273,7 @@ A snapshot of the global `~/.claude` config, installed per machine (see
 | --- | --- |
 | `CLAUDE.md` | Always-on instructions: environment detection (Windows vs WSL), uv, branch strategy, execution-discipline rules |
 | `commands/` | 21 slash commands: `/commit`, `/generate-pr-message`, `/clean-gone`, `/refactor-python`, CDE commands, `/setup-workspace`, and "runs on Opus" wrappers such as `/brainstorming` and `/systematic-debugging` |
-| `skills/` | `migrate-to-uv`, `upgrade-python-version`, `jira-ticket-kickoff`, `bast-generator`, `bast-learn`, `confluence-ops-docs`, auditors, and more |
+| `skills/` | `migrate-to-uv`, `upgrade-python-version`, `jira-ticket-kickoff`, `bast-generator`, `bast-learn`, `okf-writer`, `confluence-ops-docs`, auditors, and more |
 | `windows/`, `linux-wsl/` | Per-OS `settings.json` (deny rules, hooks, plugins) and the SessionStart / UserPromptSubmit hooks |
 
 Sync `CLAUDE.md` + commands to the global folder after changes:
@@ -416,6 +416,8 @@ Quick usage:
 - [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) - Production deployment
 - [Migration Guide](docs/deployment/MIGRATION_CONDA_TO_UV.md) - Conda to UV migration
 - [Bootstrap Guide](docs/bootstrap.md) - New project setup from this library
+- [WSL Migration](docs/guidelines/WSL-MIGRATION.md) - Moving to a new laptop: backup, WSL install, network, restore of repos, memory and secrets
+- [Windows Dev Laptop](docs/guidelines/WINDOWS-DEV-LAPTOP.md) - Windows side of a WSL laptop: mandatory and support tools, what to leave in WSL, tuning, moving to a new laptop
 - [Open Knowledge Format (OKF)](docs/guidelines/OKF-OPEN-KNOWLEDGE-FORMAT.md) - What OKF is, where it fits in skills and docs, and a starter template
 - [Claude Code WSL 2 Setup](docs/claude-code-wsl-setup.md) - WSL deep-dive: nvm/npm install route, proxies, troubleshooting
 - [Logging Configuration](docs/logging-configuration.md) - Structured logging setup
