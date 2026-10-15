@@ -43,6 +43,8 @@ that depend on the shared helpers module — the bash equivalent of
 | `conda-py39-init-env.sh` | Initialize/activate the project's Python 3.9 conda env | ✅ Safe |
 | `dev-remove-base-only-packages.sh` | Display conda removal command for base-only packages | ✅ Safe |
 | `dev-migrate-conda-poetry-to-uv.sh` | Back up a Poetry (+ optional conda) project and generate uv-only migration/rollback guides (no conda needed) | ⚠️ Caution |
+| `wsl-migration-backup.sh` | Save what git cannot restore from a WSL distro (unpushed work, stashes, local-only repos, Claude config and memory, encrypted secrets) before a laptop switch. Bash only: it has no PowerShell twin | ✅ Safe (read-only on repos) |
+| `wsl-migration-restore.sh` | Rebuild repos, Claude config and secrets from that backup on a new WSL distro | ⚠️ Caution (writes repos and `~/.claude`) |
 
 ---
 
