@@ -823,19 +823,31 @@ def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
     return list(items.values())
 
 
-def cmd_archive(args: argparse.Namespace) -> None:
-    """Move finished tickets idle for --days (default 7) to the archive.
+def done_since(item: list[dict[str, str]]) -> str:
+    """Date the ticket's current run of Done rows began, or '' when it is not Done."""
+    if item[-1]["status"] not in FINISHED:
+        return ""
+    start = item[-1]["date"]
+    for r in reversed(item):
+        if r["status"] not in FINISHED:
+            break
+        start = r["date"]
+    return start
 
-    Logged tickets count from their last logbook date. Assigned DA tickets with no
-    logbook row count from the Jira updated date once Jira shows them done.
+
+def cmd_archive(args: argparse.Namespace) -> None:
+    """Move tickets that have been Done for --days (default 7) to the archive.
+
+    Logged tickets count from the date they became Done (a later note does not restart
+    the clock; leaving and returning to Done does). Assigned DA tickets with no logbook
+    row count from the Jira updated date once Jira shows them done.
     """
     cutoff = dt.date.today() - dt.timedelta(days=args.days)
     rows, archived, cache = read_rows(), read_rows(ARCHIVE), load_cache()
     moving = {
         item[0]["ticket"]
         for item in group_items(rows)
-        if item[-1]["status"] in FINISHED
-        and dt.date.fromisoformat(item[-1]["date"]) <= cutoff
+        if done_since(item) and dt.date.fromisoformat(done_since(item)) <= cutoff
     }
     logged = {r["ticket"] for r in rows}
     jira_done = sorted(
@@ -847,7 +859,7 @@ def cmd_archive(args: argparse.Namespace) -> None:
         and info.get("updated", "9999-12-31") <= cutoff.isoformat()
     )
     if not moving and not jira_done:
-        print(f"nothing to archive (finished and last active on/before {cutoff}).")
+        print(f"nothing to archive (Done on/before {cutoff}).")
         return
     names = sorted(moving) + jira_done
     print(f"{'would archive' if args.dry_run else 'archiving'}: {', '.join(names)}")
