@@ -45,24 +45,26 @@ WINDOWS_DIR_FILE = LOGBOOK.parent / "windows_dir.txt"
 COLUMNS = ["date", "ticket", "repo", "type", "task", "status", "notes"]
 TYPES = ["fea", "fix", "chore", "docs", "refactor", "ops"]
 STATUSES = [
-    "In progress", "PR to dev", "Merged to dev", "Merged to sit",
-    "PR to master", "Released", "Done", "Analysis", "Fixing", "Hold",
+    "Analysis", "Development", "Testing", "Ready For Release", "Deployment",
+    "PAT", "Done", "Fixing", "Hold",
 ]  # fmt: skip
 ## Logbook status -> the status words used on the Confluence weekly page.
 PAGE_STATUS = {
-    "Analysis": "ANALYST", "In progress": "DEVELOPMENT", "Fixing": "FIXING",
-    "PR to dev": "TESTING", "Merged to dev": "TESTING", "Merged to sit": "TESTING",
-    "PR to master": "READY FOR RELEASE", "Released": "DONE", "Done": "DONE",
-    "Hold": "HOLD",
+    "Analysis": "ANALYST", "Development": "DEVELOPMENT", "Testing": "TESTING",
+    "Ready For Release": "READY FOR RELEASE", "Deployment": "DEPLOYMENT",
+    "PAT": "PAT", "Done": "DONE", "Fixing": "FIXING", "Hold": "HOLD",
 }  # fmt: skip
-FINISHED = {"Released", "Done"}
-## Jira workflow status -> page status, for assigned tickets the user has not logged work on.
+PAGE_TO_LOGBOOK = {word: status for status, word in PAGE_STATUS.items()}
+FINISHED = {"Done"}
+## Jira workflow status -> page status, for tickets the user has not logged work on and
+## for the Jira-wins comparison.
 JIRA_STATUS = {
     "Hold": "HOLD", "Testing": "TESTING", "Ready For Release": "READY FOR RELEASE",
+    "Deployment": "DEPLOYMENT", "PAT": "PAT",
     "In Progress": "DEVELOPMENT", "Data Development": "DEVELOPMENT",
     "Data Analysis": "ANALYST", "Revisi SRF Data": "ANALYST", "Bug Fixing": "FIXING",
     "[BU] Todo": "TODO", "TODO": "TODO", "To Do": "TODO", "Backlog": "TODO",
-    "PAT": "DONE", "Done": "DONE",
+    "Done": "DONE",
 }  # fmt: skip
 ## Start-date cell fill once unfinished work gets old: tiers light to strong.
 AGING_COLORS = ["#FFFAE6", "#FFF0B3", "#FF8F73"]
@@ -73,12 +75,16 @@ NO_AGING = {"DONE", "HOLD"}  # finished, or deliberately paused: never highlight
 OTHER_COURT = [
     "TESTING",
     "READY FOR RELEASE",
+    "DEPLOYMENT",
+    "PAT",
 ]  # override with "other_court" in config.json
 FOLLOWUP_DAYS = [7, 14, 30]  # override with "followup_days" in config.json
-## Lozenge colour per page status (Confluence status macro colours).
+## Lozenge colour per page status (Confluence only accepts neutral, purple, blue, red,
+## yellow, green).
 STATUS_COLOR = {
     "ANALYST": "purple", "DEVELOPMENT": "blue", "FIXING": "red", "TESTING": "yellow",
-    "READY FOR RELEASE": "green", "DONE": "green", "HOLD": "neutral", "TODO": "neutral",
+    "READY FOR RELEASE": "green", "DEPLOYMENT": "blue", "PAT": "purple",
+    "DONE": "green", "HOLD": "neutral", "TODO": "neutral",
 }  # fmt: skip
 
 
@@ -286,14 +292,17 @@ def cmd_cache(args: argparse.Namespace) -> None:
         "project",
         "before_hold",
         "hold_since",
+        "pat_since",
     ):
         if getattr(args, name):
             entry[name] = getattr(args, name)
-    for date in (args.updated, args.hold_since):
+    for date in (args.updated, args.hold_since, args.pat_since):
         if date:
             iso_week(date)  # validates YYYY-MM-DD
     if args.track:
         entry["track"] = args.track == "yes"
+    if args.jira_status:
+        entry["refreshed"] = dt.date.today().isoformat()
     save_cache(cache)
     print(f"cached {args.ticket}: {', '.join(entry)}")
 
@@ -345,11 +354,12 @@ def cmd_rename(args: argparse.Namespace) -> None:
 
 
 ## How far along a logbook status is; used to spot a row that lags behind its PR.
+## Fixing and Hold sit outside the order and are skipped by the lag check.
 STAGE = {
-    "": 0, "Analysis": 1, "In progress": 1, "Fixing": 1, "Hold": 1,
-    "PR to dev": 2, "Merged to dev": 3, "Merged to sit": 3,
-    "PR to master": 4, "Released": 5, "Done": 5,
+    "": 0, "Analysis": 1, "Development": 2, "Testing": 3, "Ready For Release": 4,
+    "Deployment": 5, "PAT": 6, "Done": 7,
 }  # fmt: skip
+OUTSIDE_ORDER = {"Fixing", "Hold"}
 TICKET_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b|\bbug-\d+\b")
 
 
@@ -362,13 +372,14 @@ def _run(cmd: list[str], cwd: str) -> str | None:
 
 
 def pr_stage(pr: dict[str, Any]) -> str:
-    """Logbook status a pull request implies."""
+    """Logbook status a pull request implies. A PR to master implies none."""
     merged, is_open = bool(pr.get("mergedAt")), pr.get("state") == "OPEN"
-    if pr.get("baseRefName") in ("master", "main"):
-        return "Released" if merged else ("PR to master" if is_open else "")
-    if pr.get("baseRefName") == "sit":
-        return "Merged to sit" if merged else ("PR to dev" if is_open else "")
-    return "Merged to dev" if merged else ("PR to dev" if is_open else "")
+    base = pr.get("baseRefName")
+    if base in ("master", "main"):
+        return ""
+    if base == "sit":
+        return "Development" if (merged or is_open) else ""
+    return "Ready For Release" if merged else ("Testing" if is_open else "")
 
 
 def git_evidence(
@@ -379,7 +390,9 @@ def git_evidence(
     notes: list[str] = []
 
     def note(ticket: str, repo: str, date: str, stage: str) -> None:
-        ev = evidence.setdefault(ticket, {"stage": "", "last": "", "repos": set()})
+        ev = evidence.setdefault(
+            ticket, {"stage": "", "last": "", "repos": set(), "master": False}
+        )
         ev["repos"].add(repo)
         ev["last"] = max(ev["last"], date)
         if STAGE.get(stage, 0) > STAGE.get(ev["stage"], 0):
@@ -412,8 +425,13 @@ def git_evidence(
             when = (pr.get("mergedAt") or pr["updatedAt"])[:10]
             if when < since:
                 continue
+            is_master_pr = pr.get("baseRefName") in ("master", "main") and (
+                pr.get("state") == "OPEN" or pr.get("mergedAt")
+            )
             for key in set(TICKET_RE.findall(f"{pr['headRefName']} {pr['title']}")):
                 note(key, repo, when, pr_stage(pr))
+                if is_master_pr:
+                    evidence[key]["master"] = True
     return evidence, notes
 
 
@@ -437,7 +455,9 @@ def cmd_check(args: argparse.Namespace) -> None:
                 )
             continue
         last = item[-1]
-        if STAGE.get(last["status"], 0) < STAGE.get(ev["stage"], 0):
+        if last["status"] not in OUTSIDE_ORDER and STAGE.get(
+            last["status"], 0
+        ) < STAGE.get(ev["stage"], 0):
             findings.append(
                 f"{ticket}: logbook says '{last['status'] or '-'}' but a PR is at '{ev['stage']}' ({where})"
             )
@@ -447,21 +467,16 @@ def cmd_check(args: argparse.Namespace) -> None:
             )
     for ticket, item in sorted(items.items()):
         info = cache.get(ticket, {})
-        jira = JIRA_STATUS.get(info.get("jira_status", ""))
+        jira = (
+            JIRA_STATUS.get(info.get("jira_status", "")) if jira_fresh(info) else None
+        )
         mine = PAGE_STATUS.get(item[-1]["status"], "")
-        if jira and mine and jira != mine:
-            updated = info.get("updated", "")
-            if not updated:
-                verdict = "Jira date unknown, refresh the cache (step 0a)"
-            elif updated > item[-1]["date"]:
-                verdict = "Jira is newer"
-            elif updated < item[-1]["date"]:
-                verdict = "the logbook is newer"
-            else:
-                verdict = "same day, decide by hand"
+        target = PAGE_TO_LOGBOOK.get(jira or "")
+        if jira and mine and jira != mine and target:
             findings.append(
-                f"{ticket}: Jira '{info['jira_status']}' ({jira}, updated {updated or '?'}) vs logbook "
-                f"'{item[-1]['status']}' ({mine}, {item[-1]['date']}) -> {verdict}"
+                f"{ticket}: Jira '{info['jira_status']}' ({jira}) vs logbook "
+                f"'{item[-1]['status']}' ({mine}, {item[-1]['date']}) -> Jira wins; "
+                f'propose: add --ticket {ticket} --status "{target}"'
             )
     print(f"## Recheck since {since} (CSV vs git/PRs vs Jira cache)\n")
     print(
@@ -472,6 +487,334 @@ def cmd_check(args: argparse.Namespace) -> None:
         print("\nFix with `add` after confirming; nothing was changed.")
 
 
+## One-off migration from the git-step words to the Jira stage words (spec section 7).
+LEGACY_MAP = {
+    "In progress": "Development", "PR to dev": "Testing", "Merged to sit": "Development",
+    "Merged to dev": "Ready For Release", "PR to master": "Ready For Release",
+}  # fmt: skip
+RECENT_DAYS = 7  # a Released row this young is flagged "check" in the migration report
+
+
+def read_legacy(path: Path) -> list[dict[str, str]]:
+    """Read a CSV without validating statuses: the old words must stay readable here."""
+    if not path.exists():
+        return []
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames != COLUMNS:
+            sys.exit(f"{path}: header {reader.fieldnames} != expected {COLUMNS}.")
+        return list(reader)
+
+
+def _released_outcome(
+    row: dict[str, str], cache: dict, today: dt.date, resolve: dict[str, str]
+) -> tuple[str | None, str]:
+    """Status for the last Released row of a ticket, or None when the user must decide."""
+    ticket = row["ticket"]
+    if ticket in resolve:
+        return resolve[ticket], "resolved by the user"
+    if not JIRA_KEY.fullmatch(ticket):
+        return "Done", "non-Jira work: finished"
+    jira = cache.get(ticket, {}).get("jira_status", "")
+    status = PAGE_TO_LOGBOOK.get(JIRA_STATUS.get(jira, ""))
+    if not status:
+        return None, f"Jira status {jira or 'unknown'!r} has no logbook status"
+    try:
+        age = (today - dt.date.fromisoformat(row["date"])).days
+    except ValueError:
+        return status, f"Jira {jira!r} (check: no usable date)"
+    note = f"Jira {jira!r}"
+    return status, note + (" (check: recent row)" if age <= RECENT_DAYS else "")
+
+
+def migrate_rows(
+    rows: list[dict[str, str]], cache: dict, today: dt.date, resolve: dict[str, str]
+) -> tuple[list[dict[str, str]], list[str], list[tuple[str, str]]]:
+    """Return (new rows, report lines, review list of (date, ticket)). Pure; writes nothing."""
+    last: dict[str, int] = {}
+    for i, r in enumerate(rows):  # last row per ticket by date, ties keep file order
+        j = last.get(r["ticket"])
+        if j is None or r["date"] >= rows[j]["date"]:
+            last[r["ticket"]] = i
+    out: list[dict[str, str]] = []
+    report: list[str] = []
+    review: list[tuple[str, str]] = []
+    for i, r in enumerate(rows):
+        new, old, note = dict(r), r["status"], ""
+        if old in LEGACY_MAP:
+            new["status"] = LEGACY_MAP[old]
+        elif old == "Released":
+            if last[r["ticket"]] != i:
+                new["status"], note = "Done", "earlier Released row: history"
+            else:
+                status, note = _released_outcome(r, cache, today, resolve)
+                if status is None:
+                    review.append((r["date"], r["ticket"]))
+                    report.append(
+                        f"{r['date']} {r['ticket']}: Released -> REVIEW ({note})"
+                    )
+                    out.append(new)
+                    continue
+                new["status"] = status
+        elif old and old not in STATUSES:
+            sys.exit(f"Unknown legacy status {old!r} on {r['date']} {r['ticket']}.")
+        if new["status"] != old:
+            tail = f" [{note}]" if note else ""
+            report.append(
+                f"{r['date']} {r['ticket']}: {old or '-'} -> {new['status']}{tail}"
+            )
+        out.append(new)
+    return out, report, review
+
+
+def cmd_migrate(args: argparse.Namespace) -> None:
+    """Rewrite old status words in the logbook and archive. --dry-run writes nothing."""
+    resolve: dict[str, str] = {}
+    for item in args.resolve:
+        ticket, _, status = item.partition("=")
+        if status not in STATUSES:
+            sys.exit(f"--resolve {item!r}: status must be one of {STATUSES}.")
+        resolve[ticket] = status
+    cache, today = load_cache(), dt.date.today()
+    results = []
+    blocked = False
+    for path in (LOGBOOK, ARCHIVE):
+        rows = read_legacy(path)
+        new, report, review = migrate_rows(rows, cache, today, resolve)
+        before = sorted({r["status"] or "-" for r in rows})
+        print(
+            f"## {path.name}: {len(rows)} row(s), statuses before: "
+            f"{', '.join(before) or '-'}"
+        )
+        print("\n".join(f"- {line}" for line in report) or "- nothing to change")
+        for date, ticket in review:
+            print(f"! REVIEW {date} {ticket}: rerun with --resolve {ticket}=<status>")
+        blocked = blocked or bool(review)
+        results.append((path, rows, new))
+    if blocked:
+        sys.exit("Rows need a decision; nothing was written.")
+    if args.dry_run:
+        print("\nDry run: nothing was written.")
+        return
+    for path, rows, new in results:
+        problems = [row_problem(r) for r in new if row_problem(r)]
+        if len(new) != len(rows) or problems:
+            sys.exit(
+                f"{path}: validation failed ({problems[:1]}); nothing was written."
+            )
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    for path, _rows, new in results:
+        if path.exists():
+            shutil.copy2(path, path.with_name(f"{path.name}.pre-migration-{stamp}"))
+        write_rows(new, path)
+    print("\nMigrated. Backups: *.pre-migration-" + stamp)
+
+
+## The board (spec 5.1): where every open ticket stands, and what to do next.
+BOARD_ORDER = [
+    "TODO", "ANALYST", "DEVELOPMENT", "TESTING", "READY FOR RELEASE", "DEPLOYMENT",
+    "PAT", "FIXING", "HOLD",
+]  # fmt: skip
+NEXT_ACTION = {
+    "TODO": "start it (jira-ticket-kickoff)",
+    "ANALYST": "finish the spec and plan, then move Jira to Data Development",
+    "DEVELOPMENT": "finish and test (SIT), then open the PR to dev (/generate-pr-message)",
+    "TESTING": "generate the BAST, get UAT approval, merge the PR into dev",
+    "READY FOR RELEASE": "update the BAST with the approval, open dev to master, wait for CAB",
+    "DEPLOYMENT": "deploy, then move Jira to PAT",
+    "PAT": "watch production; Done after 7 days without error",
+    "FIXING": "finish the fix, then follow its stage",
+}  # fmt: skip
+PAT_DONE_DAYS = 7
+
+
+def board_refreshed(cache: dict) -> str:
+    """Latest Jira refresh stamp among the tracked cache entries ('' when none)."""
+    stamps = [i.get("refreshed", "") for i in cache.values() if i.get("track")]
+    return max(stamps) if stamps else ""
+
+
+def board_entry(
+    ticket: str,
+    info: dict,
+    item: list[dict[str, str]],
+    ev: dict | None,
+    today: dt.date,
+    live: bool,
+    no_git: str = "",
+) -> dict[str, Any]:
+    """One board line. Jira supplies the status; git evidence only raises flags.
+
+    live is per ticket: its Jira status was refreshed today. no_git is what to show as the
+    git state when there is no evidence (none / unknown ...).
+    """
+    last = item[-1] if item else None
+    jira_word = JIRA_STATUS.get(info.get("jira_status", ""))
+    log_word = PAGE_STATUS.get(last["status"]) if last else None
+    word = jira_word or log_word or "TODO"
+    flags: list[tuple[str, str]] = []
+    entry: dict[str, Any] = {
+        "ticket": ticket, "word": word, "jira_status": info.get("jira_status", ""),
+        "logbook_status": last["status"] if last else "",
+        "repos": sorted(ev["repos"]) if ev else [],
+        "git": (ev["stage"] or "commits") if ev else no_git,
+        "next": NEXT_ACTION.get(word, ""), "flags": flags,
+        "stale": bool(info.get("jira_status")) and not live,
+    }  # fmt: skip
+    if ev and last and last.get("repo") and last["repo"] not in ev["repos"]:
+        flags.append((
+            f"note: logbook repo {last['repo']} differs from PR repo "
+            f"{', '.join(sorted(ev['repos']))}",
+            "check the repo field of the row",
+        ))  # fmt: skip
+    if word == "READY FOR RELEASE" and not JIRA_KEY.fullmatch(ticket):
+        entry["next"] = (
+            "open dev to master; set Done once it is merged (no approval step for this work)"
+        )
+    if word == "HOLD":
+        entry["next"] = f"on hold since {info.get('hold_since') or 'an unknown date'}"
+        if ev and (ev["stage"] or ev["master"]):
+            flags.append(("note: git activity while on hold", "resolve the hold first"))
+        return entry
+    if not live:
+        return entry
+    if ev:
+        if ev["stage"] == "Ready For Release" and word == "TESTING":
+            flags.append((
+                "PR merged into dev but Jira is still Testing",
+                "move Jira to Ready For Release",
+            ))  # fmt: skip
+        if ev["master"] and word == "TESTING":
+            flags.append((
+                "a dev to master PR exists but Jira is still Testing",
+                "move Jira to Ready For Release first",
+            ))  # fmt: skip
+        if word == "ANALYST" and STAGE.get(ev["stage"], 0) <= STAGE["Development"]:
+            flags.append((
+                "commits exist but Jira is still Data Analysis",
+                "move Jira to Data Development",
+            ))  # fmt: skip
+    if word == "PAT":
+        since = info.get("pat_since")
+        if not since:
+            flags.append((
+                "PAT date unknown",
+                "read the Jira changelog and run cache set --pat-since",
+            ))  # fmt: skip
+        elif (today - dt.date.fromisoformat(since)).days >= PAT_DONE_DAYS:
+            flags.append((
+                f"in PAT since {since} (7 or more days)",
+                "propose Done in Jira and the logbook, then /clean-gone",
+            ))  # fmt: skip
+    target = PAGE_TO_LOGBOOK.get(jira_word or "")
+    if target and log_word and jira_word != log_word:
+        flags.append((
+            f"Jira {jira_word} vs logbook {log_word}",
+            f'Jira wins: add --ticket {ticket} --status "{target}"',
+        ))  # fmt: skip
+    return entry
+
+
+def _no_git(item: list[dict[str, str]], repo_paths: dict[str, str] | None) -> str:
+    """What to show as the git state when a ticket has no git evidence."""
+    if repo_paths is None:
+        return ""
+    repo = item[-1].get("repo", "") if item else ""
+    if not repo:
+        return "unknown (no repo)"
+    return "none" if repo in repo_paths else "unknown (repo not tracked)"
+
+
+def derive_board(
+    cache: dict,
+    items: list[list[dict[str, str]]],
+    evidence: dict[str, dict],
+    today: dt.date,
+    repo_paths: dict[str, str] | None = None,
+) -> tuple[list[dict[str, Any]], bool, str]:
+    """Entries for every open ticket, ordered by stage.
+
+    The returned flag drives the banner (newest Jira refresh is today); each entry decides
+    its own liveness from its own refresh stamp.
+    """
+    refreshed = board_refreshed(cache)
+    live = refreshed == today.isoformat()
+    by_ticket = {i[0]["ticket"]: i for i in items}
+    tickets = {t for t, info in cache.items() if info.get("track")}
+    tickets |= {t for t, i in by_ticket.items() if i[-1]["status"] not in FINISHED}
+    entries = []
+    for ticket in sorted(tickets):
+        info = cache.get(ticket, {})
+        item = by_ticket.get(ticket, [])
+        e = board_entry(
+            ticket,
+            info,
+            item,
+            evidence.get(ticket),
+            today,
+            info.get("refreshed", "") == today.isoformat(),
+            _no_git(item, repo_paths),
+        )
+        if e["word"] != "DONE":
+            entries.append(e)
+    entries.sort(
+        key=lambda e: (
+            BOARD_ORDER.index(e["word"]) if e["word"] in BOARD_ORDER else 99,
+            e["ticket"],
+        )
+    )
+    return entries, live, refreshed
+
+
+def render_board(
+    entries: list[dict[str, Any]], live: bool, refreshed: str, notes: list[str]
+) -> str:
+    """Text board grouped by stage; a stale banner when Jira was not refreshed today."""
+    lines = [f"# Pipeline board {dt.date.today().isoformat()}"]
+    if not live:
+        lines += [
+            "",
+            f"STALE: the Jira cache was last refreshed {refreshed or 'never'}. Statuses "
+            "are from the cache and not verified; Jira-dependent flags are hidden. "
+            "Refresh it (logbook skill, step 0a) to get the flags.",
+        ]
+    lines += [f"- {n}" for n in notes]
+    for word in BOARD_ORDER:
+        group = [e for e in entries if e["word"] == word]
+        if not group:
+            continue
+        lines += ["", f"## {word} ({len(group)})"]
+        for e in group:
+            where = f" [{', '.join(e['repos'])}]" if e["repos"] else ""
+            git = f" | git: {e['git']}" if e["git"] else ""
+            stale = " (stale)" if e.get("stale") else ""
+            lines.append(
+                f"- {e['ticket']}{where} | Jira: {e['jira_status'] or '-'}{stale}{git}"
+            )
+            lines.append(f"  next: {e['next']}")
+            lines += [f"  ! {text} -> {fix}" for text, fix in e["flags"]]
+    if not entries:
+        lines += ["", "No open tickets."]
+    return "\n".join(lines)
+
+
+def cmd_pipeline(args: argparse.Namespace) -> None:
+    """Print where every open ticket stands. Read-only: writes no file."""
+    cfg, cache = load_config(), load_cache()
+    since = args.since or (dt.date.today() - dt.timedelta(days=30)).isoformat()
+    iso_week(since)
+    repo_paths = cfg.get("repo_paths", {})
+    evidence, notes = git_evidence(repo_paths, since)
+    if not repo_paths:
+        notes.append(
+            "no repo_paths in config.json: git state is unknown for every ticket"
+        )
+    entries, live, refreshed = derive_board(
+        cache, group_items(read_rows()), evidence, dt.date.today(), repo_paths
+    )
+    print(render_board(entries, live, refreshed, notes))
+
+
 def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
     """Group rows by ticket, each group in date order (a ticket is one page row)."""
     items: dict[str, list[dict[str, str]]] = {}
@@ -480,19 +823,31 @@ def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
     return list(items.values())
 
 
-def cmd_archive(args: argparse.Namespace) -> None:
-    """Move finished tickets idle for --days (default 7) to the archive.
+def done_since(item: list[dict[str, str]]) -> str:
+    """Date the ticket's current run of Done rows began, or '' when it is not Done."""
+    if item[-1]["status"] not in FINISHED:
+        return ""
+    start = item[-1]["date"]
+    for r in reversed(item):
+        if r["status"] not in FINISHED:
+            break
+        start = r["date"]
+    return start
 
-    Logged tickets count from their last logbook date. Assigned DA tickets with no
-    logbook row count from the Jira updated date once Jira shows them done.
+
+def cmd_archive(args: argparse.Namespace) -> None:
+    """Move tickets that have been Done for --days (default 7) to the archive.
+
+    Logged tickets count from the date they became Done (a later note does not restart
+    the clock; leaving and returning to Done does). Assigned DA tickets with no logbook
+    row count from the Jira updated date once Jira shows them done.
     """
     cutoff = dt.date.today() - dt.timedelta(days=args.days)
     rows, archived, cache = read_rows(), read_rows(ARCHIVE), load_cache()
     moving = {
         item[0]["ticket"]
         for item in group_items(rows)
-        if item[-1]["status"] in FINISHED
-        and dt.date.fromisoformat(item[-1]["date"]) <= cutoff
+        if done_since(item) and dt.date.fromisoformat(done_since(item)) <= cutoff
     }
     logged = {r["ticket"] for r in rows}
     jira_done = sorted(
@@ -504,7 +859,7 @@ def cmd_archive(args: argparse.Namespace) -> None:
         and info.get("updated", "9999-12-31") <= cutoff.isoformat()
     )
     if not moving and not jira_done:
-        print(f"nothing to archive (finished and last active on/before {cutoff}).")
+        print(f"nothing to archive (Done on/before {cutoff}).")
         return
     names = sorted(moving) + jira_done
     print(f"{'would archive' if args.dry_run else 'archiving'}: {', '.join(names)}")
@@ -551,11 +906,33 @@ def expand(title: str, body: str) -> str:
     )
 
 
+JIRA_FRESH_DAYS = (
+    7  # a cached Jira status older than this no longer outranks the logbook
+)
+
+
+def jira_fresh(info: dict, today: dt.date | None = None) -> bool:
+    """True when the cache entry was refreshed from Jira within JIRA_FRESH_DAYS."""
+    stamp = info.get("refreshed", "")
+    if not stamp:
+        return False
+    try:
+        age = ((today or dt.date.today()) - dt.date.fromisoformat(stamp)).days
+    except ValueError:
+        return False
+    return age <= JIRA_FRESH_DAYS
+
+
 def item_status(last: dict[str, str], info: dict) -> str:
-    """Page status word for a ticket: logbook status first, else the Jira status."""
-    return PAGE_STATUS.get(last["status"]) or JIRA_STATUS.get(
-        info.get("jira_status", ""),
-        (last["status"] or info.get("jira_status", "")).upper() or "-",
+    """Page status word for a ticket: a fresh, mapped Jira status wins, else the logbook."""
+    jira = JIRA_STATUS.get(info.get("jira_status", ""))
+    if jira and jira_fresh(info):
+        return jira
+    return (
+        PAGE_STATUS.get(last["status"])
+        or jira
+        or (last["status"] or info.get("jira_status", "")).upper()
+        or "-"
     )
 
 
@@ -766,6 +1143,25 @@ def main() -> None:
     check.add_argument("--since", default="", help="YYYY-MM-DD (default: 7 days ago)")
     check.set_defaults(func=cmd_check)
 
+    mig = sub.add_parser(
+        "migrate-statuses",
+        help="One-off: rewrite old status words to the Jira stage words",
+    )
+    mig.add_argument("--dry-run", action="store_true")
+    mig.add_argument(
+        "--resolve", action="append", default=[], metavar="TICKET=STATUS",
+        help="decide a Released row that needs review (repeatable)",
+    )  # fmt: skip
+    mig.set_defaults(func=cmd_migrate)
+
+    pipe = sub.add_parser("pipeline", help="Board of open tickets by stage (read-only)")
+    pipe.add_argument(
+        "--since",
+        default="",
+        help="YYYY-MM-DD for the git/PR scan (default: 30 days ago)",
+    )
+    pipe.set_defaults(func=cmd_pipeline)
+
     rename = sub.add_parser("rename", help="Re-key a ticket in rows, archive and cache")
     rename.add_argument("old")
     rename.add_argument("to")
@@ -793,6 +1189,11 @@ def main() -> None:
     )
     cache.add_argument(
         "--hold-since", default="", help="date it went on hold, YYYY-MM-DD"
+    )
+    cache.add_argument(
+        "--pat-since",
+        default="",
+        help="date it entered PAT (Jira changelog), YYYY-MM-DD",
     )
     cache.add_argument(
         "--track",

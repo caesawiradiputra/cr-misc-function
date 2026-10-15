@@ -543,7 +543,7 @@ The user's tracking of what they did, used for weekly reporting. Master file:
   decision sections), never from session transcripts (too large, and the
   PR/commit record is more accurate).
 - The weekly Confluence tracker page is generated from the CSVs only when asked
-  (`/logbook` publish procedure); finished work idle for 7 days moves to the archive CSV, and paused tickets go to an On Hold child page.
+  (`/logbook` publish procedure); finished work moves to the archive CSV 7 days after it became Done, and paused tickets go to an On Hold child page.
 - The CSVs and `jira-cache.json` are the source of truth; to recheck, run `/logbook check` (CSV vs
   git/PRs vs Jira) and never read the Confluence page back for state.
 - `sync` copies to the Windows folder only when the master changed; run it at the
@@ -554,7 +554,9 @@ The user's tracking of what they did, used for weekly reporting. Master file:
 ## Jira Status on PRs
 
 When a PR is prepared or opened, check the ticket's Jira status (Atlassian MCP):
-PR to `dev` → `Testing`; PR to `master` → `Ready to Release`. Notify and ask before
+PR to `dev` → `Testing`; the PR merged into `dev` (user approval) → `Ready For Release`;
+a PR to `master` changes nothing (CAB approval moves the ticket to `Deployment` and the
+deployment to `PAT`; the user moves those). Notify and ask before
 transitioning (never silently), pick the transition by its target status, and skip
 when the ticket is already at or past it. Details: the "Jira Status Check" phase of
 `/generate-pr-message`. If a repo's workflow lacks these statuses, report the
@@ -570,6 +572,7 @@ available transitions instead of guessing.
 | `/generate-pr-message` | Generate PR messages + release folder for a branch deployment |
 | `/logbook` | Add/update a weekly-report logbook row, print the weekly summary, copy the CSV to Windows |
 | `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees |
+| `/pipeline` | Board of open tickets by stage (Jira, git, logbook) with the next step and flags |
 | `/refactor-python` | Refactor Python code while preserving behavior |
 | `/refactor-repositories` | Refactor repository classes to mandatory structure |
 | `/validate-lint-config` | Validate and sync ruff.toml + mypy.ini with environment |

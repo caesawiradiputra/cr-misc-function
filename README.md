@@ -294,6 +294,7 @@ Sync `CLAUDE.md` + commands to the global folder after changes:
 | ----- | ------- | ------- |
 | commit | `/commit` | Conventional Commits + gitmoji message generation |
 | clean-gone | `/clean-gone` | Delete stale local branches and worktrees |
+| pipeline | `/pipeline` | Board of open tickets by stage with the next step and flags |
 | refactor-python | `/refactor-python` | Systematic Python code quality improvement |
 | refactor-repositories | `/refactor-repositories` | Repository pattern enforcement |
 | generate-pr-message | `/generate-pr-message` | PR messages + per-ticket changelog |
@@ -418,6 +419,7 @@ Quick usage:
 - [Bootstrap Guide](docs/bootstrap.md) - New project setup from this library
 - [WSL Migration](docs/guidelines/WSL-MIGRATION.md) - Moving to a new laptop: backup, WSL install, network, restore of repos, memory and secrets
 - [Windows Dev Laptop](docs/guidelines/WINDOWS-DEV-LAPTOP.md) - Windows side of a WSL laptop: mandatory and support tools, what to leave in WSL, tuning, moving to a new laptop
+- [Dev Workflow](docs/guidelines/DEV-WORKFLOW.md) - stages from assignment to Done against Jira statuses, git steps and logbook statuses, with the trigger prompts
 - [Open Knowledge Format (OKF)](docs/guidelines/OKF-OPEN-KNOWLEDGE-FORMAT.md) - What OKF is, where it fits in skills and docs, and a starter template
 - [Claude Code WSL 2 Setup](docs/claude-code-wsl-setup.md) - WSL deep-dive: nvm/npm install route, proxies, troubleshooting
 - [Logging Configuration](docs/logging-configuration.md) - Structured logging setup

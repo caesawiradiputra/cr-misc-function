@@ -43,18 +43,25 @@ nothing like that, keep it to one or two sentences, and don't restate the requir
    `ops`; the helper rejects anything else.
 4. **`status`** must be one of the values below; the helper rejects anything else.
 
-   | State | `status` |
-   | --- | --- |
-   | Work started, no PR yet | `In progress` |
-   | PR open to `dev` | `PR to dev` |
-   | PR merged into `dev` | `Merged to dev` |
-   | PR merged into `sit` | `Merged to sit` |
-   | PR open `dev` → `master` | `PR to master` |
-   | Merged into `master` / deployed | `Released` |
-   | Non-code work finished (docs, BAST, analysis) | `Done` |
-   | Analysis / exploring, no code yet | `Analysis` |
-   | Fixing a defect found after release or testing | `Fixing` |
-   | Blocked or on hold | `Hold` |
+   | State | `status` | Jira status |
+   | --- | --- | --- |
+   | Brainstorming, design, plan | `Analysis` | `Data Analysis` |
+   | Implementation and SIT | `Development` | `Data Development` |
+   | PR open to `dev`, UAT, BAST generated | `Testing` | `Testing` |
+   | PR merged into `dev` (user approval), CAB registration | `Ready For Release` | `Ready For Release` |
+   | CAB approved, deploying | `Deployment` | `Deployment` |
+   | Deployed, production assurance test | `PAT` | `PAT` |
+   | Finished, no error one week after PAT; non-code work finished (docs, BAST, analysis) | `Done` | `Done` |
+   | Fixing a defect found after release or testing | `Fixing` | none |
+   | Blocked or on hold | `Hold` | `Hold` |
+
+   **Jira wins** on status when it differs from the logbook (the user moves the ticket in
+   Jira): `check` reports the difference and proposes the `add`. A PR to `master` and a
+   merge into `sit` do not move the status. Run `migrate-statuses` once to convert rows
+   written with the old git-step words.
+
+   **Work with no Jira flow** (logbook tooling, personal or other non-company work) has no CAB,
+   `Deployment` or `PAT`: after its PR to `master` is merged, propose `Done`.
 5. **Windows copy:** `sync` copies the master and archive CSVs, each only when it differs
    from the Windows file, so repeating it is harmless (idempotent). Policy: run it once the first time
    the logbook is touched in a session and whenever the user asks, not after every edit.
@@ -70,9 +77,10 @@ user to change rows through the logbook instead.
 How a ticket becomes a row: `Start Date` = the Jira **created date** (of the linked IN ticket when
 there is one, else of the DA ticket; the first logbook date only when there is no Jira ticket),
 `LastUpdate` = its last logbook date,
-`Status` = the latest status mapped to the page words (`In progress` → `DEVELOPMENT`,
-`PR to`/`Merged to dev`/`sit` → `TESTING`, `PR to master` → `READY FOR RELEASE`,
-`Released`/`Done` → `DONE`, `Analysis` → `ANALYST`, plus `FIXING` and `HOLD`), `Project`
+`Status` = the latest status mapped to the page words (`Analysis` → `ANALYST`,
+`Development` → `DEVELOPMENT`, `Testing` → `TESTING`, `Ready For Release` → `READY FOR RELEASE`,
+`Deployment` → `DEPLOYMENT`, `PAT` → `PAT`, `Done` → `DONE`, plus `FIXING` and `HOLD`; a Jira
+status refreshed within 7 days and mapped outranks the logbook status), `Project`
 from `config.json` `projects` (repo name when unmapped). `To Do` is the latest `task` in
 bold, followed by **collapsed expands** (`Description` first: a one or two sentence summary of the SRF/requirement) that keep rows compact (the same pattern as the
 user's old tracker): `Task List` (only when the ticket has rows on several days: one dated
@@ -108,8 +116,10 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
    run `cache set --track yes --ticket DA-n --summary ... --jira-status "<Jira status>" --updated
    <date> --project <name>` (plus `--created`/`--source`/`--description` as in step 0). Cached
    tickets that are no longer in the result (done, reassigned) get `cache set --track no`. A ticket
-   with logbook rows keeps the logbook status; the Jira status only drives rows with no logbook row.
-   Mention any ticket whose Jira status disagrees with its logbook status. For a ticket whose Jira
+   with logbook rows takes the Jira status on the page while the cache entry is fresh (the
+   `--jira-status` flag stamps `refreshed`). Mention any ticket whose Jira status disagrees with its
+   logbook status and propose the `add` (Jira wins). For a ticket in `PAT`, read the changelog and
+   record `--pat-since <date it entered PAT>`. For a ticket whose Jira
    status is `Hold`, read its changelog (`getJiraIssue` with `expand: changelog`, newest first) and
    record `--before-hold "<status it had before the latest move to Hold>" --hold-since <date of that
    move>` so the hold page can show what it was before it was paused.
@@ -123,8 +133,8 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
    For work with no Jira ticket (`bug-<n>`, slugs), write the description from commit bodies and
    leave out `--created`. Existing entries are reused; refresh one only if the user says the Jira
    text changed. For logged tickets the page status comes from the logbook; only rows with no logbook row use the mapped Jira status (step 0a).
-1. `archive --dry-run` and show the tickets (finished and idle for more than 7 days: last
-   logbook date, or for Jira-only tickets the Jira updated date once Jira shows them done). After
+1. `archive --dry-run` and show the tickets (Done for 7 days or more, counted from the date it became Done, so a later
+   note does not restart the clock; for Jira-only tickets the Jira updated date once Jira shows them done). After
    the user's OK, `archive` moves them to `logbook-archive.csv`. Unfinished work is never archived,
    however old.
 2. `publish main --out <scratchpad>/main.html`, `publish hold --out <scratchpad>/hold.html`, and for
@@ -150,6 +160,32 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
    the user changes the layout or the write looks wrong; a version bump alone does not prove the
    table rendered, so say so when you skip the read. Report the links and run `sync`.
 
+## Pipeline board and trigger prompts
+
+`/pipeline` (`logbook.py pipeline`) lists every open ticket by stage with its git state, the
+next action and flags. It is read-only. Jira supplies the status; git and GitHub evidence only
+raises flags; `Hold` shows only the hold date; missing evidence is shown as unknown. The board
+is live per ticket: a ticket's Jira status counts only when its cache entry was refreshed
+today (`cache set --jira-status` stamps `refreshed`); other tickets are marked `(stale)` and
+get no Jira-dependent flags, and a `STALE` banner appears when nothing was refreshed today.
+`check` likewise compares Jira and the logbook only for entries refreshed within 7 days.
+A ticket with no git evidence shows `none`, or `unknown (repo not tracked)` / `unknown (no repo)`. Refresh
+first (step 0a), and for tickets in `PAT` store `--pat-since`.
+
+Each event proposes the next step when it happens and never acts without an OK:
+
+| Event | Prompt |
+| --- | --- |
+| Assignment cloned (`jira-in-da-sync`) | Start the ticket (kickoff) or leave it |
+| Kickoff done | Jira to `Data Analysis` or `Data Development`; logbook `Analysis` or `Development` |
+| PR to `dev` opened | Jira to `Testing`; logbook `Testing`; offer `bast-generator` |
+| BAST generated | Remind to send for UAT; no status change |
+| PR to `dev` merged | Jira to `Ready For Release`; logbook `Ready For Release`; offer the `dev` to `master` PR and the BAST update |
+| PR to `master` opened or merged | No Jira change; remind that CAB approval moves the ticket to `Deployment` |
+| Ticket seen in `Deployment` | Logbook `Deployment` |
+| Ticket seen in `PAT` | Logbook `PAT`; note the date so day 7 is known |
+| 7 or more days in `PAT` | Jira and logbook to `Done`; offer `/clean-gone` |
+
 ## Recheck (`/logbook check`)
 
 The **local files are the source of truth** (`logbook.csv`, `logbook-archive.csv`, `jira-cache.json`,
@@ -172,7 +208,7 @@ Which source wins when they disagree:
 | Ticket status, created date, title, hold history | Jira |
 | What happened: PR open or merged, branch, commits | Git and GitHub |
 | Task wording, notes, decisions, descriptions | The CSV (only the user curates these) |
-| Page status when Jira and the logbook differ | Whichever changed more recently (`check` says which) |
+| Page status when Jira and the logbook differ | Jira (`check` proposes the logbook update) |
 
 Before a publish the only page read is a summary read for the version token (about 500 tokens). Read the
 page's HTML only when the user changes its layout by hand, and pull a hand edit into the CSV first.
@@ -184,7 +220,7 @@ are tens of MB per week and hold far more noise than signal. Per repo, run
 `git log --all --since=<monday> --author="$(git config user.name)" --date=short
 --format='%ad|%D|%s'` and, where `gh` works, `gh pr list --author @me --state all`.
 Group by ticket key from the branch or subject (`bug-<n>` when there is no key).
-Use the ticket's last-activity date, set `status` from merges using the table above, and mark tickets with no PR `In progress`, telling the user in chat to verify them (not in `notes`).
+Use the ticket's last-activity date, set `status` from merges using the table above, and mark tickets with no PR `Development`, telling the user in chat to verify them (not in `notes`).
 **Where `notes` come from.** For tickets that have a `release/<TICKET>/` folder, read these
 (they are already written, so this costs far less than a transcript), newest first:
 `CHANGELOG.md` (summary, "Breaking Changes", "Code Review Notes", follow-up entries),
@@ -208,10 +244,12 @@ so ask the user what to add.
 
 ```bash
 python3 ~/.claude/skills/logbook/logbook.py add --ticket PROJ-1234 --repo da-negative-list \
-  --type fea --task "Added X so Y" --status "PR to dev" \
+  --type fea --task "Added X so Y" --status "Testing" \
   --notes "Decided to keep the old key: downstream reports join on it"
 python3 ~/.claude/skills/logbook/logbook.py check --since 2026-10-05   # CSV vs git/PRs vs Jira cache (reports only)
 python3 ~/.claude/skills/logbook/logbook.py rename <slug> PROJ-1234   # a slug that later got a Jira key (rows, archive, cache)
+python3 ~/.claude/skills/logbook/logbook.py migrate-statuses --dry-run   # one-off: old git-step words to the Jira stage words (--resolve TICKET=Status for rows it cannot decide)
+python3 ~/.claude/skills/logbook/logbook.py pipeline          # board of open tickets by stage (read-only)
 python3 ~/.claude/skills/logbook/logbook.py week              # current ISO week
 python3 ~/.claude/skills/logbook/logbook.py week --week 2026-W41
 python3 ~/.claude/skills/logbook/logbook.py sync              # copy CSVs if they changed

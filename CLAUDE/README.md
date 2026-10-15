@@ -47,6 +47,7 @@ CLAUDE/
 ├── commands/                       ← Slash commands (shared — plain markdown, no OS-specific content)
 │   ├── commit.md                   ← /commit
 │   ├── clean-gone.md               ← /clean-gone
+│   ├── pipeline.md                 ← /pipeline
 │   ├── generate-pr-message.md      ← /generate-pr-message
 │   ├── refactor-python.md          ← /refactor-python
 │   ├── refactor-repositories.md    ← /refactor-repositories
@@ -172,6 +173,7 @@ Some commands accept arguments: `/command-name <argument>`
 | `/commit` | Generate Conventional Commit + gitmoji message, review/refine, and commit | `/commit`, `/commit amend`, `/commit <guidance>` |
 | `/generate-pr-message` | Generate PR messages + release folder for a branch deployment | `/generate-pr-message 1.2.0 "requirement text"` |
 | `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees | `/clean-gone` |
+| `/pipeline` | Board of open tickets by stage (Jira, git, logbook) with the next step and flags | `/pipeline` |
 
 ### Code Quality
 

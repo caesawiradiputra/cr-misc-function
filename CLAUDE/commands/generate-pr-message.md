@@ -307,7 +307,7 @@ Skip when there is no ticket (slug-keyed ad-hoc work).
 | PR target | Target Jira status |
 | --- | --- |
 | Feature → `dev` | `Testing` |
-| `dev` → `master` | `Ready to Release` |
+| `dev` → `master` | no change (`Ready For Release` was set when the PR merged into `dev`) |
 
 1. Read the ticket's current status (`getJiraIssue`).
 2. Already at or past the target status: say so and change nothing.
@@ -321,7 +321,9 @@ Skip when there is no ticket (slug-keyed ad-hoc work).
 5. The PR is opened by the user, so transition when they confirm it is open, and add
    the PR link as a Jira comment (`addOrEditJiraIssueComment`).
 6. Report the status the transition returned, then update the logbook row
-   (`/logbook add`, `status` = `PR to dev` / `PR to master`).
+   (`/logbook add`, `status` = `Testing`; when the user later reports the PR merged into `dev`, offer `Ready For Release` the same way).
+7. For a PR to `master`, make no Jira change: remind the user that CAB approval moves the
+   ticket to `Deployment` and the finished deployment to `PAT` (the user moves those).
 
 ---
 
@@ -356,5 +358,5 @@ Then open the **Feature → Dev** PR with PR Message 1. Later, when promoting `d
 - [ ] Testing section only if test files in diff or explicitly requested
 - [ ] PR messages within line limits (25 / 20)
 - [ ] No git commands run by the agent — user handles add/commit/push/tag
-- [ ] Jira status checked (`Testing` for → dev, `Ready to Release` for → master); transition only after the user confirmed
+- [ ] Jira status checked (`Testing` for → dev, `Ready For Release` once merged into dev, no change for → master); transition only after the user confirmed
 - [ ] Logbook row proposed/updated with the PR status and link
