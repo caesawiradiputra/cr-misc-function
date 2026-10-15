@@ -133,8 +133,8 @@ Publish procedure (run only when the user asks to publish / "update the weekly p
    For work with no Jira ticket (`bug-<n>`, slugs), write the description from commit bodies and
    leave out `--created`. Existing entries are reused; refresh one only if the user says the Jira
    text changed. For logged tickets the page status comes from the logbook; only rows with no logbook row use the mapped Jira status (step 0a).
-1. `archive --dry-run` and show the tickets (finished and idle for more than 7 days: last
-   logbook date, or for Jira-only tickets the Jira updated date once Jira shows them done). After
+1. `archive --dry-run` and show the tickets (Done for 7 days or more, counted from the date it became Done, so a later
+   note does not restart the clock; for Jira-only tickets the Jira updated date once Jira shows them done). After
    the user's OK, `archive` moves them to `logbook-archive.csv`. Unfinished work is never archived,
    however old.
 2. `publish main --out <scratchpad>/main.html`, `publish hold --out <scratchpad>/hold.html`, and for

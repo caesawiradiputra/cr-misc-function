@@ -92,7 +92,7 @@ Decisions:
 - `JIRA_STATUS` changes: `PAT` goes from `DONE` to `PAT`, and `Deployment` is added (it is
   missing today, so `check` silently skips Jira-versus-logbook comparison for those
   tickets). Both also get a `STATUS_COLOR` entry. Only `Done` counts as finished for the
-  archive rule (idle for more than 7 days). Other Jira words the helper already knows map
+  archive rule (7 days after it became Done). Other Jira words the helper already knows map
   as before: `Bug Fixing` to `FIXING`, `Revisi SRF Data` to `ANALYST`, `In Progress` to
   `DEVELOPMENT`.
 - Non-Jira work (slugs, `bug-<n>`) has no Jira flow; its `Done` means the work is finished,
