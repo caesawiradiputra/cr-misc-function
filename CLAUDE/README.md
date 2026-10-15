@@ -235,6 +235,7 @@ description. You can also call them by name.
 | `jira-in-da-sync` | Daily intake sweep over the source boards (`IN`, plus other boards in any status): clone assigned tickets that have no `PROJ` link (old ones are only listed), keep a checkpoint per board so later runs skip checked tickets, then remind which `PROJ` tickets still sit in Backlog / To Do / Data Analysis. State lives in `~/.claude/state/jira-in-da-sync.json` |
 | `bast-generator` | Create a BAST handover page in Confluence from a ticket and its release folder |
 | `bast-learn` | Learn a repo's BAST conventions from its older pages |
+| `okf-writer` | Create, update or lint an Open Knowledge Format bundle (concept files with provenance, `index.md`, `log.md`); includes the `okf_lint.py` checker. See `docs/guidelines/OKF-OPEN-KNOWLEDGE-FORMAT.md` |
 | `confluence-ops-docs` | Business/ops documentation for Confluence derived from a codebase |
 | `documentation_auditor` | Audit docstrings and comments |
 | `logging_auditor` | Audit logging strategy and log quality |
