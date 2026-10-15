@@ -10,7 +10,7 @@
   },
   "aging_days": [30, 60, 90],
   "followup_days": [7, 14, 30],
-  "other_court": ["TESTING", "READY FOR RELEASE"],
+  "other_court": ["TESTING", "READY FOR RELEASE", "DEPLOYMENT", "PAT"],
   "confluence": {
     "space_id": "<PERSONAL_SPACE_ID>",
     "space_key": "<PERSONAL_SPACE_KEY>",

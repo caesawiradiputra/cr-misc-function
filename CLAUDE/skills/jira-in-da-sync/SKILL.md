@@ -120,6 +120,9 @@ If the source ticket is already Done or Cancelled, it still gets its clone (that
 
 If step 2 or 3 fails after step 1 succeeded, the clone already exists. Report the new key, retry only the failed step, and never create a second ticket to recover. If the link could not be made, the next run would see an unlinked source ticket and clone it again, so put the key in `retry` in the state and call the gap out loudly in the report.
 
+After the clones are reported, offer to start the ticket (`jira-ticket-kickoff`) or leave it
+for later; do not start it without the user's OK.
+
 ### Step 5: Save the checkpoint
 
 After the run, write the state file: for each board scanned, `projects.<board>.checkpoint` = the highest ticket number among every ticket examined (linked, cloned and stale alike), `checked_at` = today, `pending` = the tickets still awaiting a decision, `retry` = tickets with an unfinished clone. Always write it, even when nothing was cloned, so the next run stays cheap. If the user asked for a dry run or "don't save", leave the file alone and say so.
