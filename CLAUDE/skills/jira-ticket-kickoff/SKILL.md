@@ -34,6 +34,7 @@ Requesters submit an SRF on the Initiation board (`IN`). Once it's approved, the
 1. **Fetch the `IN-` ticket**: `getJiraIssue` with the same parameters as Step 1 (`view: "full"`, markdown), so `issuelinks`, description, and attachment metadata come back.
 2. **Look for an existing clone first.** Scan `issuelinks` for any `PROJ-\d+` key (normally the "Cloners" link, but accept any link type to a `PROJ-` ticket). If one exists, say so ("IN-3322 is already cloned as PROJ-1850") and continue with that `PROJ-` key. Never create a second clone. If several `PROJ-` links exist and it's unclear which is the live one, ask.
 3. **Check it's approved.** Look at the `IN-` ticket's status. If it doesn't clearly read as approved (e.g. still awaiting approval, rejected, cancelled), stop and ask the user before creating anything. The user said they clone after approval, so an unapproved status is a signal to double-check, not to proceed silently.
+3b. **Check for a duplicate someone else already made.** Teammates also create `PROJ` tickets from `IN-` tickets by hand, and those may not be linked as clones (often only "relates to"), or may not be linked yet. Before creating anything, search `PROJ` regardless of assignee: `searchJiraIssuesUsingJql` with `project = PROJ AND (issue in linkedIssues("IN-3322") OR (created >= -3d AND summary ~ "<distinctive words of the IN summary>")) ORDER BY created DESC` (fields `summary`, `status`, `creator`, `created`, `assignee`, `issuelinks`). If a candidate exists, show it (key, creator, created, status, link type) and ask the user whether to use it or still create a clone. Never create a second ticket silently. (Added 2026-10-16: a clone was created, and a teammate created another ticket for the same `IN-` ticket the next morning; the second one was cancelled as the duplicate.) The same search is worth repeating when the first PR for the ticket is opened, since a duplicate can appear after the clone.
 4. **Create the clone** with `createJiraIssue`, project `PROJ`:
    - `summary`: `SRF - ` followed by the `IN-` summary, trimmed of leading/trailing whitespace (IN summaries sometimes start with a space). E.g. `IN-3322` " Update customer onboarding flow" → `SRF - Update customer onboarding flow`. No "CLONE - " prefix. If the summary already starts with `SRF - `, don't double it.
    - `description`: the `IN-` description, and end it with a line `Cloned from [IN-3322](https://<ATLASSIAN_SITE>.atlassian.net/browse/IN-3322)` (using the real key). Every other mention of the `IN-` key in text you write into the clone ("Refs IN-3322", "SRF attachments live on IN-3322", a status note) is a link in the same form (see "Writing links" above), never the bare key.
@@ -159,7 +160,7 @@ Only folders — no `CHANGELOG.md` yet (`/generate-pr-message` creates/updates t
 
 ### Step 6a-i: Ensure the gitignored scratch folder exists
 
-For temporary per-ticket files the user wants to hand over (e.g. the DDL of a source table, sample data, exported schemas), use `scratch/<TICKET-ID>/` at the repo root. Make sure `scratch/` is in the repo's `.gitignore` (add it if missing, with a short comment) and verify with `git check-ignore -v scratch/<TICKET-ID>` before creating `scratch/<TICKET-ID>/`. Tell the user the path. Read from it on request; never commit or copy its contents into `release/` without asking, since anything worth shipping should be written as a proper file under `release/<TICKET-ID>/`.
+For temporary per-ticket files the user wants to hand over (e.g. the DDL of a source table, sample data, exported schemas), use `scratch/` at the repo root: `scratch/<category>/` holds the existing production state shared by all tickets, and `scratch/<TICKET-ID>/` holds this ticket's `CONTEXT.md`, samples and (later) its changes in dev form (see "Release and Scratch Folders" in the global `CLAUDE.md`). Make sure `scratch/` is in the repo's `.gitignore` (add it if missing, with a short comment) and verify with `git check-ignore -v scratch/<TICKET-ID>` before creating `scratch/<TICKET-ID>/`. Tell the user the path. Read from it on request; never commit or copy its contents into `release/` without asking, since anything worth shipping should be written as a proper file under `release/<TICKET-ID>/`.
 
 ### Step 6a-ii: Ensure the local Jira documents folder exists
 
@@ -175,7 +176,7 @@ When the user says PDFs have been added there, read them locally. The Read tool'
 
 ### Step 6a-iii: Gather reference context into `scratch/<TICKET-ID>/`
 
-Before brainstorming, collect what already exists that relates to this change, so the design matches the repo's earlier work instead of starting from a blank page. Everything gathered goes into `scratch/<TICKET-ID>/` (gitignored, one folder per ticket). Run this in Path A, in Path B only if `scratch/<TICKET-ID>/CONTEXT.md` is missing, and in Path C keyed by the slug (`scratch/<slug>/`). Never in Path D.
+Before brainstorming, collect what already exists that relates to this change, so the design matches the repo's earlier work instead of starting from a blank page. The index goes into `scratch/<TICKET-ID>/CONTEXT.md` (gitignored, one folder per ticket), and the out-of-repo objects are looked up in, or requested into, `scratch/<category>/`. Run this in Path A, in Path B only if `scratch/<TICKET-ID>/CONTEXT.md` is missing, and in Path C keyed by the slug (`scratch/<slug>/`). Never in Path D.
 
 **1. Classify the ask** from the ticket summary and description (the pasted text in Path C): **create/new** (new variable, table, field, pipeline, DAG, script) or **update/modify** (change, adjust, fix, extend, deprecate something that exists). Say which in one line. If it is genuinely mixed or unclear, ask.
 
@@ -183,7 +184,7 @@ Before brainstorming, collect what already exists that relates to this change, s
 
 - `release/*/` of older tickets in this repo (`ddl/`, `docs/`, `config/`, `data/`, `CHANGELOG.md`), plus `git log --all --oneline -i --grep=<keyword>` to find the ticket that touched it
 - `sql_scripts/` (`variables/`, `migrations/`, `database_setup/`) and the app code that the ticket touches
-- existing `scratch/*/` folders, which may hold earlier DataWorks or DDL exports
+- `scratch/<category>/` (`ddl/`, `dataworks/`, `flink/`, ...), the shared existing production state, and other tickets' `scratch/<TICKET-ID>/` folders
 - sibling repos under the same umbrella folder (e.g. `<repo>-consumer`): pipelines, DataWorks nodes, Airflow DAGs, DDL
 - the local `Documents/Work/{Domain}/Jira/` folders of related older tickets (SRF PDFs, exports)
 
@@ -194,7 +195,7 @@ Prefer `Grep`/`Glob` and `git log` over reading whole directories. Report what y
 - **Create/new**: show the closest similar items found (path, ticket, one line on why it's similar) and **ask** whether the user has a reference or similar work in mind, since they may know one the search can't see. If a reference exists (found or named), read it and note the conventions to match: naming, file layout, DDL style, variable SQL shape, `rule_type`/`return_type`, release-folder contents, DataWorks/DAG structure. If nothing is found and the user has none, say so plainly and continue; don't invent a reference.
 - **Update/modify**: search for the existing artifact to be changed (the current variable row/SQL, DDL, pipeline node, DAG, script). If found, show it and confirm it is the right one. If **not found, ask the user** for it (path, paste, or a DataWorks/DB export) before designing anything. Never reconstruct the "current state" from guesswork.
 
-**4. Save the context** by copying, never moving, so the originals stay untouched. Mirror the artifact type as a subfolder: `ddl/`, `scripts/`, `docs/`, `dataworks/`, `airflow/`, `config/`. Check `scratch/<TICKET-ID>/` first and don't overwrite a file already there (see the global "check state before writing" rule). Skip secrets (`.env`, credentials, tokens, vault files), and say so if one would have been relevant.
+**4. Check and save only what lives outside the repo**, following the "Release and Scratch Folders" layout in the global `CLAUDE.md`. Anything already in git (older `release/` files, `app/`, `sql_scripts/`, the sibling repos) is read from git and listed in `CONTEXT.md` under "Repo sources to read"; it is not copied. For every out-of-repo object the change touches (a table DDL, a DataWorks node, a Flink job), look in `scratch/<category>/` (`ddl/<engine>/`, `dataworks/<workspace>/`, `flink/`): if it is there, use it; if not, **ask the user to provide the existing production version** and create an empty `PROVIDE_<name>` placeholder in that category folder, listed under Gaps. Do not recreate it from git history or guesses. The ticket folder `scratch/<TICKET-ID>/<category>/` is for the changes only, written later in their dev form (see "Working order for a change" in the global `CLAUDE.md`); at kickoff it holds `CONTEXT.md` and any samples the user supplies (`docs/`). An item with no `scratch-changelog` comment is exactly as the user provided it; releases add that comment when they promote a change into the category folder. Check `scratch/` first and don't overwrite a file already there (see the global "check state before writing" rule). Skip secrets (`.env`, credentials, tokens, vault files), and say so if one would have been relevant.
 
 Write `scratch/<TICKET-ID>/CONTEXT.md` as the index:
 
@@ -208,15 +209,24 @@ Write `scratch/<TICKET-ID>/CONTEXT.md` as the index:
 
 | File in scratch | Original location | Why it's relevant |
 | --- | --- | --- |
-| ddl/example.sql | release/PROJ-1234/ddl/example.sql | similar new column on the same table |
+| scratch/ddl/postgres/example.sql | live production database export | current table DDL to alter |
+| scratch/<TICKET-ID>/ddl/postgres/001_alter_example.sql | written for this ticket | the dev form of the change |
+
+## Repo sources to read (not copied)
+
+<paths in git that matter, e.g. `release/PROJ-1234/ddl/`, `app/models/`>
 
 ## Conventions to match
 
 <bullets, create mode only; "None found" if there is no reference>
 
+## Dev assumptions
+
+<what differs between production and dev in the change files; filled when the dev form is written>
+
 ## Gaps
 
-<anything the user still needs to supply, e.g. the existing DataWorks node for an update; "None" if complete>
+<`PROVIDE_*` placeholders the user still needs to fill, one row each with what to put in it; "None" if complete>
 ```
 
 Tell the user the folder path and list the gaps. Carry the findings, including the conventions and gaps, into the Step 7a/7c summary and the brainstorming seed. Anything that should ship is still written fresh under `release/<TICKET-ID>/`, not copied out of scratch without asking.
@@ -372,13 +382,13 @@ transition by its target status, and skip when the ticket is already at or past 
 ## Pre-completion checklist
 
 - [ ] Path chosen correctly: recheck phrasing → Path D; ticket ID present (not a recheck) → JIRA path (A or B); absent + change described directly → Path C
-- [ ] `IN-` key given: Step 0b ran first: existing `PROJ-` clone checked for before creating; approval status checked; at most one clone created and linked back; attachments not copied and the user told; then the rest of the flow ran against the `PROJ-` key
+- [ ] `IN-` key given: Step 0b ran first: existing `PROJ-` clone checked for before creating, and a same-scope `PROJ` ticket made by someone else searched for (step 3b) and shown to the user if found; approval status checked; at most one clone created and linked back; attachments not copied and the user told; then the rest of the flow ran against the `PROJ-` key
 - [ ] Path A/B: ticket data fetched via the Atlassian MCP tool — nothing in the summary invented
 - [ ] Path A/B/D: fetched with `view: "full"` (not the `fields` array — that only accepts custom-field IDs on this tool, not standard field names); Step 1b produced a visible "found" or "none found" statement — never a silent skip; an absent `issuelinks` key was double-checked with `fields: ["*all"]` before being read as "no links"; any linked `IN-` ticket fetched and reconciled against the `PROJ-` ticket, with agreement/conflict called out explicitly rather than silently merged
 - [ ] Path A/B: attachment metadata (filename/size/date) recorded in `requirement.md`'s Attachments section for the `PROJ-` ticket and any linked `IN-` ticket — never attempted to read attachment content, since no tool here can retrieve it
 - [ ] Path A: existing-branch check ran before any dev sync; working tree was clean before the sync script ran; branch type/slug derived from JIRA data
 - [ ] Path A/B: local `Documents/Work/{Domain}/Jira/{TICKET-ID} - {Title}/docs` folder checked for (reused if a `{TICKET-ID}` folder already exists) or created, and the user told where to drop the SRF PDFs
-- [ ] Path A/B/C: reference context step ran: ask classified as create or update and stated; searched release/, sql_scripts/, scratch/, sibling repos and Jira docs folders, and said what was searched; create mode asked about a reference and noted conventions to match; update mode found the existing artifact or asked the user for it; files copied (not moved) into `scratch/<TICKET-ID>/` by artifact type with a `CONTEXT.md` index, nothing overwritten, no secrets copied; findings carried into the brainstorming seed
+- [ ] Path A/B/C: reference context step ran: ask classified as create or update and stated; searched release/, sql_scripts/, scratch/, sibling repos and Jira docs folders, and said what was searched; create mode asked about a reference and noted conventions to match; update mode found the existing artifact or asked the user for it; every out-of-repo object the change touches found in `scratch/<category>/` or requested from the user with a `PROVIDE_` placeholder (never rebuilt from guesses), `scratch/<TICKET-ID>/CONTEXT.md` written, nothing overwritten, no secrets copied; findings carried into the brainstorming seed
 - [ ] Path B: dev/master untouched; existing `release/<TICKET-ID>/` contents left alone; recap grounded in actual `git log`/`git diff` output; linked `IN-` ticket re-checked for drift since the branch was created
 - [ ] Path C: clarifying questions asked and answered *before* branching; `spec.md` (not `requirement.md`) written from the assembled spec; type/slug confirmed with the user, not assumed
 - [ ] Path D: re-fetched live rather than reasoning from memory; drift (if any) diffed against the existing `requirement.md`, not just re-summarized from scratch; attachment list diffed too, with any count/filename/date change flagged for manual review rather than guessed at; any update appended, original sections left untouched; no git or folder operations performed
