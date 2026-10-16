@@ -493,6 +493,85 @@ Scoped to data-lake pipelines and DataWorks nodes; not rules for other work.
 
 ---
 
+## Release and Scratch Folders
+
+Per-change folders at the repo root. `release/` ships with the change; `scratch/`
+is the working area for objects that are not in the repo.
+
+**`release/<TICKET-ID>/`** (committed; a slug replaces the ticket id when there is no ticket):
+
+- `CHANGELOG.md` (written by `/generate-pr-message`), `docs/` (`requirement.md`,
+  or `spec.md` without a ticket; also `srf.pdf`, design, decisions, deployment notes).
+- `ddl/`: the production change as numbered files `NNN_<verb>_<object>.<ext>`. When
+  more than one engine is involved, use one subfolder per engine (`postgres/`,
+  `odps/`, `hive/`, `trino/`, `maxcompute/`).
+- `flink/`, `data/`, `config/`. Create only the folders the change needs; the
+  kickoff scaffolds `ddl/`, `data/`, `config/`, `docs/`.
+- **No DataWorks nodes in `release/`.** They already live in the DataWorks
+  workspace, so the release holds no copy; the changelog describes the node
+  change instead.
+
+**`scratch/`** (gitignored, never committed) has two levels, and holds only objects
+**outside the repo** (what is in git is read from git, not copied):
+
+- **`scratch/<category>/...`: the full existing production state**, shared by all
+  tickets. `<category>` is `ddl` (engine subfolder, one file per object, named by the
+  object), `dataworks` (`<workspace>/<flow path>/`, a mirror of the live nodes),
+  `flink`, and so on. It is not edited during a change.
+- **`scratch/<TICKET-ID>/<category>/<items>`: only what this ticket changes, in its
+  dev form.** For an existing object that is the dev change script (numbered
+  `ALTER` or `INSERT`), the edited node (whole file) or the changed job. A new
+  object is a full file. The ticket folder also has `CONTEXT.md` (the index:
+  Mode, Searched, Files, Repo sources to read, Conventions to match, Dev assumptions,
+  Gaps) and `docs/` for samples.
+- **Kickoff:** for every object the change touches, check `scratch/<category>/`.
+  If it is missing, ask the user to provide it (an empty `PROVIDE_<name>` file in
+  the category folder marks it, and Gaps lists it); never rebuild it from guesses.
+  Delete the `PROVIDE_` file once it is filled or shown unnecessary.
+- **After release:** the category files are brought to the new production state
+  (DDL rewritten with the change, edited nodes replacing the old ones), so the next
+  change starts from what is live. Every item changed this way gets a changelog
+  comment at the top of the file with the ticket and the date, so an item as the
+  user provided it (no comment) can be told apart from one Claude modified:
+
+  ```text
+  -- scratch-changelog
+  --   PROJ-1902 2026-10-16: added device_advertising_id, device_operating_system, ...
+  ```
+
+  Use the file type's own comment marker (`--` for SQL and Flink SQL, `#` for
+  Python and shell). JSON cannot hold comments, so a JSON item gets a sibling
+  file `<name>.json.changelog` with the same lines. Add one new line per ticket,
+  oldest first; never rewrite a line, and never add the comment to an item the
+  user only provided.
+- Nothing moves from `scratch/` into `release/` without asking; what ships is
+  written fresh under `release/`. Node edits for another repo's workspace go in
+  that repo's `scratch/`.
+
+**Working order for a change:**
+
+1. At kickoff the user provides the existing production objects into
+   `scratch/<category>/` (see above).
+2. Claude generates the **production change** into `release/<TICKET-ID>/<category>/`
+   (never DataWorks nodes).
+3. Claude writes the **same change for the dev environment** into
+   `scratch/<TICKET-ID>/<category>/` (for example Hive schema `raw_data_dev_cloud`
+   instead of `raw_data_prod_cloud`), so the user can apply and test it in dev.
+   Every assumption about what differs in dev is listed in `CONTEXT.md` under
+   "Dev assumptions"; unknown dev names are asked, not guessed.
+4. DataWorks nodes exist only in scratch: the edited copy stays in
+   `scratch/<TICKET-ID>/dataworks/`, and at release it replaces the node in
+   `scratch/dataworks/<workspace>/`.
+
+**Several repos for one change:** use the same branch name in each repo (a
+sibling worktree named `<repo>-<TICKET-ID>` when the other checkout is busy),
+so one BAST can cover both. (Added 2026-10-15, a PROJ-1902 session: the user asked
+for the layout of the rules repo's `scratch/` and `release/` to become the
+standard, then refined it the next day: full prod state in `scratch/<category>/`,
+only the changes in `scratch/<TICKET-ID>/`.)
+
+---
+
 ## Markdown Style
 
 Rules VS Code cannot auto-fix — apply these manually when writing or editing Markdown files:
@@ -548,6 +627,9 @@ The user's tracking of what they did, used for weekly reporting. Master file:
   git/PRs vs Jira) and never read the Confluence page back for state.
 - `sync` copies to the Windows folder only when the master changed; run it at the
   first logbook touch of a session or when asked, not after every edit.
+- The CAB register (`cab-register.csv` in the Windows logbook folder) is read by the helper
+  (`logbook.py cab`, `pipeline`, `check`, `week`); the user updates it after each CAB session
+  (Monday and Wednesday). It owns the dates, Jira owns the status.
 
 ---
 

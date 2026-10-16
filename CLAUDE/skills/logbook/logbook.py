@@ -15,6 +15,7 @@ import csv
 import datetime as dt
 import filecmp
 import html
+import io
 import json
 import os
 import re
@@ -64,12 +65,16 @@ JIRA_STATUS = {
     "In Progress": "DEVELOPMENT", "Data Development": "DEVELOPMENT",
     "Data Analysis": "ANALYST", "Revisi SRF Data": "ANALYST", "Bug Fixing": "FIXING",
     "[BU] Todo": "TODO", "TODO": "TODO", "To Do": "TODO", "Backlog": "TODO",
-    "Done": "DONE",
+    "Done": "DONE", "Cancel": "CANCELLED",
 }  # fmt: skip
 ## Start-date cell fill once unfinished work gets old: tiers light to strong.
 AGING_COLORS = ["#FFFAE6", "#FFF0B3", "#FF8F73"]
 AGING_DAYS = [30, 60, 90]  # override with "aging_days" in config.json
-NO_AGING = {"DONE", "HOLD"}  # finished, or deliberately paused: never highlighted
+NO_AGING = {
+    "DONE",
+    "HOLD",
+    "CANCELLED",
+}  # finished, or deliberately paused: never highlighted
 ## Statuses where the ball is in someone else's court. Their age is shown on the LastUpdate
 ## cell (time since anything moved, i.e. when to follow up) instead of on Start Date.
 OTHER_COURT = [
@@ -84,7 +89,7 @@ FOLLOWUP_DAYS = [7, 14, 30]  # override with "followup_days" in config.json
 STATUS_COLOR = {
     "ANALYST": "purple", "DEVELOPMENT": "blue", "FIXING": "red", "TESTING": "yellow",
     "READY FOR RELEASE": "green", "DEPLOYMENT": "blue", "PAT": "purple",
-    "DONE": "green", "HOLD": "neutral", "TODO": "neutral",
+    "DONE": "green", "HOLD": "neutral", "TODO": "neutral", "CANCELLED": "neutral",
 }  # fmt: skip
 
 
@@ -200,7 +205,15 @@ def cmd_week(args: argparse.Namespace) -> None:
     for row in sorted(read_rows(), key=lambda r: r["date"]):  # stable: ties keep order
         if iso_week(row["date"]) == week:
             by_ticket.setdefault(row["ticket"], []).append(row)
-    if not by_ticket:
+    cfg = load_config()
+    register, _ = load_register_for_run(cfg)
+    banner = ""
+    if register is not None:
+        now, sessions = now_wib(), cab_sessions(cfg)
+        if not register_fresh(register, now, sessions):
+            banner = stale_banner(now, sessions)
+    cab_lines = cab_week_lines(week, register, banner)
+    if not by_ticket and not cab_lines:
         print(f"No entries for {week}.")
         return
     print(f"## Weekly report {week}\n")
@@ -211,6 +224,8 @@ def cmd_week(args: argparse.Namespace) -> None:
         for row in rows:
             if row["notes"]:
                 print(f"  - {row['date']}: {row['notes']}")
+    if cab_lines:
+        print("\n" + "\n".join(cab_lines))
 
 
 def cmd_sync(_: argparse.Namespace) -> None:
@@ -478,6 +493,28 @@ def cmd_check(args: argparse.Namespace) -> None:
                 f"'{item[-1]['status']}' ({mine}, {item[-1]['date']}) -> Jira wins; "
                 f'propose: add --ticket {ticket} --status "{target}"'
             )
+    register, cab_note = load_register_for_run(cfg)
+    if cab_note:
+        notes.append(cab_note)
+    elif register is not None:
+        now, sessions = now_wib(), cab_sessions(cfg)
+        if register_fresh(register, now, sessions):
+            fixing = fixing_dates_by_ticket(read_rows())
+            tracked = {t for t, i in cache.items() if i.get("track")}
+            for ticket in sorted(set(items) | tracked):
+                info = cache.get(ticket, {})
+                word = (
+                    JIRA_STATUS.get(info.get("jira_status", ""))
+                    if jira_fresh(info)
+                    else None
+                )
+                if not word:
+                    continue
+                cab = cab_info(register, ticket, fixing.get(ticket, []), now.date())
+                cab_found, _ = cab_flags(cab, word, now.date())
+                findings += [f"{ticket}: {text} -> {fix}" for text, fix in cab_found]
+        else:
+            notes.append(stale_banner(now, sessions))
     print(f"## Recheck since {since} (CSV vs git/PRs vs Jira cache)\n")
     print(
         "\n".join(f"- {n}" for n in notes) if notes else "", end="\n" if notes else ""
@@ -642,6 +679,9 @@ def board_entry(
     today: dt.date,
     live: bool,
     no_git: str = "",
+    cab: dict[str, Any] | None = None,
+    cab_fresh: bool = False,
+    not_registered: bool = False,
 ) -> dict[str, Any]:
     """One board line. Jira supplies the status; git evidence only raises flags.
 
@@ -660,7 +700,23 @@ def board_entry(
         "git": (ev["stage"] or "commits") if ev else no_git,
         "next": NEXT_ACTION.get(word, ""), "flags": flags,
         "stale": bool(info.get("jira_status")) and not live,
+        "propose_done": False, "done_line": "", "cab_line": "",
     }  # fmt: skip
+    cab_row = cab["row"] if cab else None
+    if cab_row is not None:
+        entry["cab_line"] = (
+            f"CAB {_iso(cab_row['cab'])} | deploy {_iso(cab_row['real'] or cab_row['plan'])} | "
+            f"PAT end {_iso(cab_row['pat_end'])}"
+        )
+    ## The register decides about PAT only when it says something about it: a planned end,
+    ## or a confirmed Status PAT. Otherwise the cached Jira-derived pat_since still applies.
+    cab_decides = bool(
+        cab_fresh
+        and cab
+        and cab_row is not None
+        and cab["stage"] in ("PAT", "Done")
+        and (cab["planned_end"] is not None or cab["pat_confirmed"])
+    )
     if ev and last and last.get("repo") and last["repo"] not in ev["repos"]:
         flags.append((
             f"note: logbook repo {last['repo']} differs from PR repo "
@@ -694,7 +750,7 @@ def board_entry(
                 "commits exist but Jira is still Data Analysis",
                 "move Jira to Data Development",
             ))  # fmt: skip
-    if word == "PAT":
+    if word == "PAT" and not cab_decides:
         since = info.get("pat_since")
         if not since:
             flags.append((
@@ -712,6 +768,16 @@ def board_entry(
             f"Jira {jira_word} vs logbook {log_word}",
             f'Jira wins: add --ticket {ticket} --status "{target}"',
         ))  # fmt: skip
+    if cab_fresh:
+        cab_found, propose = cab_flags(cab, word, today)
+        flags.extend(cab_found)
+        entry["propose_done"] = propose
+        if propose:
+            entry["done_line"] = cab_found[0][0]
+        if not_registered and word == "READY FOR RELEASE":
+            flags.append(
+                ("not registered for CAB", "register the BAST in the CAB register")
+            )
     return entry
 
 
@@ -731,6 +797,9 @@ def derive_board(
     evidence: dict[str, dict],
     today: dt.date,
     repo_paths: dict[str, str] | None = None,
+    register: dict[str, Any] | None = None,
+    now: dt.datetime | None = None,
+    sessions: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], bool, str]:
     """Entries for every open ticket, ordered by stage.
 
@@ -743,9 +812,30 @@ def derive_board(
     tickets = {t for t, info in cache.items() if info.get("track")}
     tickets |= {t for t, i in by_ticket.items() if i[-1]["status"] not in FINISHED}
     entries = []
+    cab_fresh = bool(
+        register is not None
+        and now is not None
+        and sessions is not None
+        and register_fresh(register, now, sessions)
+    )
+    fixing = fixing_dates_by_ticket([r for i in items for r in i])
+    grace = cab_grace_days(load_config())
     for ticket in sorted(tickets):
         info = cache.get(ticket, {})
         item = by_ticket.get(ticket, [])
+        cab = (
+            cab_info(register, ticket, fixing.get(ticket, []), today)
+            if register
+            else None
+        )
+        start = rfr_run_start(item)
+        not_registered = bool(
+            cab_fresh
+            and cab is None
+            and ticket.startswith("DA-")
+            and start is not None
+            and (today - start).days >= grace
+        )
         e = board_entry(
             ticket,
             info,
@@ -754,8 +844,11 @@ def derive_board(
             today,
             info.get("refreshed", "") == today.isoformat(),
             _no_git(item, repo_paths),
+            cab,
+            cab_fresh,
+            not_registered,
         )
-        if e["word"] != "DONE":
+        if e["word"] not in ("DONE", "CANCELLED"):
             entries.append(e)
     entries.sort(
         key=lambda e: (
@@ -767,7 +860,11 @@ def derive_board(
 
 
 def render_board(
-    entries: list[dict[str, Any]], live: bool, refreshed: str, notes: list[str]
+    entries: list[dict[str, Any]],
+    live: bool,
+    refreshed: str,
+    notes: list[str],
+    cab_banner: str = "",
 ) -> str:
     """Text board grouped by stage; a stale banner when Jira was not refreshed today."""
     lines = [f"# Pipeline board {dt.date.today().isoformat()}"]
@@ -778,7 +875,13 @@ def render_board(
             "are from the cache and not verified; Jira-dependent flags are hidden. "
             "Refresh it (logbook skill, step 0a) to get the flags.",
         ]
+    if cab_banner:
+        lines += ["", cab_banner]
     lines += [f"- {n}" for n in notes]
+    proposals = [e for e in entries if e.get("propose_done")]
+    if proposals:
+        lines += ["", f"## PAT done: propose Done ({len(proposals)})"]
+        lines += [f"- {e['ticket']}: {e['done_line']}" for e in proposals]
     for word in BOARD_ORDER:
         group = [e for e in entries if e["word"] == word]
         if not group:
@@ -792,6 +895,8 @@ def render_board(
                 f"- {e['ticket']}{where} | Jira: {e['jira_status'] or '-'}{stale}{git}"
             )
             lines.append(f"  next: {e['next']}")
+            if e["cab_line"]:
+                lines.append(f"  {e['cab_line']}")
             lines += [f"  ! {text} -> {fix}" for text, fix in e["flags"]]
     if not entries:
         lines += ["", "No open tickets."]
@@ -809,10 +914,603 @@ def cmd_pipeline(args: argparse.Namespace) -> None:
         notes.append(
             "no repo_paths in config.json: git state is unknown for every ticket"
         )
+    register, cab_note = load_register_for_run(cfg)
+    now, sessions = now_wib(), cab_sessions(cfg)
+    banner = ""
+    if cab_note:
+        notes.append(cab_note)
+    elif register is not None and not register_fresh(register, now, sessions):
+        banner = stale_banner(now, sessions)
     entries, live, refreshed = derive_board(
-        cache, group_items(read_rows()), evidence, dt.date.today(), repo_paths
+        cache,
+        group_items(read_rows()),
+        evidence,
+        dt.date.today(),
+        repo_paths,
+        register,
+        now,
+        sessions,
     )
-    print(render_board(entries, live, refreshed, notes))
+    print(render_board(entries, live, refreshed, notes, banner))
+
+
+## ---- CAB register (spec 2026-10-15-cab-register-integration-design.md) ----
+WIB = dt.timezone(dt.timedelta(hours=7))  # Indonesia (WIB) has no daylight saving
+CAB_REQUIRED = [
+    "Column 1", "Status", "Tanggal Register CAB", "Nama CAB", "jadwal CAB",
+    "Deployed Real Date", "Last PAT Date", "Status PAT",
+]  # fmt: skip
+CAB_OPTIONAL = ["TYPE CAB", "Kategori", "Deploye Plan Date"]
+CAB_COLUMNS = CAB_REQUIRED + CAB_OPTIONAL
+
+
+def resolve_register_path(cfg: dict[str, Any]) -> Path | None:
+    """Where the CAB register CSV is, or None. Never exits (unlike windows_dir())."""
+    configured = cfg.get("cab_register")
+    if configured:
+        return Path(str(configured)).expanduser()
+    folder = os.environ.get("LOGBOOK_WINDOWS_DIR", "").strip()
+    if not folder and WINDOWS_DIR_FILE.exists():
+        try:
+            lines = WINDOWS_DIR_FILE.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            lines = []
+        folder = lines[0].strip() if lines else ""
+    return Path(folder) / "cab-register.csv" if folder else None
+
+
+def _norm_header(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _decode(raw: bytes) -> tuple[str, str]:
+    """UTF-8 (BOM allowed), else cp1252 (Excel's 'CSV (comma delimited)')."""
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            return raw.decode(encoding), encoding
+        except UnicodeDecodeError:
+            continue
+    raise UnicodeDecodeError("cp1252", raw, 0, 1, "neither UTF-8 nor cp1252")
+
+
+def _detect_delimiter(text: str) -> str:
+    first = text.lstrip("\r\n").split("\n", 1)[0]
+    counts = {d: first.count(d) for d in (",", ";", "\t")}
+    best = max(counts, key=lambda d: counts[d])
+    return best if counts[best] else ","
+
+
+def read_register(path: Path) -> dict[str, Any]:
+    """Read the CAB register. Read-only; any failure sets 'off' and never raises."""
+    out: dict[str, Any] = {
+        "rows": [], "problems": [], "encoding": "", "delimiter": ",",
+        "mtime": None, "off": "",
+    }  # fmt: skip
+    try:
+        raw = path.read_bytes()
+        mtime = dt.datetime.fromtimestamp(path.stat().st_mtime, WIB)
+        text, out["encoding"] = _decode(raw)
+    except FileNotFoundError:
+        out["off"] = f"no CAB register at {path}"
+        return out
+    except (OSError, UnicodeDecodeError) as exc:
+        out["off"] = f"cannot read the CAB register {path}: {exc}"
+        return out
+    out["mtime"] = mtime
+    out["delimiter"] = _detect_delimiter(text)
+    try:
+        table = list(
+            csv.reader(io.StringIO(text, newline=""), delimiter=out["delimiter"])
+        )
+    except csv.Error as exc:
+        out["off"] = f"cannot parse the CAB register: {exc}"
+        return out
+    table = [r for r in table if any(c.strip() for c in r)]
+    if not table:
+        out["off"] = "the CAB register is empty"
+        return out
+    header, body = table[0], table[1:]
+    index: dict[str, int] = {}
+    for i, cell in enumerate(header):
+        key = _norm_header(cell)
+        if key in index:
+            out["problems"].append(
+                f"duplicate column {cell.strip()!r}: the first one is used"
+            )
+        else:
+            index[key] = i
+    missing = [c for c in CAB_REQUIRED if _norm_header(c) not in index]
+    if missing:
+        out["off"] = "the CAB register lacks column(s): " + ", ".join(missing)
+        return out
+    for line in body:
+        padded = line + [""] * (len(header) - len(line))
+        out["rows"].append({
+            col: padded[index[_norm_header(col)]].strip() if _norm_header(col) in index else ""
+            for col in CAB_COLUMNS
+        })  # fmt: skip
+    return out
+
+
+CAB_KEY = re.compile(r"(?<![A-Za-z0-9])DA-?\s?(\d{3,5})(?!\d)", re.IGNORECASE)
+
+
+def register_cfg_lag(cfg: dict[str, Any]) -> int:
+    """cab_max_lag_days (default 21), clamped to 26: readings of a cell are >= 27 days apart."""
+    try:
+        return max(0, min(int(cfg.get("cab_max_lag_days", 21)), 26))
+    except (TypeError, ValueError):
+        return 21
+
+
+def _split_date(cell: str) -> tuple[int, int, int] | None:
+    m = re.fullmatch(r"\s*(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\s*", cell)
+    if not m:
+        return None
+    year = int(m[3])
+    return int(m[1]), int(m[2]), year + 2000 if year < 100 else year
+
+
+def _mk(a: int, b: int, year: int, day_first: bool) -> dt.date | None:
+    day, month = (a, b) if day_first else (b, a)
+    try:
+        return dt.date(year, month, day)
+    except ValueError:
+        return None
+
+
+def read_dmy(cell: str) -> dt.date | None:
+    parts = _split_date(cell)
+    return _mk(*parts, True) if parts else None
+
+
+def register_date(
+    cell: str, cab: dt.date | None, max_lag: int
+) -> tuple[dt.date | None, str]:
+    """The register date: primary M/D, typed D/M only if the primary is not plausible."""
+    parts = _split_date(cell)
+    if parts is None:
+        return None, ""
+    primary, swapped = _mk(*parts, False), _mk(*parts, True)
+    if swapped == primary:
+        swapped = None
+    if cab is None:
+        chosen = primary or swapped
+        return chosen, "unverified" if chosen else ""
+
+    def plausible(d: dt.date | None) -> bool:
+        return d is not None and 0 <= (cab - d).days <= max_lag
+
+    if plausible(primary):
+        return primary, ""
+    if plausible(swapped):
+        return swapped, "swapped"
+    return None, "unknown"
+
+
+def _column_number(cell: str) -> int | None:
+    m = re.fullmatch(r"(\d+)(?:\.0+)?", cell.strip())
+    return int(m[1]) if m else None
+
+
+def _current_row(rows: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
+    """The ticket's current CAB row by Column 1, or (None, why it is ambiguous)."""
+    numbered = [r for r in rows if r["n"] is not None]
+    if not numbered:
+        return None, "no valid Column 1"
+    top = max(r["n"] for r in numbered)
+    tops = [r for r in numbered if r["n"] == top]
+    if len(tops) > 1:
+        return None, f"duplicate Column 1 {top}"
+    current = tops[0]
+    for r in numbered:
+        for field in ("cab", "real"):
+            if (
+                r is not current
+                and r[field]
+                and current[field]
+                and r[field] > current[field]
+            ):
+                return None, "a lower Column 1 has a later date"
+    return current, ""
+
+
+def _cell_date(
+    rawrow: dict[str, str], column: str, label: str, problems: list[str]
+) -> dt.date | None:
+    """A D/M date cell; a non-blank cell that is not a date is reported."""
+    value = read_dmy(rawrow[column])
+    if rawrow[column] and value is None:
+        problems.append(f"{label}: {column} is not a date")
+    return value
+
+
+def build_register(
+    read: dict[str, Any], cfg: dict[str, Any], today: dt.date
+) -> dict[str, Any]:
+    """Parsed rows plus a per-ticket index. Pure: no file access."""
+    max_lag = register_cfg_lag(cfg)
+    problems = list(read["problems"])
+    rows: list[dict[str, Any]] = []
+    for line, rawrow in enumerate(read["rows"], start=1):
+        label = rawrow["Column 1"] or f"row {line}"
+        n = _column_number(rawrow["Column 1"])
+        if n is None:
+            problems.append(f"{label}: Column 1 is not a number")
+
+        cab = _cell_date(rawrow, "jadwal CAB", label, problems)
+        reg, note = register_date(rawrow["Tanggal Register CAB"], cab, max_lag)
+        if rawrow["Tanggal Register CAB"] and reg is None:
+            problems.append(f"{label}: Tanggal Register CAB is unknown")
+        plan = _cell_date(rawrow, "Deploye Plan Date", label, problems)
+        real = _cell_date(rawrow, "Deployed Real Date", label, problems)
+        pat_end = _cell_date(rawrow, "Last PAT Date", label, problems)
+        if real is not None and real > today:
+            problems.append(f"{label}: Deployed Real Date is in the future")
+            real = None
+        if reg and cab and cab < reg:
+            problems.append(f"{label}: jadwal CAB is before the register date")
+            cab = None
+        if cab and plan and plan < cab:
+            problems.append(f"{label}: Deploye Plan Date is before jadwal CAB")
+            plan = None
+        if cab and real and real < cab:
+            problems.append(f"{label}: Deployed Real Date is before jadwal CAB")
+            real = None
+        if real and pat_end and pat_end < real:
+            problems.append(f"{label}: Last PAT Date is before Deployed Real Date")
+            pat_end = None
+        keys: list[str] = []
+        for m in CAB_KEY.finditer(rawrow["Nama CAB"]):
+            key = f"DA-{m[1]}"
+            if key not in keys:
+                keys.append(key)
+        rows.append({
+            "n": n, "status": rawrow["Status"], "pat_status": rawrow["Status PAT"],
+            "type": rawrow["TYPE CAB"], "kategori": rawrow["Kategori"],
+            "name": rawrow["Nama CAB"], "keys": keys, "reg": reg, "reg_note": note,
+            "cab": cab, "plan": plan, "real": real, "pat_end": pat_end,
+        })  # fmt: skip
+    by_ticket: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        for key in row["keys"]:
+            by_ticket.setdefault(key, {"history": []})["history"].append(row)
+    for entry in by_ticket.values():
+        entry["current"], entry["ambiguous"] = _current_row(entry["history"])
+    return {
+        "rows": rows, "by_ticket": by_ticket, "problems": problems,
+        "unlinked": sum(1 for r in rows if not r["keys"]),
+        "encoding": read.get("encoding", ""), "delimiter": read.get("delimiter", ","),
+        "mtime": read.get("mtime"),
+    }  # fmt: skip
+
+
+CAB_STATUS_STAGE = {
+    "register cab": "Ready For Release", "pending": "Ready For Release",
+    "cab ulang": "Ready For Release", "ok tp perlu rekonfirm": "Ready For Release",
+    "done cab and progress deployment": "Deployment",
+    "onprogress deployment": "Deployment", "closed": "PAT",
+    "rollback": "Rollback", "cancel": "Cancel",
+}  # fmt: skip
+CAB_ERROR_STATUS = {"rollback", "cab ulang", "cancel"}
+CAB_PAT_CONFIRMED = {"closed", "na"}  # Status PAT: Closed, or NA = not applicable
+_WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+
+
+def now_wib() -> dt.datetime:
+    return dt.datetime.now(WIB)
+
+
+def fixing_dates_by_ticket(rows: list[dict[str, str]]) -> dict[str, list[dt.date]]:
+    out: dict[str, list[dt.date]] = {}
+    for r in rows:
+        if r["status"] == "Fixing":
+            out.setdefault(r["ticket"], []).append(dt.date.fromisoformat(r["date"]))
+    return out
+
+
+def cab_info(
+    register: dict[str, Any],
+    ticket: str,
+    fixing_dates: list[dt.date],
+    today: dt.date,
+) -> dict[str, Any] | None:
+    """The CAB view of one ticket: stage, PAT state and error signal (spec sections 4 and 5)."""
+    entry = register["by_ticket"].get(ticket)
+    if entry is None:
+        return None
+    row = entry["current"]
+    info: dict[str, Any] = {
+        "ticket": ticket, "history": entry["history"], "ambiguous": entry["ambiguous"],
+        "row": row, "stage": "", "planned_end": None, "pat_confirmed": False,
+        "pat_assumed": False, "error_signal": "",
+    }  # fmt: skip
+    if row is None:
+        return info
+    status = row["status"].lower()
+    stage = CAB_STATUS_STAGE.get(status, "unknown")
+    end = row["pat_end"]
+    info["planned_end"] = end
+    signal = ""
+    if status in CAB_ERROR_STATUS:
+        signal = f"the register status is {row['status']}"
+    else:
+        start = row["real"] or row["plan"]
+        if start and end and any(start <= d <= end for d in fixing_dates):
+            signal = "a Fixing row in the logbook during the PAT window"
+    info["error_signal"] = signal
+    if stage == "PAT":
+        confirmed = row["pat_status"].lower() in CAB_PAT_CONFIRMED
+        assumed = not confirmed and not signal and end is not None and today >= end
+        info["pat_confirmed"], info["pat_assumed"] = confirmed, assumed
+        if confirmed or assumed:
+            stage = "Done"
+    info["stage"] = stage
+    return info
+
+
+def cab_sessions(cfg: dict[str, Any]) -> dict[str, Any]:
+    """cab_sessions from config.json; anything malformed falls back to Mon and Wed, 15:00."""
+    default = {"days": ["Mon", "Wed"], "end": "15:00"}
+    given = cfg.get("cab_sessions")
+    if not isinstance(given, dict):
+        return default
+    days, end = given.get("days", default["days"]), given.get("end", default["end"])
+    valid_days = (
+        isinstance(days, list)
+        and bool(days)
+        and all(isinstance(d, str) and d[:3].lower() in _WEEKDAYS for d in days)
+    )
+    valid_end = isinstance(end, str) and re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", end)
+    return {"days": days, "end": end} if valid_days and valid_end else default
+
+
+def cab_grace_days(cfg: dict[str, Any]) -> int:
+    try:
+        return max(0, int(cfg.get("cab_grace_days", 3)))
+    except (TypeError, ValueError):
+        return 3
+
+
+def last_session_end(now: dt.datetime, sessions: dict[str, Any]) -> dt.datetime:
+    days = {_WEEKDAYS[d[:3].lower()] for d in sessions["days"]}
+    hour, minute = (int(x) for x in sessions["end"].split(":"))
+    for back in range(8):
+        day = (now - dt.timedelta(days=back)).date()
+        if day.weekday() in days:
+            end = dt.datetime(day.year, day.month, day.day, hour, minute, tzinfo=WIB)
+            if end <= now:
+                return end
+    raise ValueError("cab_sessions lists no session day")
+
+
+def register_fresh(
+    register: dict[str, Any], now: dt.datetime, sessions: dict[str, Any]
+) -> bool:
+    """Fresh = the file was modified at or after the end of the last CAB session."""
+    mtime = register.get("mtime")
+    return mtime is not None and mtime >= last_session_end(now, sessions)
+
+
+def stale_banner(now: dt.datetime, sessions: dict[str, Any]) -> str:
+    end = last_session_end(now, sessions)
+    return (
+        f"CAB register not updated since the {end:%A} {end.day} {end:%b} session; "
+        "CAB flags are hidden."
+    )
+
+
+def load_register_for_run(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+    """(register, note). Register is None when the feature is off; note says why."""
+    path = resolve_register_path(cfg)
+    if path is None:
+        return None, ""
+    read = read_register(path)
+    if read["off"]:
+        return None, read["off"]
+    return build_register(read, cfg, now_wib().date()), ""
+
+
+def register_quality(register: dict[str, Any]) -> list[str]:
+    """Data quality lines for the cab report (counts, not row dumps)."""
+    lines = list(register["problems"])
+    if register["unlinked"]:
+        lines.append(
+            f"{register['unlinked']} row(s) without a ticket key (--show-unlinked lists them)"
+        )
+    for row in register["rows"]:
+        if row["status"].lower() not in CAB_STATUS_STAGE:
+            lines.append(
+                f"Column 1 {row['n'] if row['n'] is not None else '?'}: "
+                f"unknown status {row['status']!r}"
+            )
+        deploying = row["status"].lower() in (
+            "onprogress deployment",
+            "done cab and progress deployment",
+        )
+        if deploying and row["pat_status"].lower() == "closed":
+            lines.append(
+                f"Column 1 {row['n']}: status is {row['status']} but Status PAT is Closed"
+            )
+        if row["reg_note"] == "unverified":
+            lines.append(
+                f"Column 1 {row['n']}: register date is unverified (no CAB date)"
+            )
+        if row["reg_note"] == "swapped":
+            lines.append(f"Column 1 {row['n']}: register date read as day/month")
+    for key, entry in sorted(register["by_ticket"].items()):
+        if entry["ambiguous"]:
+            lines.append(f"{key}: ambiguous current row ({entry['ambiguous']})")
+        elif len(entry["history"]) > 1:
+            lines.append(
+                f"{key}: {len(entry['history'])} CAB rows (the highest Column 1 is current)"
+            )
+    return lines
+
+
+def _iso(value: dt.date | None) -> str:
+    return value.isoformat() if value else "-"
+
+
+def cmd_cab(args: argparse.Namespace) -> None:
+    """Per-ticket view of the CAB register. Read-only."""
+    cfg = load_config()
+    register, note = load_register_for_run(cfg)
+    if register is None:
+        print(note or "No CAB register configured (set cab_register in config.json).")
+        return
+    now, sessions = now_wib(), cab_sessions(cfg)
+    fresh = register_fresh(register, now, sessions)
+    cache, fixing = load_cache(), fixing_dates_by_ticket(read_rows())
+    print(
+        f"## CAB register: {len(register['rows'])} row(s), {register['encoding']}, "
+        f"delimiter {register['delimiter']!r}, "
+        + ("fresh" if fresh else stale_banner(now, sessions))
+    )
+    for ticket in sorted(register["by_ticket"]):
+        if args.ticket and ticket != args.ticket:
+            continue
+        info = cab_info(register, ticket, fixing.get(ticket, []), now.date())
+        assert info is not None
+        jira = cache.get(ticket, {}).get("jira_status", "")
+        if info["row"] is None:
+            print(f"- {ticket}: ambiguous ({info['ambiguous']}) | Jira {jira or '-'}")
+        else:
+            row = info["row"]
+            print(
+                f"- {ticket}: {info['stage']} | Jira {jira or '-'} | CAB {_iso(row['cab'])} | "
+                f"deploy {_iso(row['real'] or row['plan'])} | PAT end {_iso(row['pat_end'])} | "
+                f"Status PAT {row['pat_status'] or '-'}"
+            )
+            jira_stage = PAGE_TO_LOGBOOK.get(JIRA_STATUS.get(jira, ""), "")
+            if STAGE.get(jira_stage, 0) > STAGE.get(info["stage"], 0) > 0:
+                print("  note: Jira ahead of the register")
+        if args.ticket:
+            for r in info["history"]:
+                print(
+                    f"  history: Column 1 {r['n']} | {r['status']} | CAB {_iso(r['cab'])}"
+                )
+    print("\n## Data quality")
+    quality = register_quality(register)
+    print(
+        "\n".join(f"- {line}" for line in quality) if quality else "- nothing to flag"
+    )
+    if args.show_unlinked:
+        print("\n## Unlinked rows")
+        for r in register["rows"]:
+            if not r["keys"]:
+                print(f"- Column 1 {r['n']}: {r['name']}")
+
+
+def cab_flags(
+    info: dict[str, Any] | None, word: str, today: dt.date
+) -> tuple[list[tuple[str, str]], bool]:
+    """Board and check flags from the register: (flags, propose_done). Spec 6.2."""
+    if info is None or info["row"] is None or word in ("HOLD", "CANCELLED", "TODO"):
+        return [], False
+    stage, row = info["stage"], info["row"]
+    flags: list[tuple[str, str]] = []
+    jira_rank = STAGE.get(PAGE_TO_LOGBOOK.get(word, ""), 0)
+    if stage == "Done" and word == "PAT":
+        kind = "confirmed" if info["pat_confirmed"] else "assumed"
+        return [(
+            f"PAT done ({kind}): Status PAT {row['pat_status'] or '-'}, planned end "
+            f"{_iso(info['planned_end'])}",
+            "propose Done in Jira and the logbook",
+        )], True  # fmt: skip
+    if stage in ("Deployment", "PAT", "Done") and STAGE[stage] > jira_rank > 0:
+        target = "PAT" if stage == "Done" else stage
+        flags.append(
+            (f"register says {stage}, Jira is {word}", f"move Jira to {target}")
+        )
+    if (
+        word == "PAT" and stage == "PAT" and info["error_signal"]
+        and info["planned_end"] is not None and today >= info["planned_end"]
+    ):  # fmt: skip
+        flags.append((
+            f"PAT window ended but {info['error_signal']}", "check it before moving to Done"
+        ))  # fmt: skip
+    if stage == "Rollback" and jira_rank > STAGE["Development"]:
+        flags.append((
+            f"register says Rollback, Jira is {word}",
+            "check the rollback: Jira should be Data Development or Bug Fixing",
+        ))  # fmt: skip
+    if stage == "Cancel" and word != "CANCELLED":
+        flags.append((f"register says Cancel, Jira is {word}", "move Jira to Cancel"))
+    return flags, False
+
+
+def rfr_run_start(item: list[dict[str, str]]) -> dt.date | None:
+    """First date of the trailing run of 'Ready For Release' logbook rows, or None."""
+    start = None
+    for r in reversed(item):
+        if r["status"] != "Ready For Release":
+            break
+        start = dt.date.fromisoformat(r["date"])
+    return start
+
+
+def cab_week_lines(
+    week: str, register: dict[str, Any] | None, banner: str = ""
+) -> list[str]:
+    """The 'CAB this week' block from every valid register row. Empty when nothing happened."""
+    if register is None:
+        return []
+
+    def in_week(d: dt.date | None) -> bool:
+        return d is not None and iso_week(d.isoformat()) == week
+
+    def label(r: dict[str, Any]) -> str:
+        return ", ".join(r["keys"]) if r["keys"] else ""
+
+    registered: list[str] = []
+    sessions: dict[dt.date, list[str]] = {}
+    deployed: list[str] = []
+    pat_ends: list[str] = []
+    unlinked = 0
+    for r in register["rows"]:
+        touched = False
+        name = label(r)
+        if in_week(r["reg"]):
+            touched = True
+            if name:
+                registered.append(
+                    name
+                    + (" (date unverified)" if r["reg_note"] == "unverified" else "")
+                )
+        if in_week(r["cab"]):
+            touched = True
+            if name:
+                sessions.setdefault(r["cab"], []).append(name)
+        if in_week(r["real"]):
+            touched = True
+            if name:
+                deployed.append(f"{name} ({r['real'].isoformat()})")
+        if in_week(r["pat_end"]) and r["status"].lower() == "closed":
+            touched = True
+            if name:
+                pat_ends.append(f"{name} ({r['pat_end'].isoformat()})")
+        if touched and not name:
+            unlinked += 1
+    lines: list[str] = []
+    if registered:
+        lines.append(f"- Registered: {', '.join(registered)}")
+    if sessions:
+        parts = [
+            f"{d.isoformat()} ({', '.join(names)})"
+            for d, names in sorted(sessions.items())
+        ]
+        lines.append(f"- CAB sessions: {'; '.join(parts)}")
+    if deployed:
+        lines.append(f"- Deployed: {', '.join(deployed)}")
+    if pat_ends:
+        lines.append(f"- PAT windows ending: {', '.join(pat_ends)}")
+    if unlinked:
+        lines.append(f"- Unlinked rows: {unlinked}")
+    if not lines:
+        return []
+    head = [banner, ""] if banner else []
+    return head + ["### CAB this week", *lines]
 
 
 def group_items(rows: list[dict[str, str]]) -> list[list[dict[str, str]]]:
@@ -1202,6 +1900,13 @@ def main() -> None:
         help="yes: DA ticket assigned to the user and open, so list it",
     )
     cache.set_defaults(func=cmd_cache)
+
+    cab = sub.add_parser("cab", help="Per-ticket view of the CAB register (read-only)")
+    cab.add_argument("--ticket", default="", help="show one ticket with its history")
+    cab.add_argument(
+        "--show-unlinked", action="store_true", help="list rows without a ticket key"
+    )
+    cab.set_defaults(func=cmd_cab)
 
     pub = sub.add_parser("publish", help="Render Confluence HTML (does not post it)")
     pub.add_argument("which", choices=["main", "hold", "archive"])

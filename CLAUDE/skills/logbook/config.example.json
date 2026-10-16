@@ -11,6 +11,10 @@
   "aging_days": [30, 60, 90],
   "followup_days": [7, 14, 30],
   "other_court": ["TESTING", "READY FOR RELEASE", "DEPLOYMENT", "PAT"],
+  "cab_register": "<path to the CAB register CSV; default: cab-register.csv in the Windows logbook folder>",
+  "cab_sessions": { "days": ["Mon", "Wed"], "end": "15:00" },
+  "cab_max_lag_days": 21,
+  "cab_grace_days": 3,
   "confluence": {
     "space_id": "<PERSONAL_SPACE_ID>",
     "space_key": "<PERSONAL_SPACE_KEY>",
