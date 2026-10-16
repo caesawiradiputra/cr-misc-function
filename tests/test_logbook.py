@@ -7,6 +7,7 @@ import csv
 import datetime as dt
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -711,3 +712,953 @@ def test_archive_restarts_the_clock_when_a_ticket_leaves_and_returns_to_done(
     ]
     archive_env(lb, monkeypatch, rows, dt.date(2026, 10, 15))
     assert "nothing to archive" in run_archive(lb, capsys)
+
+
+REG_COLUMNS = [
+    "Column 1", "Status", "TYPE CAB", "Type", "IN / Project", "Kategori",
+    "Tanggal \nRegister CAB", "Nama CAB", "Link ", "Requester \nPIC CAB",
+    "User Requester", "jadwal CAB", "PIC Deploy Ops", "PIC Deploy Dev",
+    "Last PAT Date", "Status PAT", "Deploye Plan Date", "Deploy Plan Time",
+    "Deployed Real Date", "Closed Date", "Approval By", "Column 2",
+]  # fmt: skip
+_REG_ALIAS = {
+    "n": "Column 1", "status": "Status", "reg": "Tanggal \nRegister CAB",
+    "name": "Nama CAB", "cab": "jadwal CAB", "pat_end": "Last PAT Date",
+    "pat_status": "Status PAT", "plan": "Deploye Plan Date",
+    "real": "Deployed Real Date",
+}  # fmt: skip
+
+
+def reg_line(**kw: str) -> list[str]:
+    """One register row aligned with REG_COLUMNS (aliases above, defaults blank)."""
+    cells = dict.fromkeys(REG_COLUMNS, "")
+    cells["Status"] = "Closed"
+    cells["Nama CAB"] = "[BAST] DA-1234 - x"
+    for key, value in kw.items():
+        cells[_REG_ALIAS[key]] = value
+    return [cells[c] for c in REG_COLUMNS]
+
+
+def write_register(
+    path: Path,
+    lines: list[list[str]],
+    *,
+    delimiter: str = ",",
+    encoding: str = "utf-8-sig",
+    terminator: str = "\n",
+    header: list[str] | None = None,
+) -> None:
+    with path.open("w", newline="", encoding=encoding) as f:
+        writer = csv.writer(f, delimiter=delimiter, lineterminator=terminator)
+        writer.writerow(header or REG_COLUMNS)
+        writer.writerows(lines)
+
+
+def test_read_register_matches_wrapped_headers(lb: ModuleType, tmp_path: Path) -> None:
+    path = tmp_path / "reg.csv"
+    write_register(path, [reg_line(n="7", reg="10/12/2026", cab="14/10/26")])
+    out = lb.read_register(path)
+    assert out["off"] == "" and out["encoding"] == "utf-8-sig"
+    row = out["rows"][0]
+    assert row["Column 1"] == "7" and row["Tanggal Register CAB"] == "10/12/2026"
+    assert row["jadwal CAB"] == "14/10/26" and row["Nama CAB"] == "[BAST] DA-1234 - x"
+    assert out["mtime"].utcoffset() == dt.timedelta(hours=7)
+
+
+@pytest.mark.parametrize("terminator", ["\n", "\r\n"])
+def test_read_register_handles_bom_and_crlf(lb, tmp_path, terminator) -> None:
+    path = tmp_path / "reg.csv"
+    write_register(path, [reg_line(n="1")], terminator=terminator)
+    assert lb.read_register(path)["rows"][0]["Column 1"] == "1"
+
+
+def test_read_register_detects_semicolon_and_tab(lb, tmp_path) -> None:
+    for delimiter in (";", "\t"):
+        path = tmp_path / "reg.csv"
+        write_register(path, [reg_line(n="5")], delimiter=delimiter)
+        out = lb.read_register(path)
+        assert out["delimiter"] == delimiter and out["rows"][0]["Column 1"] == "5"
+
+
+def test_read_register_falls_back_to_cp1252(lb, tmp_path) -> None:
+    path = tmp_path / "reg.csv"
+    write_register(path, [reg_line(name="SRF – DA-1234")], encoding="cp1252")
+    out = lb.read_register(path)
+    assert out["encoding"] == "cp1252" and "–" in out["rows"][0]["Nama CAB"]
+
+
+def test_read_register_pads_short_rows_and_skips_blank_rows(lb, tmp_path) -> None:
+    path = tmp_path / "reg.csv"
+    write_register(path, [reg_line(n="1")[:3], [""] * 22, ["", "", ""]])
+    out = lb.read_register(path)
+    assert len(out["rows"]) == 1 and out["rows"][0]["Nama CAB"] == ""
+
+
+def test_read_register_turns_the_feature_off_instead_of_crashing(
+    lb: ModuleType, tmp_path: Path
+) -> None:
+    missing = lb.read_register(tmp_path / "nope.csv")
+    assert missing["off"] and missing["rows"] == []
+    assert lb.read_register(tmp_path)["off"]  # a directory is unreadable
+    empty = tmp_path / "empty.csv"
+    empty.write_text("")
+    assert lb.read_register(empty)["off"]
+    header_only = tmp_path / "h.csv"
+    write_register(header_only, [])
+    out = lb.read_register(header_only)
+    assert out["off"] == "" and out["rows"] == []
+
+
+def test_read_register_names_a_missing_required_column(lb, tmp_path) -> None:
+    path = tmp_path / "reg.csv"
+    header = [c for c in REG_COLUMNS if c != "Last PAT Date"]
+    write_register(path, [], header=header)
+    assert "Last PAT Date" in lb.read_register(path)["off"]
+
+
+def test_read_register_reports_a_duplicate_column_and_keeps_the_first(
+    lb, tmp_path
+) -> None:
+    path = tmp_path / "reg.csv"
+    header = [*REG_COLUMNS, "Status"]
+    write_register(path, [[*reg_line(status="Closed"), "Pending"]], header=header)
+    out = lb.read_register(path)
+    assert out["rows"][0]["Status"] == "Closed"
+    assert any("duplicate" in p for p in out["problems"])
+
+
+def test_read_register_ignores_extra_columns(lb, tmp_path) -> None:
+    path = tmp_path / "reg.csv"
+    write_register(path, [[*reg_line(n="3"), "x"]], header=[*REG_COLUMNS, "Extra"])
+    assert lb.read_register(path)["rows"][0]["Column 1"] == "3"
+
+
+def test_resolve_register_path_never_exits(lb, tmp_path, monkeypatch) -> None:
+    assert lb.resolve_register_path({"cab_register": "~/x.csv"}).name == "x.csv"
+    monkeypatch.delenv("LOGBOOK_WINDOWS_DIR", raising=False)
+    monkeypatch.setattr(lb, "WINDOWS_DIR_FILE", tmp_path / "missing.txt")
+    assert lb.resolve_register_path({}) is None
+    monkeypatch.setenv("LOGBOOK_WINDOWS_DIR", str(tmp_path / "win"))
+    assert lb.resolve_register_path({}) == tmp_path / "win" / "cab-register.csv"
+
+
+def raw(**kw: str) -> dict[str, str]:
+    """A row as read_register returns it, with synthetic defaults."""
+    base = dict.fromkeys(
+        ["Column 1", "Status", "Tanggal Register CAB", "Nama CAB", "jadwal CAB",
+         "Deployed Real Date", "Last PAT Date", "Status PAT", "TYPE CAB",
+         "Kategori", "Deploye Plan Date"], ""
+    )  # fmt: skip
+    base.update({"Column 1": "1", "Status": "Closed", "Nama CAB": "[BAST] DA-1234 - x"})
+    alias = {"n": "Column 1", "status": "Status", "reg": "Tanggal Register CAB",
+             "name": "Nama CAB", "cab": "jadwal CAB", "real": "Deployed Real Date",
+             "pat_end": "Last PAT Date", "pat_status": "Status PAT",
+             "plan": "Deploye Plan Date"}  # fmt: skip
+    base.update({alias[k]: v for k, v in kw.items()})
+    return base
+
+
+def build(
+    lb: ModuleType, rows: list[dict[str, str]], cfg=None, today=dt.date(2026, 10, 15)
+):
+    read = {"rows": rows, "problems": [], "encoding": "utf-8-sig",
+            "delimiter": ",", "mtime": None, "off": ""}  # fmt: skip
+    return lb.build_register(read, cfg or {}, today)
+
+
+@pytest.mark.parametrize(
+    ("name", "keys"),
+    [
+        ("[BAST] DA-1234 - x", ["DA-1234"]),
+        ("DA1234 - x", ["DA-1234"]),
+        ("DA 1234 - x", ["DA-1234"]),
+        ("da-1234 and DA-5678", ["DA-1234", "DA-5678"]),
+        ("DA-1234 / DA-1234", ["DA-1234"]),
+        ("soda 1234 is not a key", []),
+        ("BAST Master Data", []),
+    ],
+)
+def test_ticket_keys_are_extracted(lb, name, keys) -> None:
+    assert build(lb, [raw(name=name)])["rows"][0]["keys"] == keys
+
+
+def test_fixed_formats_two_digit_years_and_clock_times(lb: ModuleType) -> None:
+    reg = build(lb, [raw(reg="10/12/2026", cab="14/10/26", plan="15/10/26",
+                         real="15/10/2026", pat_end="22/10/26")])  # fmt: skip
+    row = reg["rows"][0]
+    assert row["reg"] == dt.date(2026, 10, 12) and row["cab"] == dt.date(2026, 10, 14)
+    assert row["plan"] == dt.date(2026, 10, 15) and row["real"] == dt.date(2026, 10, 15)
+    assert row["pat_end"] == dt.date(2026, 10, 22)
+    assert not any("Closed Date" in p for p in reg["problems"])
+
+
+def test_mixed_register_column_uses_the_lag_window(lb: ModuleType) -> None:
+    read = lambda reg, cab: lb.register_date(reg, cab, 21)  # noqa: E731
+    cab = dt.date(2026, 1, 7)
+    assert read("6/1/2026", cab) == (dt.date(2026, 1, 6), "swapped")  # typed 6 Jan
+    assert read("1/6/2026", cab) == (dt.date(2026, 1, 6), "")  # M/D already plausible
+    assert read("12/31/2025", dt.date(2026, 1, 2)) == (dt.date(2025, 12, 31), "")
+    assert read("17/6/2026", dt.date(2026, 6, 17)) == (dt.date(2026, 6, 17), "swapped")
+    assert read("5/5/2026", dt.date(2026, 5, 6)) == (dt.date(2026, 5, 5), "")
+    assert read("7/27/2026", dt.date(2026, 10, 1)) == (None, "unknown")
+
+
+def test_register_date_without_a_cab_date_is_unverified(lb: ModuleType) -> None:
+    assert lb.register_date("7/27/2026", None, 21) == (
+        dt.date(2026, 7, 27),
+        "unverified",
+    )
+    assert lb.register_date("27/7/2026", None, 21) == (
+        dt.date(2026, 7, 27),
+        "unverified",
+    )
+    assert lb.register_date("", None, 21) == (None, "")
+
+
+def test_two_readings_of_a_cell_are_at_least_27_days_apart(lb: ModuleType) -> None:
+    closest = 999
+    for year in (2026, 2028):
+        for a in range(1, 13):
+            for b in range(1, 13):
+                if a == b:
+                    continue
+                first = dt.date(year, a, b)  # month a, day b
+                second = dt.date(year, b, a)
+                closest = min(closest, abs((first - second).days))
+    assert closest >= 27
+    assert lb.register_cfg_lag({"cab_max_lag_days": 99}) == 26
+    assert lb.register_cfg_lag({}) == 21
+
+
+def test_order_violations_make_only_the_later_field_unknown(lb: ModuleType) -> None:
+    reg = build(
+        lb, [raw(reg="10/12/2026", cab="14/10/26", real="10/10/26", pat_end="22/10/26")]
+    )
+    row = reg["rows"][0]
+    assert row["real"] is None and row["pat_end"] == dt.date(2026, 10, 22)
+    assert any("Deployed Real Date" in p for p in reg["problems"])
+
+
+def test_future_real_deploy_and_unparsable_dates_are_unknown_and_reported(lb) -> None:
+    reg = build(lb, [raw(real="20/10/26", pat_end="soon")], today=dt.date(2026, 10, 15))
+    row = reg["rows"][0]
+    assert row["real"] is None and row["pat_end"] is None
+    assert (
+        len(
+            [p for p in reg["problems"] if "Deployed Real Date" in p or "Last PAT" in p]
+        )
+        == 2
+    )
+
+
+def test_current_row_is_the_highest_column_1(lb: ModuleType) -> None:
+    rows = [
+        raw(n="12", status="Closed"),
+        raw(n="3", status="Pending"),
+        raw(n="7", status="Cancel"),
+    ]
+    entry = build(lb, rows)["by_ticket"]["DA-1234"]
+    assert entry["current"]["status"] == "Closed" and entry["ambiguous"] == ""
+    assert len(entry["history"]) == 3
+
+
+@pytest.mark.parametrize(
+    ("numbers", "expect_ambiguous"),
+    [
+        (["5", "5"], True),
+        (["", "x"], True),
+        (["32.0", "31"], False),
+        ([" 8 ", "2"], False),
+    ],
+)
+def test_ambiguous_current_row(lb, numbers, expect_ambiguous) -> None:
+    rows = [raw(n=n) for n in numbers]
+    entry = build(lb, rows)["by_ticket"]["DA-1234"]
+    assert bool(entry["ambiguous"]) is expect_ambiguous
+    assert (entry["current"] is None) is expect_ambiguous
+    assert len(entry["history"]) == len(numbers)
+
+
+def test_invalid_number_rows_are_history_only(lb: ModuleType) -> None:
+    rows = [raw(n="x", status="Cancel"), raw(n="4", status="Closed")]
+    entry = build(lb, rows)["by_ticket"]["DA-1234"]
+    assert entry["current"]["n"] == 4 and entry["ambiguous"] == ""
+
+
+def test_a_lower_number_with_a_later_date_makes_the_ticket_ambiguous(lb) -> None:
+    rows = [
+        raw(n="10", cab="2/10/26", real="2/10/26"),
+        raw(n="9", cab="5/10/26", real="6/10/26"),
+    ]
+    entry = build(lb, rows)["by_ticket"]["DA-1234"]
+    assert entry["current"] is None and "later date" in entry["ambiguous"]
+
+
+def test_multi_key_rows_link_to_each_ticket_and_unlinked_rows_are_counted(lb) -> None:
+    reg = build(
+        lb,
+        [raw(n="1", name="DA-1111 and DA-2222"), raw(n="2", name="BAST Master Data")],
+    )
+    assert set(reg["by_ticket"]) == {"DA-1111", "DA-2222"} and reg["unlinked"] == 1
+
+
+def info_for(lb, rows, fixing=(), today=dt.date(2026, 10, 15)):
+    return lb.cab_info(build(lb, rows, today=today), "DA-1234", list(fixing), today)
+
+
+@pytest.mark.parametrize(
+    ("status", "stage"),
+    [
+        ("Register CAB", "Ready For Release"), ("Pending", "Ready For Release"),
+        ("CAB Ulang", "Ready For Release"), ("OK tp Perlu Rekonfirm", "Ready For Release"),
+        ("Done CAB And Progress Deployment", "Deployment"),
+        ("Onprogress Deployment", "Deployment"), ("Rollback", "Rollback"),
+        ("Cancel", "Cancel"), ("Whatever", "unknown"),
+    ],
+)  # fmt: skip
+def test_register_status_maps_to_a_stage(lb, status, stage) -> None:
+    assert info_for(lb, [raw(status=status)])["stage"] == stage
+
+
+def test_closed_means_deployed_and_pat_decides_the_rest(lb: ModuleType) -> None:
+    open_pat = info_for(
+        lb, [raw(real="12/10/26", pat_end="19/10/26", pat_status="Open")]
+    )
+    assert open_pat["stage"] == "PAT" and not open_pat["pat_assumed"]
+    for pat_status in ("Closed", "NA", "closed"):
+        done = info_for(lb, [raw(pat_status=pat_status)])
+        assert done["stage"] == "Done" and done["pat_confirmed"]
+
+
+@pytest.mark.parametrize(
+    ("today", "stage"),
+    [
+        (dt.date(2026, 10, 18), "PAT"),
+        (dt.date(2026, 10, 19), "Done"),
+        (dt.date(2026, 10, 20), "Done"),
+    ],
+)
+def test_pat_is_assumed_done_on_the_planned_end_date(lb, today, stage) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="Open")]
+    info = info_for(lb, rows, today=today)
+    assert info["stage"] == stage and info["pat_assumed"] is (stage == "Done")
+
+
+def test_a_missing_or_invalid_planned_end_never_assumes_done(lb: ModuleType) -> None:
+    for pat_end in ("", "soon"):
+        info = info_for(
+            lb,
+            [raw(real="12/10/26", pat_end=pat_end, pat_status="")],
+            today=dt.date(2030, 1, 1),
+        )
+        assert info["stage"] == "PAT" and not info["pat_assumed"]
+
+
+def test_a_fixing_row_inside_the_window_withholds_the_assumption(
+    lb: ModuleType,
+) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="")]
+    today = dt.date(2026, 10, 20)
+    blocked = info_for(lb, rows, fixing=[dt.date(2026, 10, 15)], today=today)
+    assert blocked["stage"] == "PAT" and "Fixing" in blocked["error_signal"]
+    late = info_for(lb, rows, fixing=[dt.date(2026, 10, 25)], today=today)
+    assert late["stage"] == "Done" and late["error_signal"] == ""
+    early = info_for(lb, rows, fixing=[dt.date(2026, 10, 11)], today=today)
+    assert early["stage"] == "Done"
+    no_deploy = info_for(
+        lb, [raw(pat_end="19/10/26")], fixing=[dt.date(2026, 10, 15)], today=today
+    )
+    assert (
+        no_deploy["stage"] == "Done"
+    )  # no deploy date known: only the status signals apply
+
+
+def test_confirmed_pat_ignores_error_signals(lb: ModuleType) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="Closed")]
+    info = info_for(lb, rows, fixing=[dt.date(2026, 10, 15)])
+    assert info["stage"] == "Done" and info["pat_confirmed"]
+
+
+def test_rollback_and_cab_ulang_are_error_statuses(lb: ModuleType) -> None:
+    for status in ("Rollback", "CAB Ulang", "Cancel"):
+        assert status in info_for(lb, [raw(status=status)])["error_signal"]
+
+
+def test_an_ambiguous_ticket_has_no_stage(lb: ModuleType) -> None:
+    info = info_for(lb, [raw(n="5"), raw(n="5")])
+    assert info["row"] is None and info["stage"] == "" and info["ambiguous"]
+    assert lb.cab_info(build(lb, [raw()]), "DA-9999", [], dt.date(2026, 10, 15)) is None
+
+
+def test_fixing_dates_come_from_logbook_rows(lb: ModuleType) -> None:
+    rows = [row("2026-10-15", "DA-1", "Fixing"), row("2026-10-16", "DA-1", "Testing")]
+    assert lb.fixing_dates_by_ticket(rows) == {"DA-1": [dt.date(2026, 10, 15)]}
+
+
+WED_1500 = dt.datetime(2026, 10, 14, 15, 0, tzinfo=dt.timezone(dt.timedelta(hours=7)))
+
+
+def test_last_session_end_for_monday_and_wednesday_sessions(lb: ModuleType) -> None:
+    wib = dt.timezone(dt.timedelta(hours=7))
+    sessions = lb.cab_sessions({})
+    assert sessions == {"days": ["Mon", "Wed"], "end": "15:00"}
+    thursday = dt.datetime(2026, 10, 15, 9, 0, tzinfo=wib)
+    assert lb.last_session_end(thursday, sessions) == WED_1500
+    wed_before = dt.datetime(2026, 10, 14, 14, 59, tzinfo=wib)
+    assert lb.last_session_end(wed_before, sessions) == dt.datetime(
+        2026, 10, 12, 15, 0, tzinfo=wib
+    )
+    saturday = dt.datetime(2026, 10, 17, 9, 0, tzinfo=wib)
+    assert lb.last_session_end(saturday, sessions) == WED_1500
+    monday = dt.datetime(2026, 10, 19, 16, 0, tzinfo=wib)
+    assert lb.last_session_end(monday, sessions) == dt.datetime(
+        2026, 10, 19, 15, 0, tzinfo=wib
+    )
+
+
+@pytest.mark.parametrize(("minutes", "fresh"), [(-1, False), (0, True), (1, True)])
+def test_register_is_fresh_at_or_after_the_session_end(lb, minutes, fresh) -> None:
+    sessions = lb.cab_sessions({})
+    now = dt.datetime(2026, 10, 15, 9, 0, tzinfo=WED_1500.tzinfo)
+    register = {"mtime": WED_1500 + dt.timedelta(minutes=minutes)}
+    assert lb.register_fresh(register, now, sessions) is fresh
+    assert lb.register_fresh({"mtime": None}, now, sessions) is False
+
+
+def test_stale_banner_names_the_session(lb: ModuleType) -> None:
+    now = dt.datetime(2026, 10, 15, 9, 0, tzinfo=WED_1500.tzinfo)
+    text = lb.stale_banner(now, lb.cab_sessions({}))
+    assert "Wednesday" in text and "14 Oct" in text
+
+
+def test_load_register_for_run_reports_why_it_is_off(lb, tmp_path) -> None:
+    register, note = lb.load_register_for_run(
+        {"cab_register": str(tmp_path / "nope.csv")}
+    )
+    assert register is None and "no CAB register" in note
+    path = tmp_path / "reg.csv"
+    write_register(path, [reg_line(n="1")])
+    register, note = lb.load_register_for_run({"cab_register": str(path)})
+    assert note == "" and "DA-1234" in register["by_ticket"]
+
+
+def run_cab(lb, capsys, **kw):
+    lb.cmd_cab(
+        argparse.Namespace(
+            ticket=kw.get("ticket", ""), show_unlinked=kw.get("show_unlinked", False)
+        )
+    )
+    return capsys.readouterr().out
+
+
+def cab_env(lb, tmp_path, rows):
+    path = tmp_path / "reg.csv"
+    write_register(path, rows)
+    (tmp_path / "config.json").write_text(json.dumps({"cab_register": str(path)}))
+    return path
+
+
+def test_cab_report_lists_tickets_dates_and_quality(lb, tmp_path, capsys) -> None:
+    cab_env(
+        lb,
+        tmp_path,
+        [
+            reg_line(
+                n="1",
+                reg="10/12/2026",
+                cab="14/10/26",
+                real="15/10/26",
+                pat_end="22/10/26",
+                pat_status="",
+            ),
+            reg_line(n="2", name="BAST Master Data"),
+            reg_line(
+                n="3",
+                status="Onprogress Deployment",
+                name="DA-5678 - y",
+                pat_status="Closed",
+            ),
+        ],
+    )
+    (tmp_path / "jira-cache.json").write_text(
+        json.dumps({"DA-1234": {"jira_status": "Deployment"}})
+    )
+    out = run_cab(lb, capsys)
+    assert "DA-1234" in out and "2026-10-15" in out and "2026-10-22" in out
+    assert "Jira Deployment" in out
+    assert "1 row(s) without a ticket key" in out
+    assert "Onprogress Deployment" in out and "Status PAT is Closed" in out
+    assert "BAST Master Data" not in out
+
+
+def test_cab_show_unlinked_lists_them(lb, tmp_path, capsys) -> None:
+    cab_env(lb, tmp_path, [reg_line(n="2", name="BAST Master Data")])
+    assert "BAST Master Data" in run_cab(lb, capsys, show_unlinked=True)
+
+
+def test_cab_single_ticket_shows_history_and_notes_jira_ahead(
+    lb, tmp_path, capsys
+) -> None:
+    cab_env(
+        lb,
+        tmp_path,
+        [reg_line(n="1", status="Register CAB"), reg_line(n="2", status="Pending")],
+    )
+    (tmp_path / "jira-cache.json").write_text(
+        json.dumps({"DA-1234": {"jira_status": "Deployment"}})
+    )
+    out = run_cab(lb, capsys, ticket="DA-1234")
+    assert "history" in out.lower() and out.count("Register CAB") >= 1
+    assert "Jira ahead of the register" in out
+
+
+def test_cab_reports_why_it_is_off(lb, tmp_path, capsys) -> None:
+    (tmp_path / "config.json").write_text(
+        json.dumps({"cab_register": str(tmp_path / "nope.csv")})
+    )
+    assert "no CAB register" in run_cab(lb, capsys)
+
+
+def test_cab_reports_ambiguous_tickets(lb, tmp_path, capsys) -> None:
+    cab_env(lb, tmp_path, [reg_line(n="5"), reg_line(n="5")])
+    assert "ambiguous" in run_cab(lb, capsys)
+
+
+def cab_entry(
+    lb,
+    word_jira,
+    rows,
+    *,
+    today=dt.date(2026, 10, 15),
+    fresh=True,
+    item=None,
+    not_registered=False,
+    fixing=(),
+):
+    register = build(lb, rows, today=today)
+    cab = lb.cab_info(register, "DA-1234", list(fixing), today)
+    info = {"jira_status": word_jira}
+    return lb.board_entry(
+        "DA-1234", info, item or [], None, today, True, "", cab, fresh, not_registered
+    )
+
+
+def flag_fixes(e) -> list[str]:
+    return [fix for _, fix in e["flags"]]
+
+
+def test_jira_cancel_leaves_the_board(lb: ModuleType) -> None:
+    assert (
+        lb.JIRA_STATUS["Cancel"] == "CANCELLED"
+        and lb.STATUS_COLOR["CANCELLED"] == "neutral"
+    )
+    cache = {
+        "DA-1": {"track": True, "jira_status": "Cancel", "refreshed": TODAY.isoformat()}
+    }
+    entries, _, _ = lb.derive_board(cache, [], {}, TODAY)
+    assert entries == []
+
+
+def test_register_ahead_of_jira_proposes_the_jira_move(lb: ModuleType) -> None:
+    e = cab_entry(
+        lb, "Deployment", [raw(real="15/10/26", pat_end="22/10/26", pat_status="")]
+    )
+    assert any("move Jira to PAT" in f for f in flag_fixes(e))
+
+
+def test_jira_ahead_of_the_register_is_not_a_board_flag(lb: ModuleType) -> None:
+    e = cab_entry(lb, "Deployment", [raw(status="Register CAB")])
+    assert e["flags"] == []
+
+
+def test_pat_done_is_proposed_with_the_register_values(lb: ModuleType) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="Open")]
+    e = cab_entry(lb, "PAT", rows, today=dt.date(2026, 10, 19))
+    assert e["propose_done"] is True
+    text = " ".join(t for t, _ in e["flags"])
+    assert "Status PAT" in text and "Open" in text and "2026-10-19" in text
+
+
+def test_pat_window_ended_with_an_error_signal_proposes_nothing(lb: ModuleType) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="")]
+    e = cab_entry(
+        lb, "PAT", rows, today=dt.date(2026, 10, 20), fixing=[dt.date(2026, 10, 15)]
+    )
+    assert e["propose_done"] is False
+    assert any("PAT window ended but" in t for t, _ in e["flags"])
+
+
+def test_before_the_planned_end_the_board_says_nothing(lb: ModuleType) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="")]
+    e = cab_entry(lb, "PAT", rows, today=dt.date(2026, 10, 16))
+    assert e["flags"] == [] and e["propose_done"] is False
+
+
+def test_the_register_decides_pat_and_the_changelog_age_is_skipped(
+    lb: ModuleType,
+) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="")]
+    register = build(lb, rows)
+    cab = lb.cab_info(register, "DA-1234", [], TODAY)
+    info = {"jira_status": "PAT", "pat_since": "2026-01-01"}
+    e = lb.board_entry("DA-1234", info, [], None, TODAY, True, "", cab, True, False)
+    assert not any("in PAT since" in t for t, _ in e["flags"])
+
+
+def test_stale_register_adds_no_cab_flags_and_keeps_the_old_pat_logic(
+    lb: ModuleType,
+) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="Closed")]
+    e = cab_entry(lb, "PAT", rows, fresh=False)
+    assert e["propose_done"] is False
+    assert not any("register" in t.lower() for t, _ in e["flags"])
+
+
+def test_ambiguous_ticket_gets_no_cab_flag(lb: ModuleType) -> None:
+    e = cab_entry(lb, "Deployment", [raw(n="5"), raw(n="5")])
+    assert e["flags"] == []
+
+
+def test_rollback_and_cancel_flags_only_when_jira_is_later(lb: ModuleType) -> None:
+    rollback = cab_entry(lb, "PAT", [raw(status="Rollback")])
+    assert any("Rollback" in t for t, _ in rollback["flags"])
+    assert not any("move Jira" in f for f in flag_fixes(rollback))
+    early = cab_entry(lb, "Data Development", [raw(status="Rollback")])
+    assert early["flags"] == []
+    cancel = cab_entry(lb, "Deployment", [raw(status="Cancel")])
+    assert any("move Jira to Cancel" in f for f in flag_fixes(cancel))
+
+
+def test_not_registered_flag_comes_only_from_derive_board(lb: ModuleType) -> None:
+    today = dt.date(2026, 10, 15)
+    wib = dt.timezone(dt.timedelta(hours=7))
+    now = dt.datetime(2026, 10, 15, 9, 0, tzinfo=wib)
+    register = build(lb, [raw(name="DA-9999 - other")], today=today)
+    register["mtime"] = dt.datetime(2026, 10, 14, 16, 0, tzinfo=wib)
+    cache = {
+        "DA-1234": {
+            "track": True,
+            "jira_status": "Ready For Release",
+            "refreshed": today.isoformat(),
+        }
+    }
+    items = [
+        [
+            row("2026-10-08", "DA-1234", "Ready For Release"),
+            row("2026-10-12", "DA-1234", "Ready For Release"),
+        ]
+    ]
+    entries, _, _ = lb.derive_board(
+        cache, items, {}, today, None, register, now, lb.cab_sessions({})
+    )
+    assert any("not registered for CAB" in t for t, _ in entries[0]["flags"])
+    young = [[row("2026-10-14", "DA-1234", "Ready For Release")]]
+    entries, _, _ = lb.derive_board(
+        cache, young, {}, today, None, register, now, lb.cab_sessions({})
+    )
+    assert not any("not registered" in t for t, _ in entries[0]["flags"])
+    nonjira = {
+        "bug-1": {
+            "track": True,
+            "jira_status": "Ready For Release",
+            "refreshed": today.isoformat(),
+        }
+    }
+    old = [[row("2026-10-01", "bug-1", "Ready For Release")]]
+    entries, _, _ = lb.derive_board(
+        nonjira, old, {}, today, None, register, now, lb.cab_sessions({})
+    )
+    assert not any("not registered" in t for t, _ in entries[0]["flags"])
+    register["mtime"] = dt.datetime(
+        2026, 10, 14, 14, 0, tzinfo=wib
+    )  # before the session end
+    entries, _, _ = lb.derive_board(
+        cache, items, {}, today, None, register, now, lb.cab_sessions({})
+    )
+    assert not any("not registered" in t for t, _ in entries[0]["flags"])
+
+
+def test_board_line_shows_the_cab_dates(lb: ModuleType) -> None:
+    e = cab_entry(
+        lb,
+        "Deployment",
+        [raw(status="Onprogress Deployment", cab="14/10/26", plan="15/10/26")],
+    )
+    assert "CAB 2026-10-14" in e["cab_line"] and "deploy 2026-10-15" in e["cab_line"]
+
+
+def test_render_board_batches_pat_done_and_shows_the_register_banner(
+    lb: ModuleType,
+) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="Open")]
+    e = cab_entry(lb, "PAT", rows, today=dt.date(2026, 10, 19))
+    text = lb.render_board(
+        [e],
+        True,
+        "2026-10-19",
+        [],
+        "CAB register not updated since the Wednesday 14 Oct session",
+    )
+    assert "PAT done: propose Done" in text and "DA-1234" in text
+    assert "CAB register not updated" in text
+
+
+def test_check_reports_register_flags_only_when_fresh(
+    lb, tmp_path, monkeypatch, capsys
+) -> None:
+    path = cab_env(
+        lb,
+        tmp_path,
+        [
+            reg_line(
+                n="1",
+                real="15/10/26",
+                cab="14/10/26",
+                pat_end="22/10/26",
+                pat_status="",
+            )
+        ],
+    )
+    cfg = json.loads((tmp_path / "config.json").read_text())
+    cfg["repo_paths"] = {}
+    (tmp_path / "config.json").write_text(json.dumps(cfg))
+    today = dt.date.today().isoformat()
+    (tmp_path / "jira-cache.json").write_text(
+        json.dumps({"DA-1234": {"jira_status": "Deployment", "refreshed": today}})
+    )
+    write_csv(lb.LOGBOOK, [row("2026-10-12", "DA-1234", "Deployment")])
+    monkeypatch.setattr(lb, "_run", fake_run_factory([]))
+    wib = dt.timezone(dt.timedelta(hours=7))
+    monkeypatch.setattr(
+        lb, "now_wib", lambda: dt.datetime(2026, 10, 16, 9, 0, tzinfo=wib)
+    )
+    os.utime(path, (dt.datetime(2026, 10, 15, 9, 0, tzinfo=wib).timestamp(),) * 2)
+    out = run_check(lb, capsys)
+    assert "move Jira to PAT" in out
+    os.utime(path, (dt.datetime(2026, 10, 13, 9, 0, tzinfo=wib).timestamp(),) * 2)
+    out = run_check(lb, capsys)
+    assert "move Jira to PAT" not in out and "not updated" in out
+
+
+def week_lines(lb, rows, week="2026-W42", banner=""):
+    return lb.cab_week_lines(week, build(lb, rows), banner)
+
+
+def test_cab_week_block_groups_registered_sessions_deployed_and_pat_ends(
+    lb: ModuleType,
+) -> None:
+    rows = [
+        raw(
+            n="1",
+            name="DA-1111 - a",
+            reg="10/12/2026",
+            cab="12/10/26",
+            real="13/10/26",
+            pat_end="18/10/26",
+        ),
+        raw(
+            n="2",
+            name="DA-2222 - b",
+            reg="10/12/2026",
+            cab="14/10/26",
+            real="15/10/26",
+            pat_end="22/10/26",
+        ),
+        raw(n="3", name="DA-3333 - c", status="Register CAB", reg="10/12/2026"),
+    ]
+    text = "\n".join(week_lines(lb, rows))
+    assert "### CAB this week" in text
+    assert "Registered: DA-1111, DA-2222, DA-3333 (date unverified)" in text
+    assert "2026-10-12 (DA-1111)" in text and "2026-10-14 (DA-2222)" in text
+    assert "DA-1111 (2026-10-13)" in text and "DA-2222 (2026-10-15)" in text
+    assert "PAT windows ending" in text and "DA-1111 (2026-10-18)" in text
+
+
+def test_cab_week_lists_a_ticket_once_per_row_and_keeps_history(lb: ModuleType) -> None:
+    rows = [
+        raw(
+            n="1", reg="10/12/2026", cab="12/10/26", real="13/10/26", pat_end="20/10/26"
+        ),
+        raw(
+            n="2", reg="10/14/2026", cab="14/10/26", real="14/10/26", pat_end="21/10/26"
+        ),
+    ]
+    text = "\n".join(week_lines(lb, rows))
+    assert text.count("DA-1234") == 6  # registered, session and deploy, once per row
+
+
+def test_cab_week_skips_rollback_and_cancel_in_pat_windows(lb: ModuleType) -> None:
+    rows = [
+        raw(
+            status="Rollback",
+            reg="10/12/2026",
+            cab="12/10/26",
+            real="13/10/26",
+            pat_end="16/10/26",
+        )
+    ]
+    assert "PAT windows ending" not in "\n".join(week_lines(lb, rows))
+
+
+def test_cab_week_empty_week_prints_nothing_and_off_register_too(
+    lb: ModuleType,
+) -> None:
+    assert week_lines(lb, [raw(reg="1/5/2026", cab="2/5/26")]) == []
+    assert lb.cab_week_lines("2026-W42", None, "") == []
+
+
+def test_cab_week_marks_unverified_dates_counts_unlinked_and_shows_the_banner(
+    lb,
+) -> None:
+    rows = [
+        raw(n="1", reg="10/12/2026"),
+        raw(n="2", name="BAST Master Data", reg="10/12/2026", cab="12/10/26"),
+    ]
+    text = "\n".join(
+        week_lines(
+            lb,
+            rows,
+            banner="CAB register not updated since the Wednesday 14 Oct session",
+        )
+    )
+    assert "unverified" in text and "Unlinked rows: 1" in text
+    assert text.splitlines()[0].startswith("CAB register not updated")
+
+
+def test_week_prints_the_cab_block_even_with_no_logbook_entries(
+    lb, tmp_path, capsys
+) -> None:
+    cab_env(
+        lb,
+        tmp_path,
+        [
+            reg_line(
+                n="1",
+                reg="10/12/2026",
+                cab="12/10/26",
+                real="13/10/26",
+                pat_end="18/10/26",
+            )
+        ],
+    )
+    lb.cmd_week(argparse.Namespace(week="2026-W42"))
+    out = capsys.readouterr().out
+    assert "CAB this week" in out and "No entries" not in out
+
+
+def test_week_without_a_register_still_says_no_entries(lb, tmp_path, capsys) -> None:
+    (tmp_path / "config.json").write_text(
+        json.dumps({"cab_register": str(tmp_path / "nope.csv")})
+    )
+    lb.cmd_week(argparse.Namespace(week="2026-W42"))
+    assert "No entries for 2026-W42." in capsys.readouterr().out
+
+
+def test_config_example_documents_the_cab_keys() -> None:
+    cfg = json.loads((ROOT / "CLAUDE/skills/logbook/config.example.json").read_text())
+    assert {
+        "cab_register",
+        "cab_sessions",
+        "cab_max_lag_days",
+        "cab_grace_days",
+    } <= set(cfg)
+    assert cfg["cab_sessions"] == {"days": ["Mon", "Wed"], "end": "15:00"}
+
+
+def test_skill_text_describes_the_cab_register() -> None:
+    text = (ROOT / "CLAUDE/skills/logbook/SKILL.md").read_text(encoding="utf-8")
+    for needle in (
+        "## CAB register",
+        "logbook.py cab",
+        "cab_register",
+        "Monday and Wednesday",
+    ):
+        assert needle in text
+    assert "Last PAT Date" in text and "assumed done" in text
+    assert "CAB register" in (ROOT / "CLAUDE/commands/pipeline.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_pat_done_block_shows_the_pat_flag_even_when_another_flag_comes_first(
+    lb: ModuleType,
+) -> None:
+    rows = [raw(real="12/10/26", pat_end="19/10/26", pat_status="Open")]
+    item = [row("2026-10-14", "DA-1234", "Deployment")]
+    e = cab_entry(lb, "PAT", rows, today=dt.date(2026, 10, 19), item=item)
+    assert e["flags"][0][0].startswith("Jira PAT vs logbook")
+    text = lb.render_board([e], True, "2026-10-19", [])
+    block = text.split("## PAT done: propose Done")[1].split("##")[0]
+    assert "PAT done (assumed)" in block and "vs logbook" not in block
+
+
+def test_the_changelog_age_still_applies_when_the_register_has_no_planned_end(
+    lb: ModuleType,
+) -> None:
+    register = build(lb, [raw(real="12/10/26", pat_end="", pat_status="Open")])
+    cab = lb.cab_info(register, "DA-1234", [], TODAY)
+    info = {"jira_status": "PAT", "pat_since": "2026-10-02"}
+    e = lb.board_entry("DA-1234", info, [], None, TODAY, True, "", cab, True, False)
+    assert any("in PAT since 2026-10-02" in t for t, _ in e["flags"])
+    no_since = lb.board_entry(
+        "DA-1234", {"jira_status": "PAT"}, [], None, TODAY, True, "", cab, True, False
+    )
+    assert any("PAT date unknown" in t for t, _ in no_since["flags"])
+
+
+def test_the_changelog_age_applies_when_the_register_is_behind_jira(
+    lb: ModuleType,
+) -> None:
+    register = build(lb, [raw(status="Onprogress Deployment")])
+    cab = lb.cab_info(register, "DA-1234", [], TODAY)
+    info = {"jira_status": "PAT", "pat_since": "2026-10-02"}
+    e = lb.board_entry("DA-1234", info, [], None, TODAY, True, "", cab, True, False)
+    assert any("in PAT since" in t for t, _ in e["flags"])
+
+
+def test_cab_report_lists_unknown_statuses(lb: ModuleType) -> None:
+    quality = lb.register_quality(
+        build(lb, [raw(n="4", status="Weird"), raw(n="5", status="")])
+    )
+    assert any("unknown status" in line and "Weird" in line for line in quality)
+    assert any("unknown status" in line for line in quality if "5" in line)
+
+
+def test_bad_cab_config_falls_back_to_the_defaults(lb: ModuleType) -> None:
+    default = {"days": ["Mon", "Wed"], "end": "15:00"}
+    assert lb.cab_sessions({"cab_sessions": {"days": [], "end": "15:00"}}) == default
+    assert lb.cab_sessions({"cab_sessions": {"days": ["Mon"], "end": "3pm"}}) == default
+    assert (
+        lb.cab_sessions({"cab_sessions": {"days": ["Funday"], "end": "15:00"}})
+        == default
+    )
+    assert lb.cab_sessions({"cab_sessions": {"days": ["Tue", "Thu"], "end": "09:30"}}) == {
+        "days": ["Tue", "Thu"], "end": "09:30",
+    }  # fmt: skip
+    assert lb.cab_grace_days({"cab_grace_days": "x"}) == 3
+    assert lb.cab_grace_days({"cab_grace_days": 5}) == 5
+    assert lb.cab_grace_days({}) == 3
+
+
+def test_not_registered_applies_only_to_da_keys(lb: ModuleType) -> None:
+    today = dt.date(2026, 10, 15)
+    wib = dt.timezone(dt.timedelta(hours=7))
+    now = dt.datetime(2026, 10, 15, 9, 0, tzinfo=wib)
+    register = build(lb, [raw(name="DA-9999 - other")], today=today)
+    register["mtime"] = dt.datetime(2026, 10, 14, 16, 0, tzinfo=wib)
+    cache = {
+        "IN-123": {
+            "track": True,
+            "jira_status": "Ready For Release",
+            "refreshed": today.isoformat(),
+        }
+    }
+    items = [[row("2026-10-01", "IN-123", "Ready For Release")]]
+    entries, _, _ = lb.derive_board(
+        cache, items, {}, today, None, register, now, lb.cab_sessions({})
+    )
+    assert not any("not registered" in t for t, _ in entries[0]["flags"])
+
+
+def test_cancelled_tickets_are_never_aged(lb: ModuleType) -> None:
+    assert "CANCELLED" in lb.NO_AGING
