@@ -186,6 +186,41 @@ Each event proposes the next step when it happens and never acts without an OK:
 | Ticket seen in `PAT` | Logbook `PAT`; note the date so day 7 is known |
 | 7 or more days in `PAT` | Jira and logbook to `Done`; offer `/clean-gone` |
 
+## CAB register
+
+The CAB register is the deployment task list kept by the Ops team. The user keeps a copy as a CSV
+(default `cab-register.csv` in the Windows logbook folder, or `cab_register` in `config.json`),
+fills it by hand and updates it after each CAB session, Monday and Wednesday ending 15:00. The
+helper only reads it and never writes it. It owns the **dates** (registered, CAB, planned and real
+deploy, PAT end); Jira keeps owning the **status**. A register older than the end of the last
+session is stale: its flags are hidden and a banner names the session.
+
+```bash
+python3 ~/.claude/skills/logbook/logbook.py cab                    # per-ticket view and data quality
+python3 ~/.claude/skills/logbook/logbook.py cab --ticket DA-1234   # one ticket with its CAB history
+python3 ~/.claude/skills/logbook/logbook.py cab --show-unlinked    # rows with no ticket key
+```
+
+How a register `Status` maps to a stage: `Register CAB`, `Pending`, `CAB Ulang` and
+`OK tp Perlu Rekonfirm` are waiting for approval (Jira `Ready For Release`); `Done CAB And
+Progress Deployment` and `Onprogress Deployment` are deploying (Jira `Deployment`); `Closed` means
+deployed (Jira `PAT`, then `Done`); `Rollback` and `Cancel` are exceptions. The current row of a
+ticket is the one with the highest `Column 1`; a ticket whose rows contradict each other is shown
+as ambiguous and gets no flags.
+
+PAT: `Last PAT Date` is the planned end of the 7-day window. With `Status PAT` `Closed` or `NA`
+the PAT is finished. Otherwise PAT is **assumed done** on the planned end date unless there is an
+error signal: a `Rollback`, `CAB Ulang` or `Cancel` status, or a `Fixing` logbook row between the
+deploy date and the planned end. The board lists those tickets in one batch, "PAT done: propose
+Done"; the Jira transition and the logbook row are written only after the user's OK.
+
+Other flags (live Jira, fresh register): "not registered for CAB" (Jira `Ready For Release` for
+`cab_grace_days` or more with no register row), "register ahead of Jira" (deployed per the
+register, Jira behind), and a `Rollback` or `Cancel` the Jira status does not reflect. `check`
+reports the same flags. `week` adds a "CAB this week" block: items registered, CAB sessions,
+deployments and PAT windows ending. Config keys: `cab_register`, `cab_sessions`,
+`cab_max_lag_days` (at most 26) and `cab_grace_days`.
+
 ## Recheck (`/logbook check`)
 
 The **local files are the source of truth** (`logbook.csv`, `logbook-archive.csv`, `jira-cache.json`,

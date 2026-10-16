@@ -74,3 +74,22 @@ Each event proposes the next step when it happens and never acts without an OK.
 4. A ticket with no logbook row is shown from Jira alone.
 
 Design and rationale: `docs/superpowers/specs/2026-10-15-dev-workflow-design.md`.
+
+## CAB register
+
+The Ops team's deployment task list (the CAB register) holds the dates of stages 6 to 10: when a
+BAST was registered, when the CAB approved it, when it was deployed, and when the PAT window ends.
+Keep a CSV copy and update it after each CAB session; the helper reads it and never writes it.
+The register owns the dates, Jira owns the status.
+
+| Register `Status` | Stage | Expected Jira status |
+| --- | --- | --- |
+| `Register CAB`, `Pending`, `CAB Ulang`, `OK tp Perlu Rekonfirm` | waiting for approval or a redo | `Ready For Release` |
+| `Done CAB And Progress Deployment`, `Onprogress Deployment` | approved, deploying | `Deployment` |
+| `Closed` | deployed; PAT until the planned end | `PAT`, then `Done` |
+| `Rollback`, `Cancel` | exception | reported, never applied |
+
+`Last PAT Date` is the planned end of the PAT window. With no error or report, PAT is assumed done
+on that date, and the board proposes `Done` in one batch; the Jira transition and the logbook row
+are still written only after the user's OK.
+

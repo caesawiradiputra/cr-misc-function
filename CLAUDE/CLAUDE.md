@@ -548,6 +548,9 @@ The user's tracking of what they did, used for weekly reporting. Master file:
   git/PRs vs Jira) and never read the Confluence page back for state.
 - `sync` copies to the Windows folder only when the master changed; run it at the
   first logbook touch of a session or when asked, not after every edit.
+- The CAB register (`cab-register.csv` in the Windows logbook folder) is read by the helper
+  (`logbook.py cab`, `pipeline`, `check`, `week`); the user updates it after each CAB session
+  (Monday and Wednesday). It owns the dates, Jira owns the status.
 
 ---
 
