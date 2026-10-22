@@ -1,0 +1,125 @@
+# Template: Sync DAGs to the Airflow deployment repository
+#
+# Copies one DAG (a DAG file plus its helper folder) from this repository into the shared
+# Airflow deployment repository, so Data Ops deploys it from there. Rules and setup:
+# docs/guidelines/AIRFLOW-DAG-SYNC-STANDARD.md in cr-misc-function.
+#
+# Files to copy together:
+#   .github/workflows/sync-dags.yml   (this file)
+#   scripts/sync_dags.sh
+#   scripts/publish_dags.sh
+# Then replace every TODO in the env block below and keep the repository layout
+# dags/<DAG_EXECUTOR> + dags/<DAG_UTILS>/ .
+#
+# Targets:
+#   push to master     -> force-updates the branch sync/<DAG_SLUG> of the deployment repository and
+#                         opens (or reuses) a pull request into its master; Data Ops merges it
+#   push to dev or sit -> pushes straight to the deployment repository's development branch
+#   any other branch   -> dry run only: no token, nothing is pushed
+#
+# Required in this repository (Settings > Environments):
+#   Environment "airflow-sync", deployment branches limited to master, dev and sit, holding the
+#   secret DEPLOY_REPO_TOKEN (access to the deployment repository only, see the standard).
+#   Do NOT also create DEPLOY_REPO_TOKEN as a repository-level secret: that copy is readable
+#   from every branch and bypasses the Environment's branch restriction.
+
+name: Sync DAGs to the deployment repository
+
+on:
+  push:
+    branches: [master, dev, sit]
+    paths:
+      - "dags/**"
+      - "scripts/sync_dags.sh"
+      - "scripts/publish_dags.sh"
+      - ".github/workflows/sync-dags.yml"
+  workflow_dispatch:
+
+# The built-in token only reads this repository. Write access to the deployment repository comes
+# from the DEPLOY_REPO_TOKEN secret of the "airflow-sync" Environment.
+permissions:
+  contents: read
+
+# One run at a time per target, queued rather than cancelled: two runs on the same target would
+# race on the same branch. The group names are labels, not branch names.
+concurrency:
+  group: sync-dags-${{ github.ref_name == 'master' && 'master' || 'airflow-dev' }}
+  cancel-in-progress: false
+
+env:
+  DEPLOY_REPO: "<ORG>/<DEPLOYMENT_REPO>"       # TODO: owner/name of the Airflow deployment repository
+  DEPLOY_DEV_BRANCH: "airflow-dev"             # TODO: branch of that repository that dev and sit publish to
+  DAG_DEST_DIR: "airflow/dags"                 # TODO: DAG folder inside the deployment repository
+  DAG_SLUG: "<dag-slug>"                       # TODO: short kebab-case name; becomes the sync/<slug> branch
+  DAG_EXECUTOR: "<dag_id>_executor.py"         # TODO: the DAG file under dags/
+  DAG_UTILS: "<dag_id>_utils"                  # TODO: the helper folder under dags/
+
+jobs:
+  sync:
+    if: github.ref_name == 'master' || github.ref_name == 'dev' || github.ref_name == 'sit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: airflow-sync
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Resolve the target branch and mode
+        id: target
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          case "$REF_NAME" in
+            master) base=master; mode=pr ;;
+            dev | sit) base="$DEPLOY_DEV_BRANCH"; mode=direct ;;
+            *) echo "unexpected ref $REF_NAME" >&2; exit 1 ;;
+          esac
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Clone the deployment repository
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          BASE: ${{ steps.target.outputs.base }}
+        shell: bash
+        run: |
+          git clone --quiet --branch "$BASE" \
+            "https://x-access-token:${DEPLOY_TOKEN}@github.com/${DEPLOY_REPO}.git" "$RUNNER_TEMP/deploy"
+
+      - name: Publish the DAG files
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          MODE: ${{ steps.target.outputs.mode }}
+          BASE: ${{ steps.target.outputs.base }}
+          SOURCE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          {
+            echo "## DAG sync"
+            echo ""
+            echo "- Source: ${GITHUB_REPOSITORY}@${SOURCE_SHA}"
+            echo "- Target: ${DEPLOY_REPO} branch ${BASE} (${MODE})"
+            echo ""
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          bash scripts/publish_dags.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/deploy" "$MODE" "$BASE" "$SOURCE_SHA" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+  dry-run:
+    if: github.ref_name != 'master' && github.ref_name != 'dev' && github.ref_name != 'sit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Show what a sync would copy (no token, nothing is pushed)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/deploy/$DAG_DEST_DIR"
+          bash scripts/sync_dags.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/deploy" | tee -a "$GITHUB_STEP_SUMMARY"
+          find "$RUNNER_TEMP/deploy/$DAG_DEST_DIR" -type f | sort | tee -a "$GITHUB_STEP_SUMMARY"
