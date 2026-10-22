@@ -4,6 +4,8 @@
 #   direct: push HEAD to <base_branch> (one rebase retry; other teams push there too)
 #   pr:     push the fixed branch sync/<DAG_SLUG> (updated per run) and open (or reuse) a PR
 #           into <base_branch>
+# Nothing is committed, pushed or opened when the DAG files have no diff against <base_branch>,
+# and in pr mode also not when an open PR's branch already holds exactly these files.
 # env:    DAG_SLUG, DAG_EXECUTOR, DAG_UTILS (required), DAG_DEST_DIR (default airflow/dags),
 #         SOURCE_REPO (default: the source repository name), GH_BIN, GIT_USER_NAME, GIT_USER_EMAIL
 set -euo pipefail
@@ -42,6 +44,17 @@ git add -A -- "${DEST_DIR}/${EXECUTOR}" "${DEST_DIR}/${UTILS}"
 if git diff --cached --quiet; then
   echo "No changes to publish (${BASE} already has the DAG from ${SHORT})"
   exit 0
+fi
+
+if [ "${MODE}" = "pr" ]; then
+  # An open PR whose branch already holds exactly these files needs no new commit: a
+  # force-push would only rewrite the commit (new SHA in the message) under the reviewer.
+  open_pr=$("${GH}" pr list --head "${BRANCH}" --base "${BASE}" --state open --json number --jq '.[0].number // empty')
+  if [ -n "${open_pr}" ] && git fetch -q origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}" 2> /dev/null \
+    && git diff --cached --quiet "origin/${BRANCH}" -- "${DEST_DIR}/${EXECUTOR}" "${DEST_DIR}/${UTILS}"; then
+    echo "No changes to publish (PR #${open_pr} already has these DAG files; ${SHORT} adds nothing)"
+    exit 0
+  fi
 fi
 echo "Files copied:"
 git diff --cached --name-status

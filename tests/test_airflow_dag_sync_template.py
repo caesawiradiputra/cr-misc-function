@@ -264,6 +264,29 @@ def test_pr_mode_reuses_an_open_pr_and_updates_the_same_branch(
     assert "pr create" not in log.read_text()
 
 
+def test_pr_mode_does_nothing_when_the_open_pr_branch_already_has_these_files(
+    source: Path, remote: tuple[Path, Path], tmp_path: Path
+) -> None:
+    bare, clone = remote
+    stub, log = make_gh_stub(tmp_path, existing_pr="42")
+    publish(source, clone, "pr", "master", gh=stub)
+    tip = run(["git", "rev-parse", f"sync/{SLUG}"], cwd=bare).stdout
+    out = publish(source, clone, "pr", "master", sha="1234567abcdef", gh=stub).stdout
+    assert "No changes to publish" in out and "#42" in out
+    assert run(["git", "rev-parse", f"sync/{SLUG}"], cwd=bare).stdout == tip
+    assert "pr create" not in log.read_text()
+
+
+def test_pr_mode_still_opens_a_pr_when_none_is_open_for_the_same_files(
+    source: Path, remote: tuple[Path, Path], tmp_path: Path
+) -> None:
+    bare, clone = remote
+    stub, log = make_gh_stub(tmp_path)  # no open PR
+    publish(source, clone, "pr", "master", gh=stub)
+    publish(source, clone, "pr", "master", sha="1234567abcdef", gh=stub)
+    assert log.read_text().count("pr create") == 2
+
+
 def test_publish_rejects_an_unknown_mode_and_a_bad_slug(
     source: Path, remote: tuple[Path, Path]
 ) -> None:

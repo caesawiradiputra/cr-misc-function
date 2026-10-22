@@ -58,6 +58,7 @@ The scripts copy exactly two things: the DAG file `airflow/dags/<DAG_EXECUTOR>` 
 | 10 | Every `run:` step sets `shell: bash`; checkout uses `persist-credentials: false`. | `shell: bash` turns on `pipefail`, so a failing script is not hidden by `tee`. The checkout does not need to keep a token. |
 | 11 | Write the run summary through `tee -a "$GITHUB_STEP_SUMMARY"`. | The step log then shows the real values as well as the summary page. |
 | 12 | A commit that changes nothing publishes nothing (`git diff --cached --quiet`). | A rerun, or a push that touched only the sync files, must not create empty commits or PR noise. |
+| 13 | In `pr` mode, with a PR already open, nothing is pushed when its branch already holds exactly these files. | A force-push would only rewrite the commit (a new SHA in the message) under the reviewer. A rerun with the same files stays silent; with no open PR the PR is still created. |
 
 ## 4. Token: choose a variant and set up GitHub
 
