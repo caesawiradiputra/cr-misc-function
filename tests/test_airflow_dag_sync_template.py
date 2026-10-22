@@ -323,3 +323,52 @@ def test_template_has_todos_and_no_company_values() -> None:
     assert TEXT.count("# TODO") == 6
     for path in (WORKFLOW, SYNC, PUBLISH):
         assert not re.search(r"bfi|aliyun", path.read_text(), re.I), path.name
+
+
+APP_TEXT = (TEMPLATE / "sync-dags.github-app.yml").read_text()
+
+
+def test_pat_variant_reads_the_organization_or_environment_secret_by_one_name() -> None:
+    assert TEXT.count("secrets.DA_AIRFLOW_SYNC_TOKEN") == 2
+    assert "DEPLOY_REPO_TOKEN" not in TEXT
+
+
+def test_app_variant_mints_a_scoped_token_and_stores_no_pat() -> None:
+    assert "secrets.DA_AIRFLOW_SYNC_TOKEN" not in APP_TEXT
+    assert "uses: actions/create-github-app-token@" in APP_TEXT
+    assert "repositories: ${{ steps.target.outputs.repo }}" in APP_TEXT
+    assert "permission-contents: write" in APP_TEXT
+    assert "permission-pull-requests: write" in APP_TEXT
+    assert APP_TEXT.count("${{ steps.app-token.outputs.token }}") == 2
+    assert re.search(r"^    environment: airflow-sync$", APP_TEXT, re.M)
+
+
+def test_app_variant_reads_client_id_and_key_as_secrets() -> None:
+    assert "secrets.DA_AIRFLOW_SYNC_APP_CLIENT_ID" in APP_TEXT
+    assert "secrets.DA_AIRFLOW_SYNC_APP_PRIVATE_KEY" in APP_TEXT
+    assert "vars." not in APP_TEXT
+
+
+def test_app_variant_creates_the_token_after_resolving_the_target_and_before_cloning() -> (
+    None
+):
+    order = [
+        APP_TEXT.index("- name: Resolve the target branch and mode"),
+        APP_TEXT.index("- name: Create the deployment repository token"),
+        APP_TEXT.index("- name: Clone the deployment repository"),
+    ]
+    assert order == sorted(order)
+
+
+def test_app_variant_keeps_the_same_dry_run_job_and_env_block() -> None:
+    tail = "  dry-run:"
+    assert TEXT[TEXT.index(tail) :] == APP_TEXT[APP_TEXT.index(tail) :]
+    env_block = re.compile(r"^env:\n(?:  .*\n)+", re.M)
+    first, second = env_block.search(TEXT), env_block.search(APP_TEXT)
+    assert first and second and first.group() == second.group()
+
+
+def test_app_variant_has_no_interpolation_in_run_scripts_or_company_values() -> None:
+    for block in re.findall(r"run: \|\n((?:          .*\n?)+)", APP_TEXT):
+        assert "${{" not in block
+    assert not re.search(r"bfi|aliyun", APP_TEXT, re.I)

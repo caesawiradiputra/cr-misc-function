@@ -8,6 +8,8 @@
 #   .github/workflows/sync-dags.yml   (this file)
 #   scripts/sync_dags.sh
 #   scripts/publish_dags.sh
+# If an organization admin can create a GitHub App, use sync-dags.github-app.yml instead (same
+# behaviour, no stored personal token); the standard compares the two in section 4.
 # Then replace every TODO in the env block below and keep the repository layout
 # dags/<DAG_EXECUTOR> + dags/<DAG_UTILS>/ .
 #
@@ -17,11 +19,15 @@
 #   push to dev or sit -> pushes straight to the deployment repository's development branch
 #   any other branch   -> dry run only: no token, nothing is pushed
 #
-# Required in this repository (Settings > Environments):
-#   Environment "airflow-sync", deployment branches limited to master, dev and sit, holding the
-#   secret DEPLOY_REPO_TOKEN (access to the deployment repository only, see the standard).
-#   Do NOT also create DEPLOY_REPO_TOKEN as a repository-level secret: that copy is readable
-#   from every branch and bypasses the Environment's branch restriction.
+# Required: the secret DA_AIRFLOW_SYNC_TOKEN (access to the deployment repository only, see the
+# standard), in one of two places:
+#   - an organization secret managed by an org admin and shared with this repository (private
+#     repositories, or selected ones). Nothing to configure here; the standard calls it the default.
+#   - the Environment "airflow-sync" of this repository, deployment branches limited to master,
+#     dev and sit (Settings > Environments). Stricter, since only those branches can read it.
+# Do NOT also create it as a repository-level secret: that copy is readable from every branch
+# and bypasses the Environment's branch restriction. A secret of the same name in the Environment
+# overrides the organization one.
 
 name: Sync DAGs to the deployment repository
 
@@ -36,7 +42,7 @@ on:
   workflow_dispatch:
 
 # The built-in token only reads this repository. Write access to the deployment repository comes
-# from the DEPLOY_REPO_TOKEN secret of the "airflow-sync" Environment.
+# from the DA_AIRFLOW_SYNC_TOKEN secret (organization or "airflow-sync" Environment).
 permissions:
   contents: read
 
@@ -82,7 +88,7 @@ jobs:
 
       - name: Clone the deployment repository
         env:
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          DEPLOY_TOKEN: ${{ secrets.DA_AIRFLOW_SYNC_TOKEN }}
           BASE: ${{ steps.target.outputs.base }}
         shell: bash
         run: |
@@ -91,7 +97,7 @@ jobs:
 
       - name: Publish the DAG files
         env:
-          GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.DA_AIRFLOW_SYNC_TOKEN }}
           MODE: ${{ steps.target.outputs.mode }}
           BASE: ${{ steps.target.outputs.base }}
           SOURCE_SHA: ${{ github.sha }}
