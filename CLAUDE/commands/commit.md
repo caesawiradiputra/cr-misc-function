@@ -1,7 +1,7 @@
 ---
 description: Generate Conventional Commit + gitmoji message from staged changes, review, refine, and commit
 argument-hint: "[guidance text, or 'amend' to refine HEAD's message]"
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git commit:*), Bash(git reset:*), Bash(git add:*)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git commit:*), Bash(git reset:*), Bash(git add:*), Bash(python3:*), mcp__plugin_atlassian_atlassian__getJiraIssue, mcp__plugin_atlassian_atlassian__executeRead, mcp__plugin_atlassian_atlassian__addOrEditJiraIssueComment
 ---
 
 # Commit
@@ -53,6 +53,10 @@ git branch --show-current
 ```
 
 Pattern: `feat/PROJ-1000-description` → extract `PROJ-1000`
+
+#### Step 3 — Handover check
+
+For a branch with a Jira key, run `python3 ~/.claude/skills/handover/handover.py check --ticket <TICKET>` and `... changed --ticket <TICKET>`. `HANDOVER.md` is committed like any other changed file. When `changed` prints `changed`, add one line to the Phase 4 review: "inventory changed: update the Jira handover?". When it prints `pending`, resolve it first (recovery in the `handover` skill). Say nothing when nothing changed.
 
 ### Phase 2: Categorize Changes
 
@@ -190,6 +194,8 @@ Remove-Item ".git\COMMIT_MSG_CLAUDE.txt"
 For `amend` mode, use `git commit --amend -F .git\COMMIT_MSG_CLAUDE.txt` instead.
 
 Report the new commit hash and subject to the user.
+
+If the user accepted the handover prompt, run the `handover` skill's posting procedure after the commit succeeded, so a post never describes uncommitted state. Read Jira only then, to fill the status line.
 
 ## Splitting
 
