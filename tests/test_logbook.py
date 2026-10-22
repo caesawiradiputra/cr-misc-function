@@ -1125,6 +1125,46 @@ def test_register_is_fresh_at_or_after_the_session_end(lb, minutes, fresh) -> No
     assert lb.register_fresh({"mtime": None}, now, sessions) is False
 
 
+@pytest.mark.parametrize(
+    ("day", "hour", "fresh"),
+    [(15, 9, True), (16, 9, True), (19, 9, False)],  # Thu, Fri, Mon after a Wed save
+)
+def test_register_goes_stale_after_max_age_working_days(lb, day, hour, fresh) -> None:
+    sessions = lb.cab_sessions({})
+    register = {"mtime": WED_1500, "max_age_days": 2}
+    now = dt.datetime(2026, 10, day, hour, 0, tzinfo=WED_1500.tzinfo)
+    assert lb.register_fresh(register, now, sessions) is fresh
+
+
+def test_register_age_counts_working_days_only(lb: ModuleType) -> None:
+    friday = dt.datetime(2026, 10, 16, 10, 0, tzinfo=WED_1500.tzinfo)
+    sunday = dt.datetime(2026, 10, 18, 10, 0, tzinfo=WED_1500.tzinfo)
+    monday = dt.datetime(2026, 10, 19, 10, 0, tzinfo=WED_1500.tzinfo)
+    assert lb.working_days_since(friday, sunday) == 0
+    assert lb.working_days_since(friday, monday) == 1
+
+
+def test_register_without_max_age_is_never_aged(lb: ModuleType) -> None:
+    now = dt.datetime(2026, 12, 1, 9, 0, tzinfo=WED_1500.tzinfo)
+    assert lb.register_aged({"mtime": WED_1500}, now) is False
+
+
+def test_max_age_config_default_and_bad_values(lb: ModuleType) -> None:
+    assert lb.register_max_age({}) == 2
+    assert lb.register_max_age({"cab_max_age_days": 0}) == 0
+    assert lb.register_max_age({"cab_max_age_days": "x"}) == 2
+    assert lb.register_max_age({"cab_max_age_days": -3}) == 0
+
+
+def test_stale_banner_names_the_age_when_saved_after_the_session(
+    lb: ModuleType,
+) -> None:
+    now = dt.datetime(2026, 10, 19, 9, 0, tzinfo=WED_1500.tzinfo)
+    register = {"mtime": WED_1500 + dt.timedelta(minutes=30), "max_age_days": 2}
+    text = lb.stale_banner(now, lb.cab_sessions({}), register)
+    assert "last saved Wed 14 Oct" in text and "2 working days" in text
+
+
 def test_stale_banner_names_the_session(lb: ModuleType) -> None:
     now = dt.datetime(2026, 10, 15, 9, 0, tzinfo=WED_1500.tzinfo)
     text = lb.stale_banner(now, lb.cab_sessions({}))
@@ -1561,6 +1601,7 @@ def test_config_example_documents_the_cab_keys() -> None:
         "cab_sessions",
         "cab_max_lag_days",
         "cab_grace_days",
+        "cab_max_age_days",
     } <= set(cfg)
     assert cfg["cab_sessions"] == {"days": ["Mon", "Wed"], "end": "15:00"}
 

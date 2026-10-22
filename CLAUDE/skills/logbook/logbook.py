@@ -211,7 +211,7 @@ def cmd_week(args: argparse.Namespace) -> None:
     if register is not None:
         now, sessions = now_wib(), cab_sessions(cfg)
         if not register_fresh(register, now, sessions):
-            banner = stale_banner(now, sessions)
+            banner = stale_banner(now, sessions, register)
     cab_lines = cab_week_lines(week, register, banner)
     if not by_ticket and not cab_lines:
         print(f"No entries for {week}.")
@@ -514,7 +514,7 @@ def cmd_check(args: argparse.Namespace) -> None:
                 cab_found, _ = cab_flags(cab, word, now.date())
                 findings += [f"{ticket}: {text} -> {fix}" for text, fix in cab_found]
         else:
-            notes.append(stale_banner(now, sessions))
+            notes.append(stale_banner(now, sessions, register))
     print(f"## Recheck since {since} (CSV vs git/PRs vs Jira cache)\n")
     print(
         "\n".join(f"- {n}" for n in notes) if notes else "", end="\n" if notes else ""
@@ -920,7 +920,7 @@ def cmd_pipeline(args: argparse.Namespace) -> None:
     if cab_note:
         notes.append(cab_note)
     elif register is not None and not register_fresh(register, now, sessions):
-        banner = stale_banner(now, sessions)
+        banner = stale_banner(now, sessions, register)
     entries, live, refreshed = derive_board(
         cache,
         group_items(read_rows()),
@@ -1033,6 +1033,14 @@ def read_register(path: Path) -> dict[str, Any]:
 
 
 CAB_KEY = re.compile(r"(?<![A-Za-z0-9])DA-?\s?(\d{3,5})(?!\d)", re.IGNORECASE)
+
+
+def register_max_age(cfg: dict[str, Any]) -> int:
+    """cab_max_age_days (default 2): working days the register may go without being saved."""
+    try:
+        return max(0, int(cfg.get("cab_max_age_days", 2)))
+    except (TypeError, ValueError):
+        return 2
 
 
 def register_cfg_lag(cfg: dict[str, Any]) -> int:
@@ -1182,6 +1190,7 @@ def build_register(
         "unlinked": sum(1 for r in rows if not r["keys"]),
         "encoding": read.get("encoding", ""), "delimiter": read.get("delimiter", ","),
         "mtime": read.get("mtime"),
+        "max_age_days": register_max_age(cfg),
     }  # fmt: skip
 
 
@@ -1284,16 +1293,50 @@ def last_session_end(now: dt.datetime, sessions: dict[str, Any]) -> dt.datetime:
     raise ValueError("cab_sessions lists no session day")
 
 
+def working_days_since(then: dt.datetime, now: dt.datetime) -> int:
+    """Mon-Fri days after the day of `then`, up to and including today."""
+    days, day = 0, then.date()
+    while day < now.date():
+        day += dt.timedelta(days=1)
+        if day.weekday() < 5:
+            days += 1
+    return days
+
+
+def register_aged(register: dict[str, Any], now: dt.datetime) -> bool:
+    """True when the file was not saved for more than cab_max_age_days working days."""
+    mtime, limit = register.get("mtime"), register.get("max_age_days")
+    return (
+        mtime is not None
+        and limit is not None
+        and working_days_since(mtime, now) > limit
+    )
+
+
 def register_fresh(
     register: dict[str, Any], now: dt.datetime, sessions: dict[str, Any]
 ) -> bool:
-    """Fresh = the file was modified at or after the end of the last CAB session."""
+    """Fresh = saved at or after the end of the last CAB session, and saved recently.
+
+    Deployments happen any time after CAB, so a file that was current at the session
+    end still goes stale when nobody saves it for a few working days.
+    """
     mtime = register.get("mtime")
-    return mtime is not None and mtime >= last_session_end(now, sessions)
+    if mtime is None or mtime < last_session_end(now, sessions):
+        return False
+    return not register_aged(register, now)
 
 
-def stale_banner(now: dt.datetime, sessions: dict[str, Any]) -> str:
+def stale_banner(
+    now: dt.datetime, sessions: dict[str, Any], register: dict[str, Any] | None = None
+) -> str:
     end = last_session_end(now, sessions)
+    if register is not None and register.get("mtime") and register["mtime"] >= end:
+        saved = register["mtime"]
+        return (
+            f"CAB register last saved {saved:%a} {saved.day} {saved:%b}, more than "
+            f"{register['max_age_days']} working days ago; CAB flags are hidden."
+        )
     return (
         f"CAB register not updated since the {end:%A} {end.day} {end:%b} session; "
         "CAB flags are hidden."
@@ -1365,7 +1408,7 @@ def cmd_cab(args: argparse.Namespace) -> None:
     print(
         f"## CAB register: {len(register['rows'])} row(s), {register['encoding']}, "
         f"delimiter {register['delimiter']!r}, "
-        + ("fresh" if fresh else stale_banner(now, sessions))
+        + ("fresh" if fresh else stale_banner(now, sessions, register))
     )
     for ticket in sorted(register["by_ticket"]):
         if args.ticket and ticket != args.ticket:

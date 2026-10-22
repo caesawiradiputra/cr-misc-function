@@ -192,8 +192,10 @@ The CAB register is the deployment task list kept by the Ops team. The user keep
 (default `cab-register.csv` in the Windows logbook folder, or `cab_register` in `config.json`),
 fills it by hand and updates it after each CAB session, Monday and Wednesday ending 15:00. The
 helper only reads it and never writes it. It owns the **dates** (registered, CAB, planned and real
-deploy, PAT end); Jira keeps owning the **status**. A register older than the end of the last
-session is stale: its flags are hidden and a banner names the session.
+deploy, PAT end); Jira keeps owning the **status**. A register is stale when it was saved before
+the end of the last session, or not saved for more than `cab_max_age_days` working days (default 2;
+deployments happen any time after CAB, so a file current at the session end still ages): its flags
+are hidden and a banner names the reason.
 
 ```bash
 python3 ~/.claude/skills/logbook/logbook.py cab                    # per-ticket view and data quality
@@ -219,7 +221,7 @@ Other flags (live Jira, fresh register): "not registered for CAB" (Jira `Ready F
 register, Jira behind), and a `Rollback` or `Cancel` the Jira status does not reflect. `check`
 reports the same flags. `week` adds a "CAB this week" block: items registered, CAB sessions,
 deployments and PAT windows ending. Config keys: `cab_register`, `cab_sessions`,
-`cab_max_lag_days` (at most 26) and `cab_grace_days`.
+`cab_max_lag_days` (at most 26), `cab_grace_days` and `cab_max_age_days`.
 
 ## Recheck (`/logbook check`)
 
