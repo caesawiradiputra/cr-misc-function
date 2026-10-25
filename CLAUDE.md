@@ -96,7 +96,7 @@ When adding or updating the AI assistant config in this repo, use branch
 ```text
 🔧 chore(claude): add AI assistant config (Claude Code, Copilot)
 
-- Add .claude/settings.json (permissions + hooks) and CLAUDE.md project guidance
+- Add .claude/settings.json (permissions) and CLAUDE.md project guidance
 - Add CLAUDE/ template (CLAUDE.md + slash commands)
 - Add .copilot/ (skills, instructions, prompts) and .github/copilot-instructions.md
 - Ignore .claude/settings.local.json (machine-specific permission overrides)
@@ -108,8 +108,9 @@ When adding or updating the AI assistant config in this repo, use branch
   - `permissions.deny` blocks reading/editing `.env`, `.env.dev`, `.env.prod`,
     `token.json`, and editing/writing anything under `legacy/**` (rollback/
     reference snapshots — see AGENTS.md)
-  - `hooks.PostToolUse` runs `ruff format` + `ruff check --fix` automatically
-    whenever Claude edits or writes a `.py` file
+  - No hooks: the `ruff format` + `ruff check --fix` run after Claude edits or
+    writes a `.py` file is a `PostToolUse` hook in the user's global
+    `~/.claude/settings.json`; copy it from `CLAUDE/` when setting up a machine
 - **`.claude/settings.local.json`** — this machine's permission allow-list
   (absolute paths); gitignored, never committed
 - **`CLAUDE/`** — canonical source for this project's `CLAUDE.md` and custom
