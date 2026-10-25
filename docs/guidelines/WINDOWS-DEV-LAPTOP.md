@@ -164,7 +164,7 @@ Most of the user folder travels with IT's copy. Save the rest explicitly:
 
 ## 8. Verify
 
-- [ ] `wsl --version` shows WSL 2.x; `wsl -l -v` shows Ubuntu at VERSION 2.
+- [ ] `wsl --version` shows WSL 3.x (reference 3.0.3.0); `wsl -l -v` shows Ubuntu at VERSION 2.
 - [ ] Task Manager > Startup apps: only the VPN, security agents and tools you chose are enabled.
 - [ ] No program is installed twice; Docker Desktop and Miniconda are gone unless you need them.
 - [ ] Idle memory after login is mostly the browser and WSL; the report's top 15 shows nothing you did not expect.
