@@ -88,7 +88,7 @@ Then update WSL itself and confirm the version:
 ```powershell
 wsl --update
 wsl --set-default-version 2
-wsl --version        # reference setup: WSL 2.5.10.0, kernel 6.6.87.2-1
+wsl --version        # reference setup: WSL 3.0.3.0, kernel 6.18.54.1-1
 wsl -l -v            # the distro must show VERSION 2
 ```
 
@@ -262,7 +262,7 @@ Known editor problems and fixes:
 
 ## 9. Verify the new machine
 
-- [ ] `wsl --version` shows WSL 2.x and `wsl -l -v` shows VERSION 2.
+- [ ] `wsl --version` shows WSL 3.x (reference 3.0.3.0) and `wsl -l -v` shows the distro at VERSION 2.
 - [ ] `curl` speed from WSL is in the same range as `curl.exe` on Windows.
 - [ ] `git`, `gh`, `jq`, `uv`, `node`, `claude` all print versions; `gh auth status` is signed in.
 - [ ] `claude doctor` passes; the status line shows; `/` lists the commands; `/plugin` and `/mcp` look right.
