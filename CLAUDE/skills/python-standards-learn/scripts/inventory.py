@@ -117,7 +117,9 @@ def req_names(text: str) -> list[str]:
 
 def dockerfile_facts(path: Path) -> dict:
     t = read(path)
-    froms = re.findall(r"^FROM\s+(\S+)(?:\s+AS\s+(\S+))?", t, re.MULTILINE | re.IGNORECASE)
+    froms = re.findall(
+        r"^FROM\s+(\S+)(?:\s+AS\s+(\S+))?", t, re.MULTILINE | re.IGNORECASE
+    )
     last_user = re.findall(r"^USER\s+(\S+)", t, re.MULTILINE | re.IGNORECASE)
     cmd = re.findall(r"^(?:CMD|ENTRYPOINT)\s+(.+)$", t, re.MULTILINE | re.IGNORECASE)
     return {
@@ -136,7 +138,9 @@ def dockerfile_facts(path: Path) -> dict:
         "user": last_user[-1] if last_user else None,
         "runs_as_root": not last_user or last_user[-1] in {"root", "0"},
         "expose": re.findall(r"^EXPOSE\s+(.+)$", t, re.MULTILINE | re.IGNORECASE),
-        "healthcheck": bool(re.search(r"^HEALTHCHECK\b", t, re.MULTILINE | re.IGNORECASE)),
+        "healthcheck": bool(
+            re.search(r"^HEALTHCHECK\b", t, re.MULTILINE | re.IGNORECASE)
+        ),
         "cmd_entrypoint": [c[:120] for c in cmd][-2:],
         "installs_with": [
             tool
@@ -149,13 +153,15 @@ def dockerfile_facts(path: Path) -> dict:
             if re.search(pat, t)
         ],
         "uv_version_pinned": bool(re.search(r"uv==\d", t)),
-        "copies_env_file": bool(re.search(r"^(COPY|ADD)\s+.*\.env\b", t, re.MULTILINE | re.IGNORECASE)),
+        "copies_env_file": bool(
+            re.search(r"^(COPY|ADD)\s+.*\.env\b", t, re.MULTILINE | re.IGNORECASE)
+        ),
         "apt_install": bool(re.search(r"apt(-get)?\s+install", t)),
     }
 
 
 def workflow_facts(repo: Path) -> list[dict]:
-    out = []
+    out: list[dict] = []
     wf_dir = repo / ".github" / "workflows"
     if not wf_dir.is_dir():
         return out
@@ -164,7 +170,9 @@ def workflow_facts(repo: Path) -> list[dict]:
         out.append(
             {
                 "file": f.name,
-                "on_pull_request": bool(re.search(r"^\s*pull_request\b", t, re.MULTILINE)),
+                "on_pull_request": bool(
+                    re.search(r"^\s*pull_request\b", t, re.MULTILINE)
+                ),
                 "on_push": bool(re.search(r"^\s*push\b", t, re.MULTILINE)),
                 "on_dispatch": "workflow_dispatch" in t,
                 "builds_docker": "docker" in t.lower() and ("build" in t.lower()),
@@ -287,7 +295,9 @@ def suggest_type(
 def inventory(repo: Path) -> dict:
     top = {p.name for p in repo.iterdir()}
     pyproject = read(repo / "pyproject.toml")
-    requires = re.search(r"^requires-python\s*=\s*\"([^\"]+)\"", pyproject, re.MULTILINE)
+    requires = re.search(
+        r"^requires-python\s*=\s*\"([^\"]+)\"", pyproject, re.MULTILINE
+    )
     backend = re.search(r"^build-backend\s*=\s*\"([^\"]+)\"", pyproject, re.MULTILINE)
     deps = set(dep_names(pyproject))
     for rq in sorted(repo.glob("requirements*.txt")):
@@ -324,7 +334,8 @@ def inventory(repo: Path) -> dict:
         "name": repo.name,
         "git": {
             "is_repo": bool(git(repo, "rev-parse", "--is-inside-work-tree")),
-            "toplevel_is_this_dir": git(repo, "rev-parse", "--show-toplevel") == str(repo),
+            "toplevel_is_this_dir": git(repo, "rev-parse", "--show-toplevel")
+            == str(repo),
             "branch": git(repo, "branch", "--show-current"),
             "last_commit": git(repo, "log", "-1", "--format=%cs"),
             "commits_last_12_months": len(
