@@ -725,7 +725,8 @@ _REG_ALIAS = {
     "n": "Column 1", "status": "Status", "reg": "Tanggal \nRegister CAB",
     "name": "Nama CAB", "cab": "jadwal CAB", "pat_end": "Last PAT Date",
     "pat_status": "Status PAT", "plan": "Deploye Plan Date",
-    "real": "Deployed Real Date",
+    "real": "Deployed Real Date", "dev": "PIC Deploy Dev",
+    "requester": "Requester \nPIC CAB",
 }  # fmt: skip
 
 
@@ -785,6 +786,62 @@ def test_read_register_falls_back_to_cp1252(lb, tmp_path) -> None:
     write_register(path, [reg_line(name="SRF – DA-1234")], encoding="cp1252")
     out = lb.read_register(path)
     assert out["encoding"] == "cp1252" and "–" in out["rows"][0]["Nama CAB"]
+
+
+def test_read_register_accepts_no_for_column_1(lb, tmp_path) -> None:
+    path = tmp_path / "cab-register.csv"
+    header = ["No" if c == "Column 1" else c for c in REG_COLUMNS]
+    write_register(path, [reg_line(n="7")], header=header)
+    assert lb.read_register(path)["rows"][0]["Column 1"] == "7"
+
+
+def test_read_register_decodes_a_file_mixing_utf8_and_cp1252(lb, tmp_path) -> None:
+    path = tmp_path / "cab-register.csv"
+    write_register(path, [reg_line(n="1", name="DA-1 \u201cx\u201d")], encoding="utf-8")
+    with path.open("ab") as f:  # a second tool appended a cp1252 row
+        f.write(b"2,Closed,,,,,,DA-2 Can\x92t,,,,,,,,,,,,,,\n")
+    out = lb.read_register(path)
+    assert out["encoding"] == "mixed utf-8/cp1252"
+    names = [r["Nama CAB"] for r in out["rows"]]
+    assert names == ["DA-1 \u201cx\u201d", "DA-2 Can\u2019t"]
+
+
+def test_read_register_reads_the_real_export_shape(lb, tmp_path) -> None:
+    """Semicolons, cp1252 and the 'No' header together, as in the Excel export."""
+    path = tmp_path / "cab-register.csv"
+    header = ["No" if c == "Column 1" else c for c in REG_COLUMNS]
+    write_register(
+        path,
+        [reg_line(n="3", name="SRF \u2013 DA-1234")],
+        delimiter=";",
+        encoding="cp1252",
+        header=header,
+    )
+    out = lb.read_register(path)
+    assert out["delimiter"] == ";" and not out["off"]
+    assert out["rows"][0]["Column 1"] == "3" and "\u2013" in out["rows"][0]["Nama CAB"]
+
+
+def test_own_register_rows_keeps_owner_rows_and_drops_duplicates(lb) -> None:
+    def full(**kw: str) -> dict[str, str]:
+        return dict(zip(lb.CAB_COLUMNS, reg_line(**kw), strict=False))
+
+    mine = {**dict.fromkeys(lb.CAB_COLUMNS, ""), "PIC Deploy Dev": "Caesa, Fandi"}
+    asked = {
+        **dict.fromkeys(lb.CAB_COLUMNS, ""),
+        "Requester PIC CAB": "caesa",
+        "Nama CAB": "b",
+    }
+    other = {
+        **dict.fromkeys(lb.CAB_COLUMNS, ""),
+        "PIC Deploy Dev": "Rizal",
+        "Nama CAB": "c",
+    }
+    cfg = {"pic": "Caesa Ram"}
+    assert lb.own_register_rows([mine, mine, asked, other], cfg) == [mine, asked]
+    assert lb.own_register_rows([other], {"cab_owner": "rizal"}) == [other]
+    assert lb.own_register_rows([other], {}) == [other]  # no owner: keep every row
+    assert full(dev="x")  # the alias used by the helper above exists
 
 
 def test_read_register_pads_short_rows_and_skips_blank_rows(lb, tmp_path) -> None:
@@ -1220,7 +1277,8 @@ def test_cab_reports_why_it_is_off(lb, tmp_path, capsys) -> None:
 
 
 def test_cab_reports_ambiguous_tickets(lb, tmp_path, capsys) -> None:
-    cab_env(lb, tmp_path, [reg_line(n="5"), reg_line(n="5")])
+    # identical rows are one download duplicate; differing rows with the same number conflict
+    cab_env(lb, tmp_path, [reg_line(n="5"), reg_line(n="5", status="Pending")])
     assert "ambiguous" in run_cab(lb, capsys)
 
 
