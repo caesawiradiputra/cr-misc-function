@@ -8,6 +8,8 @@
       "Edit(**/.env.dev)",
       "Read(**/.env.prod)",
       "Edit(**/.env.prod)",
+      "Read(**/.claude/settings.local.json)",
+      "Edit(**/.claude/settings.local.json)",
       "Read(**/token.json)",
       "Edit(**/token.json)",
       "Read(**/*.pem)",
