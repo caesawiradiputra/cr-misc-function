@@ -940,7 +940,9 @@ CAB_REQUIRED = [
     "Column 1", "Status", "Tanggal Register CAB", "Nama CAB", "jadwal CAB",
     "Deployed Real Date", "Last PAT Date", "Status PAT",
 ]  # fmt: skip
-CAB_OPTIONAL = ["TYPE CAB", "Kategori", "Deploye Plan Date"]
+CAB_OPTIONAL = [
+    "TYPE CAB", "Kategori", "Deploye Plan Date", "PIC Deploy Dev", "Requester PIC CAB",
+]  # fmt: skip
 CAB_COLUMNS = CAB_REQUIRED + CAB_OPTIONAL
 
 
@@ -970,7 +972,14 @@ def _decode(raw: bytes) -> tuple[str, str]:
             return raw.decode(encoding), encoding
         except UnicodeDecodeError:
             continue
-    raise UnicodeDecodeError("cp1252", raw, 0, 1, "neither UTF-8 nor cp1252")
+    # A file edited in two tools can mix both: decode line by line, UTF-8 first.
+    lines = []
+    for line in raw.splitlines(keepends=True):
+        try:
+            lines.append(line.decode("utf-8"))
+        except UnicodeDecodeError:
+            lines.append(line.decode("cp1252", errors="replace"))
+    return "".join(lines).lstrip("\ufeff"), "mixed utf-8/cp1252"
 
 
 def _detect_delimiter(text: str) -> str:
@@ -1019,6 +1028,8 @@ def read_register(path: Path) -> dict[str, Any]:
             )
         else:
             index[key] = i
+    if "column 1" not in index and "no" in index:  # newer exports name it "No"
+        index["column 1"] = index["no"]
     missing = [c for c in CAB_REQUIRED if _norm_header(c) not in index]
     if missing:
         out["off"] = "the CAB register lacks column(s): " + ", ".join(missing)
@@ -1300,6 +1311,28 @@ def stale_banner(now: dt.datetime, sessions: dict[str, Any]) -> str:
     )
 
 
+def own_register_rows(rows: list[dict[str, str]], cfg: dict[str, Any]) -> list[dict[str, str]]:
+    """Drop exact duplicate rows and rows the user neither owns nor requested.
+
+    The register holds every team's CABs. A row is the user's when `cab_owner`
+    (default: the first word of `pic`) appears in `PIC Deploy Dev` or
+    `Requester PIC CAB`. With no owner configured, every row is kept.
+    """
+    owner = str(cfg.get("cab_owner") or str(cfg.get("pic", "")).split(" ")[0]).strip().lower()
+    seen: set[tuple[str, ...]] = set()
+    kept = []
+    for row in rows:
+        sig = tuple(row.values())
+        if sig in seen:
+            continue
+        seen.add(sig)
+        people = f"{row['PIC Deploy Dev']} {row['Requester PIC CAB']}".lower()
+        if owner and owner not in people:
+            continue
+        kept.append(row)
+    return kept
+
+
 def load_register_for_run(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
     """(register, note). Register is None when the feature is off; note says why."""
     path = resolve_register_path(cfg)
@@ -1308,6 +1341,7 @@ def load_register_for_run(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, s
     read = read_register(path)
     if read["off"]:
         return None, read["off"]
+    read["rows"] = own_register_rows(read["rows"], cfg)
     return build_register(read, cfg, now_wib().date()), ""
 
 
