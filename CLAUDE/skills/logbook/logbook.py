@@ -1311,14 +1311,20 @@ def stale_banner(now: dt.datetime, sessions: dict[str, Any]) -> str:
     )
 
 
-def own_register_rows(rows: list[dict[str, str]], cfg: dict[str, Any]) -> list[dict[str, str]]:
+def own_register_rows(
+    rows: list[dict[str, str]], cfg: dict[str, Any]
+) -> list[dict[str, str]]:
     """Drop exact duplicate rows and rows the user neither owns nor requested.
 
     The register holds every team's CABs. A row is the user's when `cab_owner`
     (default: the first word of `pic`) appears in `PIC Deploy Dev` or
     `Requester PIC CAB`. With no owner configured, every row is kept.
     """
-    owner = str(cfg.get("cab_owner") or str(cfg.get("pic", "")).split(" ")[0]).strip().lower()
+    owner = (
+        str(cfg.get("cab_owner") or str(cfg.get("pic", "")).split(" ")[0])
+        .strip()
+        .lower()
+    )
     seen: set[tuple[str, ...]] = set()
     kept = []
     for row in rows:
