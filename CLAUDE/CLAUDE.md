@@ -576,6 +576,7 @@ only the changes in `scratch/<TICKET-ID>/`.)
 
 Rules VS Code cannot auto-fix — apply these manually when writing or editing Markdown files:
 
+- **Follow markdownlint formatting when writing Markdown.** Blank lines around headings and lists, no bare URLs (link them, e.g. `[TICKET-1](https://<jira-host>/browse/TICKET-1)`), plus the rules below.
 - **Code blocks must always specify a language.** Use ` ```text ` for plain text or output; never leave the opening fence bare (` ``` `).
 - **Table separators must have spaces around dashes.** Use `| --- | --- |`, not `|---|---|`.
 - **Mermaid diagrams: use `<br/>` for line breaks, not `\n`.** `\n` inside a node or edge label renders as a literal backslash-n in some previewers (confirmed in VS Code's markdown preview) — use `<br/>` instead.
