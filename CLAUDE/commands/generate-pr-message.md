@@ -324,6 +324,11 @@ Skip when there is no ticket (slug-keyed ad-hoc work).
    (`/logbook add`, `status` = `Testing`; when the user later reports the PR merged into `dev`, offer `Ready For Release` the same way).
 7. For a PR to `master`, make no Jira change: remind the user that CAB approval moves the
    ticket to `Deployment` and the finished deployment to `PAT` (the user moves those).
+8. Handover, for both PRs (feature to `dev` and `dev` to `master`): with the status read in step 1,
+   run `python3 ~/.claude/skills/handover/handover.py changed --ticket <TICKET> --jira-status <status>`.
+   When the PR URL is known (the user pastes it, or `gh pr list --head <branch>` returns it) run
+   `handover.py set --ticket <TICKET> --pr <url>`. Offer the post if the inventory changed, or the
+   final post when Jira reads `Done` (the `handover` skill). Skip when there is no ticket.
 
 ---
 
