@@ -1,8 +1,8 @@
 # MCP server templates
 
 Copy a template into the repo root as `.mcp.json` (or merge its `mcpServers`
-entry into the existing one). The file holds **no secrets**: values come from
-`${VAR}` references, so it is safe to commit.
+entry into the existing one). The file holds **no secrets**, so it is safe to
+commit.
 
 | Template | Server | Notes |
 | --- | --- | --- |
@@ -10,12 +10,29 @@ entry into the existing one). The file holds **no secrets**: values come from
 
 ## Where the secret lives
 
-`.mcp.json` expands `${VAR}` and `${VAR:-default}` in `command`, `args`, `env`,
-`url` and `headers` from the environment of the Claude Code process. Claude
-Code does **not** load `.env` by itself. Pick one source for the value:
+Claude Code does **not** load `.env` by itself. `.mcp.json` expands `${VAR}`
+and `${VAR:-default}` in `command`, `args`, `env`, `url` and `headers` from the
+environment of the Claude Code process. Three ways to supply the value, safest
+first.
 
-1. **`.claude/settings.local.json` `env` block** (gitignored, denied to Claude
-   by the `settings.local.json` deny rule):
+1. **Recommended: read `.env` inside the server command.** The template does
+   this. It pulls only `POSTGRES_MCP_URI` out of the repo's `.env` and hands it
+   to the server as `DATABASE_URI`:
+
+   - Only the MCP server process gets the value. Claude's Bash tool and the
+     rest of the session never see it, and nothing has to be set before
+     launching `claude`.
+   - `.env` is parsed with `grep`, not sourced, so other variables are not
+     exported and a value with spaces or `$` cannot run as shell code.
+   - Add `POSTGRES_MCP_URI=postgresql://user:password@host:5432/dbname` to the
+     repo's `.env`. Use a dedicated variable so a production `DATABASE_URL` is
+     never picked up by accident. The server starts from the repo root, so
+     `.env` is found there.
+   - Needs `bash`, so on native Windows run Claude Code from WSL or Git Bash.
+
+2. **`.claude/settings.local.json` `env` block** (gitignored, denied to Claude
+   by the `settings.local.json` deny rule). Use it when there is no `.env`,
+   with `"env": {"DATABASE_URI": "${POSTGRES_MCP_URI}"}` in `.mcp.json`:
 
    ```json
    {
@@ -25,25 +42,13 @@ Code does **not** load `.env` by itself. Pick one source for the value:
    }
    ```
 
-2. **The shell that starts Claude Code**, for example from a `.env` you
-   already keep: `set -a; . ./.env; set +a; claude`. One source of truth, and
-   nothing is copied. Use a dedicated variable such as `POSTGRES_MCP_URI` so a
-   production `DATABASE_URL` is never picked up by accident.
-3. **Source `.env` inside the server command**, so nothing has to be set
-   before launch. The server then reads the value straight from `.env`:
+   This is a second copy of the secret, and the value reaches the whole Claude
+   Code process. Check with `claude mcp list` that the variable expands.
 
-   ```json
-   {
-     "mcpServers": {
-       "postgres": {
-         "command": "bash",
-         "args": ["-c", "set -a; . ./.env; exec uvx postgres-mcp --access-mode=restricted"]
-       }
-     }
-   }
-   ```
-
-   `.env` must define `DATABASE_URI`, and the command runs from the repo root.
+3. **Export it in the launching shell** (`set -a; . ./.env; set +a; claude`).
+   Avoid it: every variable in `.env` is exported to Claude's Bash tool and all
+   child processes, and the `Read(**/.env)` deny rule does not stop `env` or
+   `echo $VAR`.
 
 Use a read-only database user for the MCP connection, and a dev or replica
 database rather than production.
