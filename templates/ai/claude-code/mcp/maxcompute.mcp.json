@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "maxcompute": {
+      "type": "http",
+      "url": "https://mcp-intl.<region-id>.maxcompute.aliyun.com/mcp"
+    }
+  }
+}

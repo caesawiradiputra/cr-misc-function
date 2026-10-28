@@ -7,6 +7,8 @@ commit.
 | Template | Server | Notes |
 | --- | --- | --- |
 | `postgres.mcp.json` | `@modelcontextprotocol/server-postgres` (via `npx`) | Read-only by design (queries run in a read-only transaction). npm marks the package deprecated but it still works |
+| `trino.mcp.json` | [`tuannvm/mcp-trino`](https://github.com/tuannvm/mcp-trino) | Go binary (`brew install tuannvm/mcp/mcp-trino`). Read-only by default. Only the password is secret; host, user and catalog sit in `env` as placeholders. Also reaches Hive tables through the `hive` catalog |
+| `maxcompute.mcp.json` | Alibaba's remote MaxCompute MCP | No secret: browser OAuth. Replace `<region-id>`, then `claude mcp login maxcompute`. Write SQL needs `mode=write` and your confirmation |
 
 Why not `uvx postgres-mcp`: on 2026-10-28 its current releases could not be
 installed (the pinned `pglast==7.2.0` did not resolve), `uvx` fell back to the
@@ -72,3 +74,10 @@ database rather than production.
 
 `claude mcp list` shows a missing-variable warning for any unset `${VAR}`, and
 `/mcp` inside a session shows whether the server connected.
+
+## Servers not covered
+
+OSS and Hive have no dedicated MCP server in these templates: Hive is reached
+through the Trino `hive` catalog, and no OSS server has been evaluated. The
+Trino and MaxCompute templates are built from each project's documentation and
+have not been run against a live cluster, so check `/mcp` after copying.
