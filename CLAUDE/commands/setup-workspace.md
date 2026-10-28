@@ -118,7 +118,7 @@ Run for **every repo root** of the workspace, in all three situations: a fresh w
    }
    ```
 
-   Never overwrite an existing file. Do not copy a server that is already registered at user scope (Step 4). Credentials go in `${VAR}` references, never in the file, so it can be committed.
+   Never overwrite an existing file. Do not copy a server that is already registered at user scope (Step 4). Credentials go in `${VAR}` references, never in the file, so it can be committed. Templates for common servers (for example Postgres) are in `templates/ai/claude-code/mcp/` of the `cr-misc-function` repo; the secret values go in the `env` block of `.claude/settings.local.json` or come from the shell, as that folder's README explains.
 6. **Create `<repo>/.claude/settings.json` when missing** with the standard content: the `$schema` line plus a `permissions.deny` array holding only the repo-specific rules from step 3 (an empty array when the repo has none), for example:
 
    ```json
