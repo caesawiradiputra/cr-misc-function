@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "exec npx -y @modelcontextprotocol/server-postgres \"$(grep '^POSTGRES_MCP_URI=' .env | cut -d= -f2-)\""
+      ]
+    }
+  }
+}
