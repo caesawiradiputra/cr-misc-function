@@ -48,6 +48,7 @@ CLAUDE/
 │   ├── commit.md                   ← /commit
 │   ├── clean-gone.md               ← /clean-gone
 │   ├── pipeline.md                 ← /pipeline
+│   ├── handover.md                 ← /handover
 │   ├── generate-pr-message.md      ← /generate-pr-message
 │   ├── refactor-python.md          ← /refactor-python
 │   ├── refactor-repositories.md    ← /refactor-repositories
@@ -174,6 +175,7 @@ Some commands accept arguments: `/command-name <argument>`
 | `/generate-pr-message` | Generate PR messages + release folder for a branch deployment | `/generate-pr-message 1.2.0 "requirement text"` |
 | `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees | `/clean-gone` |
 | `/pipeline` | Board of open tickets by stage (Jira, git, logbook) with the next step and flags | `/pipeline` |
+| `/handover` | Update the ticket handover inventory and propose the Jira handover comment | `/handover` |
 
 ### Code Quality
 
@@ -235,6 +237,7 @@ description. You can also call them by name.
 | `upgrade-python-version` | Move a project to a newer Python (e.g. 3.8 → 3.11): minimal dependency bumps, syntax-only rewrites, structure check, upgrade guide |
 | `jira-ticket-kickoff` | Start or resume work on a ticket: fetch the requirement, sync `dev`, create the branch + `release/<TICKET>/` folder |
 | `jira-in-da-sync` | Daily intake sweep over the source boards (`IN`, plus other boards in any status): clone assigned tickets that have no `PROJ` link (old ones are only listed), keep a checkpoint per board so later runs skip checked tickets, then remind which `PROJ` tickets still sit in Backlog / To Do / Data Analysis. State lives in `~/.claude/state/jira-in-da-sync.json` |
+| `handover` | Keep a per-ticket inventory of the platforms and objects a change touches (`release/<TICKET>/docs/HANDOVER.md`) and post it as one Jira comment after your OK; includes the `handover.py` helper |
 | `bast-generator` | Create a BAST handover page in Confluence from a ticket and its release folder |
 | `bast-learn` | Learn a repo's BAST conventions from its older pages |
 | `okf-writer` | Create, update or lint an Open Knowledge Format bundle (concept files with provenance, `index.md`, `log.md`); includes the `okf_lint.py` checker. See `docs/guidelines/OKF-OPEN-KNOWLEDGE-FORMAT.md` |

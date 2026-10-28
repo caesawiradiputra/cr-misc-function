@@ -647,6 +647,19 @@ available transitions instead of guessing.
 
 ---
 
+## Ticket Handover
+
+If the main person on a ticket is away, whoever takes over must see where the change lives.
+The `handover` skill keeps an inventory of the platforms and objects a ticket touches in two
+files: `release/<TICKET>/docs/HANDOVER.md` (committed) and `scratch/<TICKET>/handover.state.json`
+(ignored, posting bookkeeping). Recording is silent: when a plan names an object, when an artifact
+for it is written or edited, or when the user reports applying a change. Posting is proposed at
+`/commit` (after the commit), `/generate-pr-message` (both PRs) and `/handover`, only when the
+inventory changed, as one Jira comment edited in place after the user's OK. A merge is not a
+trigger and the Jira description is never edited. Secrets are never recorded.
+
+---
+
 ## Available Slash Commands
 
 | Command | Description |
@@ -656,6 +669,7 @@ available transitions instead of guessing.
 | `/logbook` | Add/update a weekly-report logbook row, print the weekly summary, copy the CSV to Windows |
 | `/clean-gone` | Delete local branches whose remote was deleted ([gone]), incl. worktrees |
 | `/pipeline` | Board of open tickets by stage (Jira, git, logbook) with the next step and flags |
+| `/handover` | Update the ticket handover inventory and propose the Jira handover comment |
 | `/refactor-python` | Refactor Python code while preserving behavior |
 | `/refactor-repositories` | Refactor repository classes to mandatory structure |
 | `/validate-lint-config` | Validate and sync ruff.toml + mypy.ini with environment |

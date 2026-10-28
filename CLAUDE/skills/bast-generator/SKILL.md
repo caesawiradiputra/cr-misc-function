@@ -50,6 +50,7 @@ From the current repo:
 - `release/<TICKET>/` — `CHANGELOG.md`, `docs/requirement.md`, and every script under `ddl/`, `config/`, `data/`.
 - The changed paths on the ticket branch versus the base (`git diff --name-only <base>...HEAD`). Use the base the repo's docs name (usually `dev`); fetch first (`git fetch --all --prune`) before concluding a branch does not exist.
 - The repo's **Deployment Targets** documentation (step 3).
+- The ticket's handover inventory: `python3 ~/.claude/skills/handover/handover.py show --ticket <TICKET>`. Compare its objects with the BAST scope rows built in steps 4 and 5 and list any object present in one but not the other in the preview.
 - The **source-code reference** for the CAB Checklist (once per BAST, see `references/template-map.md`): the repo's GitHub URL (`git remote get-url origin`, without the `.git` suffix), the ticket's branch name (from the release `CHANGELOG.md` `Branch:` line, or `git branch --show-current`), and the pull request link (`gh pr list --head <branch> --state all --json url`, or, if `gh` is unavailable or the branch is gone, the `(#NNN)` in the merge commit subject on the base branch, giving `<repo url>/pull/NNN`). Prefer the PR link, since the branch is usually deleted after merge. If none can be found, leave the reference out and say so in the preview.
 
 ### 3. Check the repo's deployment-target docs
@@ -108,6 +109,8 @@ Print a compact preview and wait for the user's OK:
 7. Re-read the copy and run the sweep (hard rule 4). A markdown re-read is acceptable for the text sweep, but it is lossy: inline smart-link cards (the Epic Key links) do not appear in it, so confirm those from the `dryRun` HTML instead of reporting them missing.
 
 ### 8. Report
+
+Record the page URL in the handover state: `python3 ~/.claude/skills/handover/handover.py set --bast <page url> --ticket <TICKET>` (skip when the ticket has no `HANDOVER.md`).
 
 Give the page link and a to-do list of what only the user can do: screenshots for the Scenario Test rows and for each `[Upload screenshot: …]` placeholder, and the script file for each `[Attach file: …]` placeholder (delete the placeholder text once uploaded), every `⚠ TO CONFIRM` line, and the cells intentionally left for Data Ops, the user, CAB and IT. Mention the MCP cannot upload attachments.
 

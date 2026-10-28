@@ -237,6 +237,16 @@ Present a short summary: what the ticket asks for, the acceptance criteria, anyt
 
 Then invoke `superpowers:brainstorming`, using this summary (plus any pasted extra context from Step 0) as the seed intent. Don't produce an implementation plan yet — that's `superpowers:writing-plans`, later.
 
+### Step 6a-iv: Create the handover inventory
+
+For Jira-key tickets (Path A, and Path B when the file is missing), create the handover inventory once the branch exists and skip it when `release/<TICKET-ID>/docs/HANDOVER.md` already exists. Path C (slug) does not run it.
+
+```bash
+python3 ~/.claude/skills/handover/handover.py init --ticket <TICKET-ID> --branch <branch>
+```
+
+`HANDOVER.md` records the platforms and objects the ticket touches so a replacement can take over; the `handover` skill keeps it current and posts it to Jira only after the user's OK.
+
 ## Path B: Resume in-progress JIRA work
 
 ### Step 4b: Check out the existing branch
@@ -252,6 +262,8 @@ If `release/<TICKET-ID>/` doesn't exist yet, scaffold it and write `requirement.
 If `scratch/<TICKET-ID>/CONTEXT.md` doesn't exist, run Step 6a-iii first. If it exists, read it instead of searching again, and mention any listed gaps in the recap.
 
 ### Step 6b: Progress recap instead of brainstorming
+
+First read `release/<TICKET-ID>/docs/HANDOVER.md` (the handover inventory) and show its objects and notes, plus the result of `python3 ~/.claude/skills/handover/handover.py check --ticket <TICKET-ID>`, so a person taking over the ticket sees where the work lives before the git recap below.
 
 ```powershell
 git log origin/dev..HEAD --oneline
