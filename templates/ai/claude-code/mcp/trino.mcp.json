@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "trino": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "export TRINO_PASSWORD=\"$(grep '^TRINO_PASSWORD=' .env | cut -d= -f2-)\"; exec mcp-trino"
+      ],
+      "env": {
+        "TRINO_HOST": "<trino-host>",
+        "TRINO_PORT": "443",
+        "TRINO_USER": "<trino-user>",
+        "TRINO_CATALOG": "hive",
+        "TRINO_SCHEMA": "default"
+      }
+    }
+  }
+}
