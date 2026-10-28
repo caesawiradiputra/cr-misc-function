@@ -15,6 +15,7 @@
   "cab_sessions": { "days": ["Mon", "Wed"], "end": "15:00" },
   "cab_max_lag_days": 21,
   "cab_grace_days": 3,
+  "cab_max_age_days": 2,
   "confluence": {
     "space_id": "<PERSONAL_SPACE_ID>",
     "space_key": "<PERSONAL_SPACE_KEY>",
