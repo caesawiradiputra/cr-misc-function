@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "export DATABASE_URI=\"$(grep '^POSTGRES_MCP_URI=' .env | cut -d= -f2-)\"; exec uvx postgres-mcp --access-mode=restricted"
+      ]
+    }
+  }
+}
