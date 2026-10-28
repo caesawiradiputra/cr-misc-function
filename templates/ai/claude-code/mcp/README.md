@@ -7,7 +7,7 @@ commit.
 | Template | Server | Notes |
 | --- | --- | --- |
 | `postgres.mcp.json` | `@modelcontextprotocol/server-postgres` (via `npx`) | Read-only by design (queries run in a read-only transaction). npm marks the package deprecated but it still works |
-| `trino.mcp.json` | [`tuannvm/mcp-trino`](https://github.com/tuannvm/mcp-trino) | Go binary (`brew install tuannvm/mcp/mcp-trino`). Read-only by default. Only the password is secret; host, user and catalog sit in `env` as placeholders. Also reaches Hive tables through the `hive` catalog |
+| `trino.mcp.json` | [`tuannvm/mcp-trino`](https://github.com/tuannvm/mcp-trino) | Go binary, see [Install mcp-trino](#install-mcp-trino). Read-only by default. Only the password is secret; host, user and catalog sit in `env` as placeholders. Also reaches Hive tables through the `hive` catalog |
 | `maxcompute.mcp.json` | Alibaba's remote MaxCompute MCP | No secret: browser OAuth. Replace `<region-id>`, then `claude mcp login maxcompute`. Write SQL needs `mode=write` and your confirmation |
 
 Why not `uvx postgres-mcp`: on 2026-10-28 its current releases could not be
@@ -81,3 +81,23 @@ OSS and Hive have no dedicated MCP server in these templates: Hive is reached
 through the Trino `hive` catalog, and no OSS server has been evaluated. The
 Trino and MaxCompute templates are built from each project's documentation and
 have not been run against a live cluster, so check `/mcp` after copying.
+
+## Install mcp-trino
+
+Homebrew is not available on every machine (not in WSL by default), so install
+the release binary. Replace `v4.3.1` and the `4.3.1` in the file names with the
+[latest release](https://github.com/tuannvm/mcp-trino/releases), and use
+`linux_arm64` on ARM:
+
+```bash
+d=$(mktemp -d) && cd "$d"
+gh release download v4.3.1 -R tuannvm/mcp-trino \
+  -p 'mcp-trino_4.3.1_linux_amd64.tar.gz' -p 'mcp-trino_4.3.1_checksums.txt'
+grep linux_amd64 mcp-trino_4.3.1_checksums.txt | sha256sum -c -
+tar -xzf mcp-trino_4.3.1_linux_amd64.tar.gz
+install -m 755 -D mcp-trino ~/.local/bin/mcp-trino
+```
+
+`~/.local/bin` must be on `PATH`. Without `gh`, download the same two files
+from the release page. The checksum comes from the same release, so it catches
+a corrupt download, not a compromised release.
