@@ -6,7 +6,20 @@ commit.
 
 | Template | Server | Notes |
 | --- | --- | --- |
-| `postgres.mcp.json` | `postgres-mcp` (via `uvx`) | `--access-mode=restricted` is read-only; drop it only when writes are really needed |
+| `postgres.mcp.json` | `@modelcontextprotocol/server-postgres` (via `npx`) | Read-only by design (queries run in a read-only transaction). npm marks the package deprecated but it still works |
+
+Why not `uvx postgres-mcp`: on 2026-10-28 its current releases could not be
+installed (the pinned `pglast==7.2.0` did not resolve), `uvx` fell back to the
+old 0.1.0, which has no `--access-mode` flag, and an unpinned `mcp` 2.x crashed
+it on import. Both showed up only as `CONNECTION_CLOSED` in `/mcp`. Re-check
+before switching back.
+
+Follow-up: decide whether to replace the deprecated
+`@modelcontextprotocol/server-postgres` with a maintained server such as
+`@bytebase/dbhub`. Nothing needs doing before then, because the current setup
+works. Check that the replacement is read-only by default and can take the
+connection string from an environment variable, which would also keep the URL
+out of the process arguments.
 
 ## Where the secret lives
 
@@ -17,7 +30,8 @@ first.
 
 1. **Recommended: read `.env` inside the server command.** The template does
    this. It pulls only `POSTGRES_MCP_URI` out of the repo's `.env` and hands it
-   to the server as `DATABASE_URI`:
+   to the server as its connection argument (the URL is then visible in the
+   server's process arguments to other local users, as `ps` shows):
 
    - Only the MCP server process gets the value. Claude's Bash tool and the
      rest of the session never see it, and nothing has to be set before
@@ -32,7 +46,8 @@ first.
 
 2. **`.claude/settings.local.json` `env` block** (gitignored, denied to Claude
    by the `settings.local.json` deny rule). Use it when there is no `.env`,
-   with `"env": {"DATABASE_URI": "${POSTGRES_MCP_URI}"}` in `.mcp.json`:
+   with `"args": ["-y", "@modelcontextprotocol/server-postgres", "${POSTGRES_MCP_URI}"]`
+   (and `"command": "npx"`) in `.mcp.json`:
 
    ```json
    {
