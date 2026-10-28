@@ -96,7 +96,47 @@ Based on the stack actually detected in the workspace (languages, frameworks, li
 5. **Settings-based extension behavior still needs correct scope.** When an extension's *behavior* (not enable/disable) should differ per folder — e.g. a linter's executable path — check that setting's scope in the extension's `package.json` → `contributes.configuration` (see Step 6.7). A `resource`-scoped setting can live in that folder's `.vscode/settings.json`; a `window`/`application`-scoped setting is ignored there in a multi-root workspace and must go in the `.code-workspace` file's own `settings` block (using `${workspaceFolder:<name>}` to target one root) or in User settings. Verify this before assuming a folder-level `.vscode/settings.json` entry is being read — it silently isn't, for window-scoped settings, in a multi-root setup.
 6. **`${workspaceFolder:<name>}` is not guaranteed to be resolved by the extension that reads it.** VS Code only substitutes this variable automatically in a fixed set of contexts (`tasks.json`, `launch.json`, and settings an extension explicitly runs through its own variable-resolution call) — it is not applied generically to every extension setting. An extension that just does `vscode.workspace.getConfiguration().get('foo')` and uses the raw string (e.g. handing it to `child_process.spawn`) will pass `${workspaceFolder:<name>}` through unresolved. Confirmed case: `sqlfluff.executablePath`/`sqlfluff.workingDirectory` set in a `.code-workspace` `settings` block to `${workspaceFolder:<repo>}/.venv/bin/sqlfluff` failed with `spawn ${workspaceFolder:<repo>}/.venv/bin/sqlfluff ENOENT` — the literal, unexpanded string reached `spawn()`. This reads like a missing-executable problem, not a variable-substitution one, so it's easy to misdiagnose. When recommending `${workspaceFolder:<name>}` for a window-scoped extension setting, either confirm from the extension's own docs/source that it resolves the variable, or skip the variable and just hardcode the absolute path in the `.code-workspace` settings block — an absolute path always works and costs nothing in portability if the workspace is already machine-specific.
 
-## Step 8 — Sync Environments & Debug Launch Configs
+## Step 8 — Secrets Deny Rules & Baseline Files
+
+Run for **every repo root** of the workspace, in all three situations: a fresh workspace, a new clone, and an existing workspace being audited. Repos differ, so inspect each one (`git ls-files` plus `ls -a`) instead of assuming a fixed list.
+
+**Umbrella folder.** When the session starts in a folder that is not itself a git repo and holds the real repos one level down (check `git rev-parse --show-toplevel`, then list child folders containing `.git`, and the `folders[]` of any `*.code-workspace`), treat each child repo as a repo root and run every item below in it. Also create the umbrella's own `.claude/settings.json` (empty or legacy-free deny list) and `.mcp.json`, because Claude Code reads those from the session's working directory. The global deny set uses `**/` patterns, so it already covers every child repo; only repo-specific rules go into each child's own `.claude/settings.json`. Skip child folders that are not repos, and list them in the report.
+
+1. **Find the secret-bearing files.** Search each repo (excluding `.venv`, `node_modules`, `.git`) for: `.env`, `.env.*`, `profile.yaml`/`profiles.yml`, `settings.local.json`, `credentials*.json`, `token.json`, `service-account*.json`, `*.pem`, `*.key`, `*.pfx`/`*.p12`, `id_rsa*`/`id_ed25519*`, `.netrc`, `.git-credentials`, `kubeconfig`, `*.tfvars`, `*.tfstate`, `secrets/**`. Also read `.gitignore` and `.dockerignore` for hints about what the repo already treats as secret.
+2. **Global layer holds the common secret files.** Read `~/.claude/settings.json` `permissions.deny`. If it already has deny rules (or any rule for a secret file), merge the whole common set below into it: add the missing rules, never remove or reorder the user's entries. If it has none, propose creating the block. Global changes need the user's OK (Step 10). Every pattern gets both a `Read(...)` and an `Edit(...)` rule, because Edit also exposes content, and uses the `**/` prefix so nested copies are covered. Common set:
+   - `**/.env` and the `.env.*` variants `dev`, `prod`, `local`, `staging`, `sit`, `uat`, `test`
+   - `**/profile.yaml`, `**/profiles.yml`, `**/settings.local.json`, `**/credentials*.json`, `**/token.json`, `**/service-account*.json`
+   - `**/*.pem`, `**/*.key`, `**/*.pfx`, `**/*.p12`, `**/id_rsa*`, `**/id_ed25519*`, `**/.netrc`, `**/.git-credentials`, `**/kubeconfig`, `**/*.tfvars`, `**/*.tfstate`, `**/secrets/**`
+   - **`.env.template` (and `.env.example`) must stay readable.** Deny rules have no exceptions, so never use the `**/.env.*` wildcard; list the concrete variants and skip `template` and `example`.
+3. **Local layer holds only what is specific to the repo.** In `<repo>/.claude/settings.json` (create when missing, otherwise merge, never remove the user's entries) put only rules the global set does not already cover: an extra `.env.<name>` variant or secret file found in step 1 (for example `Read`/`Edit` of `**/.env.sit2` or a repo-named credentials file), plus `Edit(legacy/**)` and `Write(legacy/**)` when the repo has a `legacy/` folder. Do not repeat the common set locally; if a local rule is now covered by the global set, offer to remove it. If the global layer cannot be changed (the user declines), fall back to writing the common set locally and say so.
+4. **Keep secrets out of git.** Make sure each repo's `.gitignore` ignores `.env*` with `!.env.template` (and `!.env.example`), `.claude/settings.local.json` and the other files found in step 1. If a secret file is already tracked (`git ls-files`), report it loudly and do not untrack it without asking.
+5. **Create `.mcp.json` at each repo root when missing,** even if no MCP server is used:
+
+   ```json
+   {
+     "mcpServers": {}
+   }
+   ```
+
+   Never overwrite an existing file. Do not copy a server that is already registered at user scope (Step 4). Credentials go in `${VAR}` references, never in the file, so it can be committed. Templates for common servers (for example Postgres) are in `templates/ai/claude-code/mcp/` of the `cr-misc-function` repo; the secret values go in the `env` block of `.claude/settings.local.json` or come from the shell, as that folder's README explains.
+6. **Create `<repo>/.claude/settings.json` when missing** with the standard content: the `$schema` line plus a `permissions.deny` array holding only the repo-specific rules from step 3 (an empty array when the repo has none), for example:
+
+   ```json
+   {
+     "$schema": "https://json.schemastore.org/claude-code-settings.json",
+     "permissions": {
+       "deny": [
+         "Edit(legacy/**)",
+         "Write(legacy/**)"
+       ]
+     }
+   }
+   ```
+
+   Do not add hooks here; the lint hook lives in the global settings.
+7. **Limits to tell the user:** `Read`/`Edit` denies do not stop a shell command such as `cat .env`, so also avoid allowing broad `Bash(cat:*)` style rules, and a denied file can still be loaded by the program being run. Validate every edited JSON file parses, and list per repo what was created, merged or already fine.
+
+## Step 9 — Sync Environments & Debug Launch Configs
 
 Run for every sub-repo of the workspace (each repo respectively), after the audit and before the plan.
 
@@ -111,8 +151,8 @@ Run for every sub-repo of the workspace (each repo respectively), after the audi
    - Debugging an entry point runs it for real (queue consumers connect to the broker and database from `.env`); say so in the summary. Do not start a debug session yourself.
    - Validate each file parses as JSON. If `.vscode/` is not gitignored, leave the file uncommitted and say so (multi-repo sessions commit only in the focus repo).
 
-## Step 9 — Present a Plan, Then Apply
+## Step 10 — Present a Plan, Then Apply
 
-Summarize proposed changes as a short table: item → current location → target location → reason. Include the `uv sync` results and the launch configs added or changed (Step 8). Global config changes affect every project, so confirm with the user before editing `~/.claude/settings.json`, `~/.claude.json`, or adding files under `~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/commands/`. Workspace-local changes can proceed directly.
+Summarize proposed changes as a short table: item → current location → target location → reason. Include the `uv sync` results and the launch configs added or changed (Step 9), and the global and per-repo secrets deny rules and baseline files (Step 8). Global config changes affect every project, so confirm with the user before editing `~/.claude/settings.json`, `~/.claude.json`, or adding files under `~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/commands/`. Workspace-local changes can proceed directly.
 
 After applying, validate any edited JSON files parse correctly, and note in memory (if this is a recurring workspace) what now lives where.
