@@ -240,6 +240,7 @@ description. You can also call them by name.
 | `handover` | Keep a per-ticket inventory of the platforms and objects a change touches (`release/<TICKET>/docs/HANDOVER.md`) and post it as one Jira comment after your OK; includes the `handover.py` helper |
 | `bast-generator` | Create a BAST handover page in Confluence from a ticket and its release folder |
 | `bast-learn` | Learn a repo's BAST conventions from its older pages |
+| `graphify-setup` | Set up Graphify (code knowledge graph) safely in a repo or every child repo of an umbrella folder: `.graphifyignore` with secret patterns, `graphify-out/` in `.gitignore`, AST-only build with no LLM and no hooks, optional cross-repo merge |
 | `okf-writer` | Create, update or lint an Open Knowledge Format bundle (concept files with provenance, `index.md`, `log.md`); includes the `okf_lint.py` checker. See `docs/guidelines/OKF-OPEN-KNOWLEDGE-FORMAT.md` |
 | `confluence-ops-docs` | Business/ops documentation for Confluence derived from a codebase |
 | `documentation_auditor` | Audit docstrings and comments |
