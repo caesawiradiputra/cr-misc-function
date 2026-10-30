@@ -16,9 +16,14 @@ name: Docker Image CI
 # Application configuration is not baked into the image — supply it at container run time
 # (Kubernetes ConfigMaps and Secrets, or `docker run --env-file <file>` locally).
 #
-# Tags pushed on every run:
-#   - <image_tag>   the input (or the commit SHA if the run was not started by dispatch)
-#   - <short SHA>   first 7 characters of the commit, for traceability
+# Tags pushed on every run (no commit-SHA tag: it would pile up unused images in the registry):
+#   - <image_tag>   the input when given (a production version such as 1.7.0, built from master).
+#                   When the input is empty on a work branch named <type>/<TICKET>-<slug>
+#                   (e.g. fea/DA-1234-...), the tag is sit-<TICKET> (e.g. sit-DA-1234; the key is
+#                   upper-cased, so da-1234 and DA-1234 give the same tag), so
+#                   nobody has to pick a version for a SIT build and a cancelled SRF reserves
+#                   no number. Rebuilding the same ticket overwrites its own tag.
+#                   master, dev and sit runs must give the input explicitly.
 #   - branch tag    ONLY for master (latest), dev (dev) and sit (sit). Any other branch
 #                   pushes no mutable tag, so a feature-branch run can never overwrite
 #                   the image that SIT, dev or production is using.
@@ -27,9 +32,9 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Docker Image Tag (e.g., 0.1.0, 0.2.0)"
-        required: true
-        default: "latest"
+        description: "Docker Image Tag. Leave empty on a <type>/<TICKET>-<slug> branch to get sit-<TICKET>; give the version (e.g. 1.7.0) for a release"
+        required: false
+        default: ""
       environment:
         description: "Target Environment (informational: labels the run and the summary, it does not change the build)"
         required: true
@@ -77,11 +82,18 @@ jobs:
           INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
           INPUT_ENVIRONMENT: ${{ github.event.inputs.environment }}
           REF_NAME: ${{ github.ref_name }}
-          COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
-          IMAGE_TAG="${INPUT_IMAGE_TAG:-$COMMIT_SHA}"
+          IMAGE_TAG="$INPUT_IMAGE_TAG"
+          if [ -z "$IMAGE_TAG" ]; then
+            if [[ "$REF_NAME" =~ ^[A-Za-z]+/([A-Za-z][A-Za-z0-9]*-[0-9]+) ]]; then
+              IMAGE_TAG="sit-${BASH_REMATCH[1]^^}"
+            else
+              echo "::error::image_tag is empty and branch '$REF_NAME' is not named <type>/<TICKET>-<slug>; give image_tag explicitly"
+              exit 1
+            fi
+          fi
           if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
             echo "::error::image_tag is not a valid Docker tag (letters, digits, '_', '.', '-'; max 128 characters; must not start with '.' or '-')"
             exit 1
@@ -96,19 +108,16 @@ jobs:
           ENV_TARGET="${INPUT_ENVIRONMENT:-$DERIVED_ENV}"
 
           IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/${IMAGE_NAME}"
-          SHORT_SHA="${COMMIT_SHA::7}"
 
           {
             echo "tags<<TAGS_EOF"
             echo "${IMAGE}:${IMAGE_TAG}"
-            echo "${IMAGE}:${SHORT_SHA}"
             if [ -n "$BRANCH_TAG" ]; then
               echo "${IMAGE}:${BRANCH_TAG}"
             fi
             echo "TAGS_EOF"
             echo "image=${IMAGE}"
             echo "image_tag=${IMAGE_TAG}"
-            echo "short_sha=${SHORT_SHA}"
             echo "branch_tag=${BRANCH_TAG}"
             echo "env_target=${ENV_TARGET}"
           } >> "$GITHUB_OUTPUT"
@@ -145,7 +154,6 @@ jobs:
         env:
           IMAGE: ${{ steps.tags.outputs.image }}
           IMAGE_TAG: ${{ steps.tags.outputs.image_tag }}
-          SHORT_SHA: ${{ steps.tags.outputs.short_sha }}
           BRANCH_TAG: ${{ steps.tags.outputs.branch_tag }}
           ENV_TARGET: ${{ steps.tags.outputs.env_target }}
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -163,7 +171,6 @@ jobs:
           | --- | --- |
           | Repository | \`${IMAGE}\` |
           | Version tag | \`${IMAGE_TAG}\` |
-          | Commit tag | \`${SHORT_SHA}\` |
           | Branch tag | ${BRANCH_TAG_TEXT} |
           | Digest | \`${DIGEST}\` |
           | Target environment (informational) | ${ENV_TARGET} |
