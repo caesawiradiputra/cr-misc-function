@@ -1,0 +1,21 @@
+## DBHub config for mysql. Copy to `.claude/dbhub.toml`. It holds no secrets: the values come
+## from the environment that `.mcp.json` fills from `.env` (rename the variables to the app's own).
+[[sources]]
+id = "mysql"
+type = "mysql"
+host = "${MYSQL_HOST}"
+database = "${MYSQL_NAME}"
+user = "${MYSQL_USER}"
+password = "${MYSQL_PASSWORD}"
+## Default port is used. For another port, check the DBHub docs for the `port` key.
+
+## Read-only: only SELECT, SHOW, DESCRIBE and EXPLAIN are allowed, and the result size is capped.
+[[tools]]
+name = "execute_sql"
+source = "mysql"
+readonly = true
+max_rows = 1000
+
+[[tools]]
+name = "search_objects"
+source = "mysql"

@@ -4,7 +4,7 @@
       "command": "bash",
       "args": [
         "-c",
-        "export TRINO_PASSWORD=\"$(grep '^TRINO_PASSWORD=' .env | cut -d= -f2-)\"; exec mcp-trino"
+        "export TRINO_PASSWORD=\"$(grep '^TRINO_PASSWORD=' .env | cut -d= -f2- | tr -d '\\r')\"; exec mcp-trino"
       ],
       "env": {
         "TRINO_HOST": "<trino-host>",
