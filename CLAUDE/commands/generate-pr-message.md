@@ -85,6 +85,8 @@ git log  origin/dev..HEAD --oneline         # commit history
 git diff origin/dev...HEAD                  # actual code changes
 ```
 
+If the repo has `graphify-out/graph.json` (the `graphify-setup` skill built it), refresh it first with `env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY graphify update .` (AST only, a few seconds, no LLM), then run `graphify explain "<name>"` on the shared classes or functions the diff touches to see what else depends on them. Mention any caller outside the diff in Code Review Notes. Skip when there is no graph, and never run `graphify install`, `hook install`, `extract` or `add`.
+
 Categorize changes by file and functionality **based only on actual diff content**. Note breaking changes and dependencies only if visible in the diff.
 
 **Two sources feed every output:** (1) the git diff above, and (2) the files you placed in the ticket folder (DDL, scripts, config, requirement PDFs — inventoried in Step 3a). Code descriptions come from the diff; deployment artifacts and intent come from the folder. Reflect both in the changelog and reference them in the PR messages.
