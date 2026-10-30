@@ -1,11 +1,11 @@
 ---
 name: graphify-setup
-description: Set up Graphify (the `graphifyy` code knowledge-graph CLI) safely in one repo, or in every child repo of an umbrella folder such as ~/repo/<group>/. Writes a `.graphifyignore` with the secret and noise patterns, ignores `graphify-out/` in git, builds the graph with the AST-only `graphify update` (no LLM, nothing leaves the machine), reports what was and was not indexed, and optionally merges the per-repo graphs. It never runs `graphify install`, never installs hooks and never edits CLAUDE.md. Use whenever the user says "/graphify-setup", "set up graphify", "use graphify on this repo", "build the code graph", "scan the umbrella with graphify", "add .graphifyignore", or asks how to try Graphify on a repo, even if they do not say "skill".
+description: Set up Graphify (the `graphifyy` code knowledge-graph CLI) safely in one repo, or in every child repo of an umbrella folder such as ~/repo/<group>/. Writes a `.graphifyignore` with the secret and noise patterns, ignores `graphify-out/` in git, builds the graph with the AST-only `graphify update` (no LLM, nothing leaves the machine), reports what was and was not indexed, and optionally merges the per-repo graphs. Adds a short "Code graph (Graphify)" section to the repo's `CLAUDE.md` so Claude uses the graph. It never runs `graphify install` and never installs hooks. Use whenever the user says "/graphify-setup", "set up graphify", "use graphify on this repo", "build the code graph", "scan the umbrella with graphify", "add .graphifyignore", or asks how to try Graphify on a repo, even if they do not say "skill".
 ---
 
 # Graphify setup
 
-Graphify turns a repo into a queryable graph (`graphify-out/graph.json`, `GRAPH_REPORT.md`, `graph.html`). This skill sets it up **passively and safely**: CLI only, AST only, no hooks, no global config changes.
+Graphify turns a repo into a queryable graph (`graphify-out/graph.json`, `GRAPH_REPORT.md`, `graph.html`). This skill sets it up **passively and safely**: CLI only, AST only, no hooks, no global config changes. The only Claude config it touches is a marked section in the repo's own `CLAUDE.md`.
 
 Facts verified on this machine (2026-10-28, graphifyy 0.9.97) that shape the rules below:
 
@@ -19,7 +19,7 @@ Facts verified on this machine (2026-10-28, graphifyy 0.9.97) that shape the rul
 
 ## Hard rules
 
-1. **Never run** `graphify install`, `graphify <platform> install`, `graphify hook install`, `graphify uninstall` (unless the user asks to remove something), `graphify extract`, `/graphify` or `graphify add`. Install writes CLAUDE.md registrations and PreToolUse hooks; `extract`, `/graphify` and `add` send docs, PDFs or URLs to an LLM.
+1. **Never run** `graphify install`, `graphify <platform> install`, `graphify hook install`, `graphify uninstall` (unless the user asks to remove something), `graphify extract`, `/graphify` or `graphify add`. Install writes CLAUDE.md registrations and PreToolUse hooks of its own; `extract`, `/graphify` and `add` send docs, PDFs or URLs to an LLM.
 2. **Unset model API keys for every graphify call** (`env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY graphify ...`), so a semantic pass can never start by accident.
 3. **Ignore file before the first build.** Write `.graphifyignore` first; build second.
 4. **Do not read, print or embed secret values.** Check tracked secret files by name only.
@@ -124,8 +124,32 @@ graphify path "router.py" "base.py"
 graphify update .        # after a pull or big edits (no hooks are installed)
 ```
 
-Add `--graph <path>` to query a graph from another folder. Claude can read `graphify-out/GRAPH_REPORT.md` first (god nodes, communities, suggested questions), then run `query` or `explain` for the part it needs. Do not add a CLAUDE.md line about Graphify unless the user asks.
+Add `--graph <path>` to query a graph from another folder. Claude can read `graphify-out/GRAPH_REPORT.md` first (god nodes, communities, suggested questions), then run `query` or `explain` for the part it needs.
+
+### 6b. Point Claude at the graph (repo `CLAUDE.md`)
+
+A graph nobody is told about is never used. In every repo you set up, add this section to the repo's `CLAUDE.md` (read the file first, per the check-state rule):
+
+- If `CLAUDE.md` exists: append the block below at the end, or replace the text between the two marker comments if it is already there (so a rerun updates it instead of duplicating it). Keep everything else byte for byte.
+- If the repo has no `CLAUDE.md` but has `AGENTS.md`, use that file instead. If it has neither, create a `CLAUDE.md` that contains only this block under a `# CLAUDE.md` title, and say you created it.
+- Write it in the file's existing language and keep it short.
+
+```markdown
+<!-- graphify-setup:start -->
+## Code graph (Graphify)
+
+A code graph of this repo is built into `graphify-out/` (generated, gitignored). When it exists:
+
+- Read `graphify-out/GRAPH_REPORT.md` first for orientation (core nodes, subsystems), then open only the files the task needs.
+- Before changing a shared class or function, run `graphify explain "<name>"` to see its callers, subclasses and imports. Use `graphify path "<A>" "<B>"` for how two modules connect and `graphify query "<question>" --budget 1500` for a neighborhood.
+- Keep it fresh: at the start of a task, if `graphify-out/graph.json` is older than the last commit (`git log -1 --format=%ct` vs the file's mtime) or the branch changed, run `graphify update .` first. Run it again before opening a PR. It is AST-only: no LLM, no network, a few seconds.
+- Never run `graphify install`, `graphify hook install`, `graphify extract` or `graphify add`; they change Claude config or send content to an LLM.
+- Limits: the graph holds structure, not file contents. SQL and Jinja/dbt models yield no symbols, so use `grep` or `dbt ls` for those. A stale graph can mislead; when in doubt, rerun `update`.
+<!-- graphify-setup:end -->
+```
+
+The block makes the CLAUDE.md change a tracked edit in the repo: leave it uncommitted in repos that are not the focus repo, like the other files.
 
 ### 7. Report
 
-State, briefly: repos set up, files changed per repo (all uncommitted unless it is the focus repo and the user asked), build numbers, the limits that apply to this repo (for example SQL/Jinja yields no symbols, YAML key names are indexed), and any tracked secret files found. Offer to commit `.graphifyignore` and the `.gitignore` line in the repo's own session.
+State, briefly: repos set up, files changed per repo (including the `CLAUDE.md` section) (all uncommitted unless it is the focus repo and the user asked), build numbers, the limits that apply to this repo (for example SQL/Jinja yields no symbols, YAML key names are indexed), and any tracked secret files found. Offer to commit `.graphifyignore`, the `.gitignore` line and the `CLAUDE.md` section in the repo's own session.
