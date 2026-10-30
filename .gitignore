@@ -227,3 +227,6 @@ config/environment/*.secrets.*
 # Temporary script outputs
 scripts/**/*.log
 scripts/**/*.tmp
+
+# Personal MCP test config (internal database names)
+/.mcp.json

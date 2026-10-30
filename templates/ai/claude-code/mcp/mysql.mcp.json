@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mysql": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "g(){ grep \"^$1=\" .env | cut -d= -f2- | tr -d '\\r'; }; export MYSQL_HOST=\"$(g MYSQL_HOST)\" MYSQL_USER=\"$(g MYSQL_USER)\" MYSQL_PASSWORD=\"$(g MYSQL_PASSWORD)\" MYSQL_NAME=\"$(g MYSQL_NAME)\"; exec npx -y @bytebase/dbhub --transport stdio --config .claude/dbhub.toml"
+      ]
+    }
+  }
+}
