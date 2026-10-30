@@ -286,6 +286,17 @@ hand-write a new variant.
 - **Multi-repo sessions**: commit and push only in the session's focus repo.
   Leave edits made in other repos uncommitted, for those repos' own sessions to
   commit and push.
+- **Commit and push only when I say, on the current branch by default.** Do not
+  commit, push or open a PR unless I asked. When I ask, use the branch I am on
+  and split the work into several commits that group and describe the different
+  changes (feature, tests, docs, CI), instead of making a new branch. Create a
+  new branch only when I say so, or when you strongly recommend it because the
+  change is really different from the branch's purpose (for example it must ship
+  separately); in that case ask first, with the reason, and wait. Never stage
+  with `git add -A` or `git add .` when the tree holds my own uncommitted edits;
+  add named paths only. (Added 2026-10-30, a pricelist repo: a CI
+  change went to a new branch with no ticket key when I wanted to test on the
+  work branch, and my uncommitted file was staged by mistake.)
 - **Type hints**: Match project Python version — check `pyproject.toml` first
 
 ---
