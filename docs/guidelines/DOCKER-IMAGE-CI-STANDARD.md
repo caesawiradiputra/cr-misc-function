@@ -16,11 +16,13 @@ First used and tested in a Python service repo on 2026-10-02. Every rule below e
 
 | # | Rule | Why |
 | --- | --- | --- |
-| 1 | Only `master`, `dev` and `sit` push a mutable branch tag (`latest`, `dev`, `sit`). Every other branch pushes only `<image_tag>` and `<short SHA>`. | An earlier version mapped "any other branch" to `sit`; a run from a feature branch overwrote the `:sit` image. |
-| 2 | Always push a 7-character commit SHA tag. | Any image can be traced back to its commit. |
+| 1 | Only `master`, `dev` and `sit` push a mutable branch tag (`latest`, `dev`, `sit`). Every other branch pushes only `<image_tag>`. | An earlier version mapped "any other branch" to `sit`; a run from a feature branch overwrote the `:sit` image. |
+| 2 | Do not push a commit-SHA tag. The commit goes in the run summary and the image digest is the identity. | A SHA tag on every run piles up unused images in the registry. |
+| 2a | A SIT or feature build carries no version number: with an empty `image_tag` on a branch named `<type>/<TICKET>-<slug>` the tag is `sit-<TICKET>` (upper-cased). The production version is chosen only at release (section 3). | A hand-typed `1.7.0-sit` looks like a claim on a production version. When that SRF is cancelled or frozen the tag stays in the registry, the next team picks a higher number, and production jumps from `1.6.0` to `1.8.0`. |
+| 2b | An empty `image_tag` on `master`, `dev`, `sit` or a branch without a ticket key fails the run. | A release can never get a ticket tag by accident. |
 | 3 | `permissions: contents: read`. | The job only checks out code; it authenticates to ACR with its own secrets. |
 | 4 | Workflow inputs reach the shell only through `env:`, never as `${{ ... }}` inside a `run:` script. | A crafted input could otherwise inject shell commands. |
-| 5 | Validate `image_tag` against `^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$` before building. | A bad tag otherwise fails only after the whole build. |
+| 5 | Validate the resolved `image_tag` against `^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$` before building. | A bad tag otherwise fails only after the whole build. |
 | 6 | `concurrency` group per ref and tag, `cancel-in-progress: false`. | Two runs with the same tag would race on the same registry tags. |
 | 7 | `timeout-minutes: 30`. | A hung registry call can otherwise run for hours. |
 | 8 | The `environment` input is informational only. | It labels the run and the summary but changes nothing in the build; people assume it selects configuration. |
@@ -33,14 +35,29 @@ Application configuration is never baked into the image or generated in CI; it i
 
 ## 3. Tags
 
-| Branch | Tags pushed |
-| --- | --- |
-| `master` | `<image_tag>`, `<short SHA>`, `latest` |
-| `dev` | `<image_tag>`, `<short SHA>`, `dev` |
-| `sit` | `<image_tag>`, `<short SHA>`, `sit` |
-| any other branch | `<image_tag>`, `<short SHA>` |
+`image_tag` is optional (`required: false`, default empty).
 
-Use an explicit `image_tag` (for example `1.4.0`) for anything a deployment will reference. Branch tags move; the version tag and the digest do not.
+| Branch | `image_tag` input | Tags pushed |
+| --- | --- | --- |
+| `<type>/<TICKET>-<slug>` | empty | `sit-<TICKET>` (for example `fea/DA-1234-resync-button` gives `sit-DA-1234`) |
+| `<type>/<TICKET>-<slug>` | given | `<image_tag>` |
+| `master` | required, for example `1.7.0` | `<image_tag>`, `latest` |
+| `dev` | required | `<image_tag>`, `dev` |
+| `sit` | required | `<image_tag>`, `sit` |
+| any other branch | required | `<image_tag>` |
+
+An empty `image_tag` on any row marked required fails the run with an error.
+
+**Two kinds of version tag:**
+
+- **`sit-<TICKET>`** is a working tag. Rebuilding the same ticket overwrites its own tag, so a cancelled or frozen SRF reserves nothing. Do not deploy it to production.
+- **A release version** (`1.7.0`) is immutable: never push the same version twice. Choose it only when the `dev` to `master` PR merges, as the last production tag plus the bump, and pass it explicitly on the `master` run. Numbers then follow deployment order, so cancelled or reordered SRFs leave no gap.
+
+Branch tags move; a release version and the digest do not. Pin anything a deployment references to the version or the digest (`<image>@sha256:...`). The `<short SHA>` tag no longer exists, so a consumer that pulled by it must move to the digest or the ticket tag.
+
+The ticket key is taken from the branch name, case-insensitive, and written in upper case so `da-1234` and `DA-1234` give one tag. The `sit-` prefix is a naming choice only, because the `environment` input is informational.
+
+**Registry cleanup:** an overwritten `sit-<TICKET>` leaves an untagged manifest in ACR. Whether ACR has a retention rule for untagged manifests has not been checked; see the follow-ups.
 
 ## 4. Dockerfile requirements
 
@@ -100,14 +117,16 @@ To decide for a repository: dispatch twice with the same tag and compare job dur
 gh workflow run docker-image.yml --ref <branch> -f image_tag=<test-tag> -f environment=dev
 ```
 
-- A feature branch pushes only `<test-tag>` and `<short SHA>`; no branch tag moves.
-- Delete the test tags from the registry afterwards.
+- A feature branch pushes only its own tag (`<test-tag>`, or `sit-<TICKET>` when `-f image_tag=` is left out); no branch tag moves.
+- Delete the test tags from the registry afterwards, `sit-<TICKET>` included.
 - Check the job summary for the tags and digest.
 
-To check the tag logic without running anything, extract the `Resolve image tags` script and run it locally with different `REF_NAME`, `INPUT_IMAGE_TAG` and `COMMIT_SHA` values.
+To check the tag logic without running anything, extract the `Resolve image tags` script and run it locally with different `REF_NAME` and `INPUT_IMAGE_TAG` values (set `GITHUB_OUTPUT` to a file and the `REGISTRY`, `REGISTRY_NAMESPACE`, `IMAGE_NAME` and `INPUT_ENVIRONMENT` variables). Cases to cover: a ticket branch with an empty tag, a lower-case key, `dev`, `master` and `sit` with an empty tag (must fail), a branch without a key (must fail), and `master` with `1.7.0`.
 
 ## 7. Known follow-ups
 
+- Check whether any consumer (Kubernetes manifests, Ops runbooks) pulled images by the `<short SHA>` tag, and whether ACR keeps untagged manifests from overwritten `sit-<TICKET>` tags forever. If it does, define a retention rule here.
+- The ticket-tag logic was tested locally only; run a real dispatch from a ticket branch before the first repo relies on it.
 - This repository's own `.github/workflows/docker-image.yml` still follows the older convention (no hardening, branch tag for any branch) and there is no Dockerfile in the repository. Align or remove it.
 - The older inline workflow in `GITHUB-WORKFLOW-CONSOLIDATED.md` section 3 predates this standard; the standard takes precedence.
 - `GITHUB-WORKFLOW-STANDARDIZATION copy.md` duplicates the other workflow guides and carries a third version of the workflow; consider removing it.

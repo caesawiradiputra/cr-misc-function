@@ -216,8 +216,17 @@ when creating or updating a repo's `.github/workflows/docker-image.yml`; don't
 hand-write a new variant.
 
 - **Only `master`, `dev` and `sit` push a mutable branch tag** (`latest`, `dev`,
-  `sit`). Other branches push just `<image_tag>` and `<short SHA>`. An earlier
+  `sit`). Other branches push just `<image_tag>`. An earlier
   "any other branch → `sit`" mapping let a feature-branch run overwrite `:sit`.
+- **No version number in SIT or feature builds, and no commit-SHA tag.** With an
+  empty `image_tag` on a branch named `<type>/<TICKET>-<slug>` the tag is
+  `sit-<TICKET>` (upper-cased; rebuilding overwrites it, so a cancelled SRF
+  reserves no version). The production version (last tag + bump) is chosen only
+  when the `dev` → `master` PR merges and passed as `image_tag` on the `master`
+  run; an empty `image_tag` on `master`, `dev`, `sit` or a branch without a
+  ticket key fails. The commit goes in the step summary and the digest is the
+  identity. (2026-10-30, a pricelist repo: a frozen feature had
+  already been built as `1.7.0-sit`.)
 - **ACR rejects buildx attestations** (`denied: unknown manifest class ...
   oci.empty.v1+json`). With `docker/build-push-action`, always set
   `provenance: false` and `sbom: false`.
@@ -232,8 +241,8 @@ hand-write a new variant.
   the container and run a CI dispatch. Details: section 4.1 of the standard.
 - Hardening that is part of the standard: `permissions: contents: read`,
   inputs passed through `env:` (never `${{ }}` inside `run:`), `image_tag`
-  validated, `concurrency` group, `timeout-minutes`, `docker/login-action`, a
-  commit-SHA tag, and a step summary with the image digest and a complete local
+  validated, `concurrency` group, `timeout-minutes`, `docker/login-action`, and a
+  step summary with the image digest and a complete local
   `docker run -d --name <image>_<tag> -p ... --env-file .env` command
   (container name = image name and the image tag as given, no environment
   added, e.g. `<image>_v2.0-sit` for tag `v2.0-sit`), written with
@@ -277,6 +286,17 @@ hand-write a new variant.
 - **Multi-repo sessions**: commit and push only in the session's focus repo.
   Leave edits made in other repos uncommitted, for those repos' own sessions to
   commit and push.
+- **Commit and push only when I say, on the current branch by default.** Do not
+  commit, push or open a PR unless I asked. When I ask, use the branch I am on
+  and split the work into several commits that group and describe the different
+  changes (feature, tests, docs, CI), instead of making a new branch. Create a
+  new branch only when I say so, or when you strongly recommend it because the
+  change is really different from the branch's purpose (for example it must ship
+  separately); in that case ask first, with the reason, and wait. Never stage
+  with `git add -A` or `git add .` when the tree holds my own uncommitted edits;
+  add named paths only. (Added 2026-10-30, a pricelist repo: a CI
+  change went to a new branch with no ticket key when I wanted to test on the
+  work branch, and my uncommitted file was staged by mistake.)
 - **Type hints**: Match project Python version — check `pyproject.toml` first
 
 ---

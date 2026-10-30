@@ -241,6 +241,7 @@ description. You can also call them by name.
 | `bast-generator` | Create a BAST handover page in Confluence from a ticket and its release folder |
 | `bast-learn` | Learn a repo's BAST conventions from its older pages |
 | `graphify-setup` | Set up Graphify (code knowledge graph) safely in a repo or every child repo of an umbrella folder: `.graphifyignore` with secret patterns, `graphify-out/` in `.gitignore`, AST-only build with no LLM and no hooks, adds a marked "Code graph (Graphify)" section to the repo's `CLAUDE.md` so Claude uses it, optional cross-repo merge |
+| `github-actions-templates` | Start any GitHub Actions workflow (Docker image to ACR, Airflow DAG sync) from the standard template in this repo instead of hand-writing one: picks the template and standard, fills the placeholders, tests with `gh workflow run`, reports drift when updating an existing workflow |
 | `okf-writer` | Create, update or lint an Open Knowledge Format bundle (concept files with provenance, `index.md`, `log.md`); includes the `okf_lint.py` checker. See `docs/guidelines/OKF-OPEN-KNOWLEDGE-FORMAT.md` |
 | `confluence-ops-docs` | Business/ops documentation for Confluence derived from a codebase |
 | `documentation_auditor` | Audit docstrings and comments |
