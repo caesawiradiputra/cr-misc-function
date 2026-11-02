@@ -226,6 +226,14 @@ What you get: deny rules for secrets (`.env`, keys, `*.tfstate`, ...), a
 `UserPromptSubmit` hook that resolves `@repo/` mentions, a ruff format/lint
 hook after Python edits, the status line, and the enabled plugins.
 
+#### Prompt coach (optional, WSL only)
+
+The `linux-wsl/` files above already contain the `prompt-coach` hook and its allow rule
+(replace `<WSL_USERNAME>` in the rule with the WSL account name). Install the skill with the
+other skills in 4.3, start a new session, then run `/prompt-coach on`. It is off until then.
+Prompts and reviews are stored under `~/.claude/prompt-coach/` with secrets masked on a
+best-effort basis; that folder is never part of any repo. Check `/prompt-coach status`.
+
 ### 4.3 Skills
 
 ```powershell
