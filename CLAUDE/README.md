@@ -73,7 +73,7 @@ CLAUDE/
 │   └── hooks/                        (session-start-context.ps1, user-prompt-repo-focus.ps1, _repo-context-lib.ps1)
 └── linux-wsl/                      ← Only the parts that actually differ on WSL2/Linux
     ├── settings.json                 (hooks call bash + the .sh scripts below)
-    └── hooks/                        (session-start-context.sh, user-prompt-repo-focus.sh, _repo-context-lib.sh)
+    └── hooks/                        (session-start-context.sh, user-prompt-repo-focus.sh, _repo-context-lib.sh, prompt-coach-capture.sh)
 ```
 
 Everything here is a **point-in-time reference for setting up (or restoring)
@@ -81,7 +81,7 @@ this global config on a device** — not something that gets auto-synced like
 `CLAUDE.md`/`commands/` do. Re-copy from the live `~/.claude/` on either side
 whenever you want an updated snapshot. `settings.json` and `hooks/` are
 genuinely OS-specific (different hook commands, `.ps1` vs `.sh`
-implementations of the same three scripts); everything else (`skills/`,
+implementations of the same three scripts; the prompt coach hook is WSL/bash only); everything else (`skills/`,
 `statusline-command.sh`, `mcpServers`) was identical on both OSes at capture
 time, so it's kept as one shared copy instead of duplicated per OS.
 
@@ -107,6 +107,7 @@ file into `~/.claude/`:
 | `<BAST_FOLDER_ID>` | `skills/bast-generator` | The Confluence folder ID of your `BAST` folder (new BAST pages are copied into it) |
 | `<PERSONAL_SPACE_ID>`, `<PERSONAL_SPACE_KEY>`, `<LOGBOOK_FOLDER_ID>`, `<WEEKLY_PAGE_ID>`, `<ON_HOLD_PAGE_ID>`, `<ARCHIVE_PAGE_ID_FOR_THAT_YEAR>` | `skills/logbook/config.example.json` (copy to `~/.claude/logbook/config.json`) | Your Confluence personal space and the weekly/archive page ids |
 | `<COMPANY>` | `skills/bast-generator/references/template-map.md` | The company name used in the BAST Scope checkbox |
+| `<WSL_USERNAME>` | `linux-wsl/settings.json` (the `prompt-coach` allow rule) | The WSL account name, i.e. the home directory `/home/<WSL_USERNAME>` |
 
 Only `CLAUDE.md` and `commands/` are synced automatically
 (`chat-Sync-ClaudeContext`), and neither has a placeholder that code runs:
@@ -242,6 +243,7 @@ description. You can also call them by name.
 | `bast-learn` | Learn a repo's BAST conventions from its older pages |
 | `graphify-setup` | Set up Graphify (code knowledge graph) safely in a repo or every child repo of an umbrella folder: `.graphifyignore` with secret patterns, `graphify-out/` in `.gitignore`, AST-only build with no LLM and no hooks, adds a marked "Code graph (Graphify)" section to the repo's `CLAUDE.md` so Claude uses it, optional cross-repo merge |
 | `github-actions-templates` | Start any GitHub Actions workflow (Docker image to ACR, Airflow DAG sync) from the standard template in this repo instead of hand-writing one: picks the template and standard, fills the placeholders, tests with `gh workflow run`, reports drift when updating an existing workflow |
+| `prompt-coach` | Coach your written English prompts: a `UserPromptSubmit` hook saves each prompt locally (secrets masked, nothing leaves the machine), Claude adds a short note after each reply (how it was understood, a clearer sentence, other possible readings) and a full review goes to `~/.claude/prompt-coach/YYYY-MM.md`; `/prompt-coach on\|off\|status\|show`. WSL/bash only; includes the `coach.py` helper. Off until you run `/prompt-coach on`. Design: `docs/superpowers/specs/2026-11-02-prompt-coach-design.md` |
 | `okf-writer` | Create, update or lint an Open Knowledge Format bundle (concept files with provenance, `index.md`, `log.md`); includes the `okf_lint.py` checker. See `docs/guidelines/OKF-OPEN-KNOWLEDGE-FORMAT.md` |
 | `confluence-ops-docs` | Business/ops documentation for Confluence derived from a codebase |
 | `documentation_auditor` | Audit docstrings and comments |

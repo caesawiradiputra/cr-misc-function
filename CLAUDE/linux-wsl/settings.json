@@ -5,7 +5,8 @@
       "Bash(uv run ruff:*)",
       "Bash(uv run mypy:*)",
       "Bash(uv sync:*)",
-      "Bash(uv lock:*)"
+      "Bash(uv lock:*)",
+      "Bash(python3 /home/<WSL_USERNAME>/.claude/skills/prompt-coach/coach.py add:*)"
     ],
     "deny": [
       "Read(**/.env)",
@@ -70,6 +71,12 @@
             "command": "bash ~/.claude/hooks/user-prompt-repo-focus.sh",
             "timeout": 10,
             "statusMessage": "Checking for @-mentioned repo focus"
+          },
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/prompt-coach-capture.sh",
+            "timeout": 5,
+            "statusMessage": "Prompt coach"
           }
         ]
       }
