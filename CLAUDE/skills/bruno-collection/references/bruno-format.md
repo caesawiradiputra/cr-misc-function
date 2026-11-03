@@ -51,8 +51,8 @@ Test collection: `_verify` in the user's Windows `bruno` folder (not in this rep
 
 | Fact | Status | Notes |
 | --- | --- | --- |
-| A request-level `docs:` block (Markdown, `docs: \|-`) shows in the Docs tab | app, reported by the user | The generator writes it after `settings` |
-| An unquoted `{{random_x}}` inside the JSON body text is replaced by the variable's value, so a number or list keeps its JSON type | app, reported by the user | The variable holds JSON text (`JSON.stringify`) |
+| A request-level `docs:` block (Markdown, `docs: \|-`) shows in the Docs tab | app, confirmed by the user (2026-11-03) | The generator writes it after `settings` |
+| An unquoted `{{random_x}}` inside the JSON body text is replaced by the variable's value, so a number or list keeps its JSON type | app, reported by the user; the user's reply "confirm for unquoted variable" was read as a confirmation | The variable holds JSON text (`JSON.stringify`) |
 | In the desktop app (QuickJS sandbox) a request script did not see functions defined in the collection-level script; the CLI did | app, reported by the user | The random helper functions are repeated in each request script |
 
 ## Still open
