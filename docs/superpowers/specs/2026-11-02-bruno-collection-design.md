@@ -178,6 +178,8 @@ The route prefix from the code stays in the request URL (`{{baseUrl}}/prefix/pat
 
 **Proxy and load balancer notes (open).** `DEV` and `PROD` may be served through nginx or another proxy or load balancer, which can add a path prefix, strip one, terminate TLS, or enforce a key before the app sees the request. This is not designed yet. Until the user provides an nginx sample, `docs/environments.md` carries an explicit note for `DEV` and `PROD` ("proxy or load balancer: unknown, fill from the nginx configuration"), the `baseUrl` description mentions the path prefix, and the final report lists it as something to fill. When the sample arrives, extend this design (for example how a stripped or added prefix maps to `baseUrl`).
 
+**Corporate Apigee gateway (open, noted 2026-11-03).** The user will run the generated requests through the corporate Apigee API gateway, details to follow. Apigee typically adds its own path prefix (the API proxy base path), its own credential (an API key or an OAuth token issued by the gateway, which may differ from the app's own auth) and may rewrite or reject headers. None of this is designed yet: the generator keeps the app's own route prefix and auth, `docs/environments.md` carries a note for `DEV` and `PROD` ("gateway: Apigee, base path and credential unknown, fill when known"), and the report lists it. When the details arrive, extend this design (gateway base path in `baseUrl`, a gateway key or token variable per environment).
+
 ### Output layout
 
 ```text
