@@ -14,7 +14,7 @@ The `cr-misc-function` repository (commonly checked out at `~/repo/cr-misc-funct
 | The user wants | Template | Standard (read it before changing anything) |
 | --- | --- | --- |
 | Build a Docker image and push it to ACR | `templates/github-workflows/docker-image.yml` | `docs/guidelines/DOCKER-IMAGE-CI-STANDARD.md` |
-| Publish a DAG from a data repo to the Airflow deployment repo | `templates/github-workflows/airflow-dag-sync/` (`sync-dags.yml` or `sync-dags.github-app.yml`, plus `scripts/`) | `docs/guidelines/AIRFLOW-DAG-SYNC-STANDARD.md` |
+| Publish a DAG from a data repo to the Airflow deployment repo | `templates/github-workflows/airflow-dag-sync/` (`sync-dags.yml`, which uses a GitHub App token, plus `scripts/`) | `docs/guidelines/AIRFLOW-DAG-SYNC-STANDARD.md` |
 | Lint, type check and tests for a Python repo | `.github/workflows/python-ci.yml` in the same repo | `CLAUDE.md` of that repo |
 | Anything else | No template yet: say so, write it following the hardening rules below, and offer to add it as a template | none |
 
