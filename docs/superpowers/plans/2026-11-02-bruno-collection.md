@@ -128,7 +128,7 @@ def discover(root: Path) -> DiscoveryResult
 
 **Files:** Create `scripts/bruno_values.py`, `tests/support/bru_mock.js`, `tests/test_bruno_values.py`.
 
-**Rule (pinned):** query, path and header values use one runtime variable each, `{{random_<field>}}`; a **body is built as one object** in the before-request script (so lists, nested objects and non-string JSON are valid), with no per-field variables. Variables for nested fields are named from the full field path (`random_address_city`), so two models with the same field name never collide.
+**Rule (pinned):** query, path and header values use one runtime variable each, `{{random_<field>}}`; an object **body is written in the Body tab with one variable per top-level field** (a number, bool, list or object is unquoted, its variable holding JSON text), a list body is built with `req.setBody`; a body variable that would share a name with a query, path or header variable gets `random_body_<field>` (superseded 2026-11-03, see the spec's revision history). Variables for nested fields are named from the full field path (`random_address_city`), so two models with the same field name never collide.
 
 **Produces:**
 
