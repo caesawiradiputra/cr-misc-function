@@ -70,7 +70,7 @@ The sync needs to write to a repository other than its own, which the workflow's
 | Lifetime | One hour per run; the private key is rotated only when wanted |
 | Tied to a person | No |
 | Scope | One repository: the installation, narrowed again in the workflow |
-| Who acts in the deployment repo | The App (PRs and commits show the App as author) |
+| Who acts in the deployment repo | The App pushes and opens the PRs; a direct commit's author name is the script's git identity (`<slug>-sync`), not the App's name |
 | Needs an org admin | Yes, once, to create and install the App |
 
 The `sync` job names the Environment `airflow-sync`. **With organization secrets (the default) creating it is optional:** GitHub creates it on the first run without branch limits, and the job's `if:` already limits the branches to `master`, `dev` and `sit`; the Environment adds nothing to who can read an organization secret. Create it when you want a second guard (*Deployment branches and tags* set to *Selected branches and tags* with `master`, `dev` and `sit`), required approvers or a deployment history: in the DAG repository, **Settings > Environments > New environment** named `airflow-sync`. It is **required only when** the key is an Environment secret (4.1, step 5), because then only the Environment's branch restriction protects it.
@@ -132,6 +132,8 @@ Do these in order; each one proves a different rule.
 4. **Negative check:** `gh secret list` shows no `DA_AIRFLOW_SYNC_TOKEN` and no `DA_AIRFLOW_SYNC_PRIVATE_KEY` at repository level (rule 1); an organization-level App key is expected only when section 4.1 chose it. Also check that the *Create the deployment repository token* step succeeds and that the PR in step 3 is authored by the App.
 
 Evidence so far (both adopters used the stored-token variant that this version retires; migrate them as in 4.2). In the first adopter (the negative-list repository), pushes to `sit`, `dev` and `master` succeeded on 2026-10-13 and 2026-10-14, and the `master` push opened a pull request into the deployment repository's `master`. In the second (the PD monitoring repository), five `sit` pushes succeeded on 2026-10-19 and 2026-10-20 and the repository-level secret was removed, leaving only the Environment secret. No feature-branch run (the dry-run job) was found in either repository when this was written.
+
+First adopter of the GitHub App version (the PD monitoring repository for the DF4W model, DA-1901, 2026-11-03): after the template was applied with organization secrets and the repository's `airflow-sync` Environment deleted, a `sit` push that changed no DAG file passed the *Create the deployment repository token* step and printed *No changes to publish*; a second `sit` push that changed a line in the DAG file pushed one commit to the deployment repository's `airflow-dev` (only that file), and the run was green. Not yet tested: the `master` path (the pull request opened with the App token), a feature-branch dry run, and the author shown on a direct commit, which is `<slug>-sync` and not the App. Two findings: the repository's own tests for the scripts must now pass `DAG_SLUG`, `DAG_EXECUTOR` and `DAG_UTILS` (the scripts fail without them, and the first CI run failed on that); and the `app-id` deprecation warning appears on every run, as the limits table says.
 
 ## 7. Checks to keep in the DAG repo
 
