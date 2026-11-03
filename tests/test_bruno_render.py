@@ -308,3 +308,19 @@ def test_report_lists_found_written_skipped_todos_auth_placeholders(
     assert "TODO" in text
     assert "auth" in text
     assert "baseUrl" in text and "DEV" in text and "PROD" in text
+
+
+# ---- final review fixes
+
+
+def test_write_rolls_back_files_it_created_when_a_write_fails(tmp_path, ren):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "docs").mkdir()
+    (out / "blocker").write_text("a file where a folder is needed", encoding="utf-8")
+    rep = ren.write_collection({"a.yml": "1", "blocker/x.yml": "2", "b.yml": "3"}, out)
+    assert rep.refused and not rep.written
+    assert not (out / "a.yml").exists() and not (out / "b.yml").exists()
+    assert (out / "blocker").read_text(
+        encoding="utf-8"
+    ) == "a file where a folder is needed"

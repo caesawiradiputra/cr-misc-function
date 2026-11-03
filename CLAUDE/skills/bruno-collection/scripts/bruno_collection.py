@@ -25,9 +25,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bruno_scan  # noqa: E402
 from bruno_discover import discover  # noqa: E402
 from bruno_docs import (
+    METHODS,
     DocsError,
     docs_files,
     external_files,
+    external_paths,
     lint_summary,
     log_external,
     read_docs,
@@ -99,7 +101,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
         print("scan error: step scan; the result is not clean")
         return 3
     for line in report.lines:
-        print(line)
+        print(line.encode("utf-8", "backslashreplace").decode("utf-8"))
     return report.exit_code
 
 
@@ -160,23 +162,27 @@ def cmd_add_external(args: argparse.Namespace) -> int:
     if common is None:
         return 2
     _repo_path, _name, out_dir = common
+    if str(args.method).upper() not in METHODS:
+        print(f"refused: the method must be one of {', '.join(METHODS)}")
+        return 2
     try:
-        read_docs(out_dir)
+        existing = read_docs(out_dir)
     except DocsError as exc:
         print(f"refused: {exc}; nothing was written")
         return 1
-    files, ext_slug = external_files(args.title, args.method, args.model, args.reason)
-    report = write_collection(files, out_dir)
-    if report.skipped_existing and not report.written:
+    request_path, concept_path, _slug = external_paths(args.title)
+    taken = {p.casefold() for p in existing.files}
+    if request_path.casefold() in taken or concept_path.casefold() in taken:
         print("refused: it already exists; nothing was changed")
         return 1
-    if any(p.endswith(".yml") and "folder" not in p for p in report.skipped_existing):
-        print("refused: the request file already exists; it was not overwritten")
+    files, ext_slug, request_path = external_files(
+        args.title, args.method, args.model, args.reason
+    )
+    report = write_collection(files, out_dir)
+    if report.refused:
+        print(f"refused: {report.refused}")
         return 1
-    name = Path(
-        next(p for p in files if p.startswith("external/") and "folder" not in p)
-    ).stem
-    log_external(out_dir, name, ext_slug, args.reason)
+    log_external(out_dir, Path(request_path).stem, ext_slug, args.reason)
     print(f"written: {', '.join(report.written)}")
     print(lint_summary(out_dir))
     return 0

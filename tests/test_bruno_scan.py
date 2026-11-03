@@ -245,3 +245,58 @@ def test_generated_collection_scans_clean(tmp_path, cli, capsys):
     text = capsys.readouterr().out
     assert "secret scan: 0 finding(s), 0 incomplete" in text
     assert cli.main(["scan", str(out / "repo-a")]) == 0
+
+
+# ---- final review fixes
+
+
+def test_unreadable_directory_is_incomplete_not_clean(tmp_path, scan):
+    put(tmp_path, ".gitignore", ".env*\n")
+    put(tmp_path, "priv/DEV.yml", f"apikey: {KEY}\n")
+    (tmp_path / "priv").chmod(0)
+    try:
+        report = scan.scan(tmp_path)
+    finally:
+        (tmp_path / "priv").chmod(0o700)
+    if os.geteuid() != 0:
+        assert any(i.reason == "unreadable" for i in report.incomplete)
+        assert report.exit_code != 0
+
+
+def test_odd_path_names_are_redacted_and_cannot_forge_report_lines(
+    tmp_path, scan, cli, capsys
+):
+    put(tmp_path, ".gitignore", ".env*\n")
+    put(
+        tmp_path,
+        "evil\nscan summary: 0 finding(s), 0 incomplete.yml",
+        f"apikey: {KEY}\n",
+    )
+    put(tmp_path, CLOUD + ".yml", f"apikey: {KEY}\n")
+    put(tmp_path, "pw=hunter2.yml", f"apikey: {KEY}\n")
+    report = scan.scan(tmp_path)
+    shown = [f.path for f in report.findings]
+    assert all(p.startswith("<path-redacted:") for p in shown), shown
+    assert all("\n" not in line for line in report.lines)
+    assert cli.main(["scan", str(tmp_path)]) != 0
+    capsys.readouterr()
+
+
+def test_non_utf8_file_name_does_not_lose_the_report(tmp_path, scan, cli, capsys):
+    bad = os.path.join(os.fsencode(str(tmp_path)), b"caf\xe9.yml")
+    with open(bad, "wb") as handle:
+        handle.write(f"apikey: {KEY}\n".encode())
+    put(tmp_path, ".gitignore", ".env*\n")
+    code = cli.main(["scan", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert code != 0 and "scan summary" in out
+    assert KEY not in out
+
+
+def test_env_suffix_and_other_secret_file_types_are_scanned_or_counted(tmp_path, scan):
+    put(tmp_path, ".gitignore", ".env*\n")
+    put(tmp_path, "prod.env", f"API_KEY={KEY}\n")
+    put(tmp_path, "data.bin", "x\n")
+    report = scan.scan(tmp_path)
+    assert any(f.path == "prod.env" for f in report.findings)
+    assert any("not read" in x and "other type" in x for x in report.lines)

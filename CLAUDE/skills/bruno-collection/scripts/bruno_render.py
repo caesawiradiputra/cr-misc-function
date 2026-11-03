@@ -25,6 +25,7 @@ from bruno_identity import (
     normalize_path,
     plan,
     safe_name,
+    windows_safe,
 )
 from bruno_launch import LaunchResult
 from bruno_params import Param
@@ -34,14 +35,6 @@ MODES = ("fixed", "random")
 ENVIRONMENTS = ("LOCAL", "DEV", "PROD")
 DEV_URL = "https://<dev-host>"
 PROD_URL = "https://<prod-host>"
-RESERVED = {
-    "CON",
-    "PRN",
-    "AUX",
-    "NUL",
-    *(f"COM{i}" for i in range(1, 10)),
-    *(f"LPT{i}" for i in range(1, 10)),
-}
 PROXY_NOTE = (
     "proxy or load balancer in front of DEV and PROD: unknown, "
     "fill from the nginx configuration (path prefix, stripped prefix, TLS, key check); "
@@ -90,10 +83,7 @@ def block(text: str, indent: int) -> str:
 
 
 def collection_dir_name(name: str) -> str:
-    cleaned = safe_name(name)
-    if cleaned.split(".")[0].upper() in RESERVED:
-        cleaned = "_" + cleaned
-    return cleaned
+    return windows_safe(safe_name(name))
 
 
 def var_name(field_name: str) -> str:
@@ -572,15 +562,36 @@ def write_collection(files: dict[str, str], out_dir: Path) -> WriteReport:
             )
             return report
     present = _existing_names(out) if out.exists() else set()
-    for rel, text in files.items():
-        key = Path(rel).as_posix().casefold()
-        if key in present:
-            report.skipped_existing.append(rel)
-            continue
-        target = root / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with open(target, "x", encoding="utf-8", newline="\n") as handle:
-            handle.write(text)
-        present.add(key)
-        report.written.append(rel)
+    made_files: list[Path] = []
+    made_dirs: list[Path] = []
+    try:
+        for rel, text in files.items():
+            key = Path(rel).as_posix().casefold()
+            if key in present:
+                report.skipped_existing.append(rel)
+                continue
+            target = root / rel
+            missing = [
+                p for p in (target.parent, *target.parent.parents) if not p.exists()
+            ]
+            made_dirs += missing
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "x", encoding="utf-8", newline="\n") as handle:
+                made_files.append(target)
+                handle.write(text)
+            present.add(key)
+            report.written.append(rel)
+    except OSError:
+        for path in reversed(made_files):
+            path.unlink(missing_ok=True)
+        for path in sorted(set(made_dirs), key=lambda p: len(p.parts), reverse=True):
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+        report.written = []
+        report.refused = (
+            "a file could not be written (operating system error); the files written "
+            "in this call were removed"
+        )
     return report

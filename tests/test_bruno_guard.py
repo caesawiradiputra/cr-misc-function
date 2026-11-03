@@ -67,5 +67,7 @@ def test_skill_md_carries_the_safety_rules() -> None:
         "okf_watch.py check --max-age 14",
         "git history",
         "Reset",
+        "Which rule wins",
+        "trailing slash",
     ):
         assert phrase.lower() in text.lower(), phrase

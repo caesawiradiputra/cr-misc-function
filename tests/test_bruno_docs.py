@@ -330,3 +330,57 @@ def test_user_owned_requests_are_kept_and_reported(world, docs_mod, capsys):
     out = capsys.readouterr().out
     assert world.snapshot() == before
     assert "user-owned" in out and "mine/My call.yml" in out
+
+
+# ---- final review fixes
+
+
+def test_sync_with_corrupt_index_or_log_refuses_and_writes_nothing(world):
+    with open(world.repo / "app" / "main.py", "a", encoding="utf-8") as f:
+        f.write('\n\n@app.get("/aux2")\ndef aux2():\n    return 1\n')
+    (world.col / "docs" / "index.md").write_bytes(b"\xff\xfe bad")
+    before = world.snapshot()
+    assert world.run("sync") == 1
+    assert world.snapshot() == before
+
+
+def ext(world, *extra):
+    return world.cli.main(
+        ["add-external", str(world.repo), "--out", str(world.out), *extra]
+    )
+
+
+def test_add_external_title_with_the_word_folder_and_the_title_folder(world):
+    assert ext(world, "--title", "my folder list") == 0
+    assert (world.col / "external" / "my folder list.yml").is_file()
+    assert "my-folder-list" in (world.col / "docs" / "index.md").read_text(
+        encoding="utf-8"
+    )
+    assert ext(world, "--title", "folder") == 0
+    requests = [p.name for p in (world.col / "external").glob("*.yml")]
+    assert "folder.yml" in requests and len(requests) == 3
+    assert 'info:\n  name: "external"' in (
+        world.col / "external" / "folder.yml"
+    ).read_text(encoding="utf-8")
+    assert lint(world.col / "docs").returncode == 0
+
+
+def test_add_external_refusal_writes_no_orphan_concept(world):
+    mine = world.col / "external" / "Mine.yml"
+    mine.parent.mkdir()
+    mine.write_text("MINE", encoding="utf-8")
+    before = world.snapshot()
+    assert ext(world, "--title", "Mine") == 1
+    assert world.snapshot() == before
+    assert not (world.col / "docs" / "external").exists()
+
+
+def test_add_external_method_is_an_allow_list(world):
+    before = world.snapshot()
+    assert ext(world, "--title", "x", "--method", 'GET\n  url: "evil"') == 2
+    assert ext(world, "--title", "x", "--method", "TRACE-ISH") == 2
+    assert world.snapshot() == before
+    assert ext(world, "--title", "ok", "--method", "post") == 0
+    assert "method: POST" in (world.col / "external" / "ok.yml").read_text(
+        encoding="utf-8"
+    )

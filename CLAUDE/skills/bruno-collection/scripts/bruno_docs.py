@@ -409,6 +409,10 @@ def read_docs(out_dir: Path) -> ExistingState:
     for needed in ("index.md", "log.md"):
         if not (docs / needed).is_file():
             raise DocsError(f"docs/{needed} is missing")
+        try:
+            (docs / needed).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            raise DocsError(f"docs/{needed} cannot be read as UTF-8 text") from None
     entries: dict[str, DocEntry] = {}
     bad: list[str] = []
     requests = docs / "requests"
@@ -560,13 +564,30 @@ def user_owned(out_dir: Path, existing: ExistingState) -> list[str]:
     return owned
 
 
+METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
+
+
+def external_paths(title: str) -> tuple[str, str, str]:
+    """(request file, concept file, slug) for an external placeholder title."""
+    name = safe_name(title)
+    if name.casefold() == "folder":  # would collide with external/folder.yml
+        name += " request"
+    ext_slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "request"
+    return f"external/{name}.yml", f"docs/external/{ext_slug}.md", ext_slug
+
+
 def external_files(
     title: str, method: str, model: str, reason: str
-) -> tuple[dict[str, str], str]:
-    """A placeholder request in `external/` and its concept; returns (files, slug)."""
+) -> tuple[dict[str, str], str, str]:
+    """A placeholder request in `external/` and its concept.
+
+    Returns (files, slug, request file path). `method` must be one of `METHODS`.
+    """
+    if method.upper() not in METHODS:
+        raise ValueError("method")
     now = _now()
-    name = safe_name(title)
-    ext_slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "request"
+    request_path, concept_path, ext_slug = external_paths(title)
+    name = Path(request_path).stem
     verb = method.upper()
     request = (
         f"info:\n  name: {_q(name)}\n  type: http\n  seq: 1\n\n"
@@ -583,7 +604,7 @@ def external_files(
             ["external"],
             model,
             now,
-            ["external/" + name + ".yml"],
+            [request_path],
         )
         + f"\nPlaceholder `{name}` ({verb}) in the `external/` folder[^src1]. The user fills "
         "the URL and the values; this tool never overwrites, renames or deletes it, "
@@ -596,11 +617,11 @@ def external_files(
         "request:\n  auth: inherit\n"
     )
     files = {
-        f"external/{name}.yml": request,
+        request_path: request,
         "external/folder.yml": folder,
+        concept_path: concept,
     }
-    files[f"docs/external/{ext_slug}.md"] = concept
-    return files, ext_slug
+    return files, ext_slug, request_path
 
 
 def log_external(out_dir: Path, name: str, ext_slug: str, reason: str) -> None:

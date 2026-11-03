@@ -17,7 +17,10 @@ from pathlib import Path
 
 MAX_BYTES = 2 * 1024 * 1024
 MAX_LINE = 100_000
-SCANNED_SUFFIXES = {".yml", ".yaml", ".bru", ".md", ".json", ".js"}
+SCANNED_SUFFIXES = {
+    ".yml", ".yaml", ".bru", ".md", ".json", ".js", ".env", ".txt", ".toml", ".ini",
+    ".cfg", ".pem", ".key",
+}  # fmt: skip
 SKIP_DIRS = {"node_modules", ".git"}
 
 # Last word of a name that makes it secret-like (one list, easy to extend).
@@ -56,7 +59,9 @@ BEARER = re.compile(r"\bBearer\s+([A-Za-z0-9._~+/=\-]{16,})")
 OPAQUE = re.compile(r"[A-Za-z0-9+/_=\-]{32,}")
 HEX = re.compile(r"^[0-9a-fA-F]{32,}$")
 PATH_JWT = re.compile(r"eyJ[A-Za-z0-9_-]{5,}")
-PATH_ASSIGN = re.compile(r"(?i)(password|passwd|pwd|secret|token|key|auth)\s*[=:]\s*\S")
+PATH_ASSIGN = re.compile(
+    r"(?i)(password|passwd|pwd|pw|pass|secret|token|key|auth)\s*[=:]\s*\S"
+)
 PATH_OPAQUE = re.compile(r"^[A-Za-z0-9+/_=\-]{24,}$")
 PRIORITY = {
     "private-key": 1, "jwt": 2, "url-credential": 3, "cloud-key": 4, "bearer-token": 5,
@@ -84,6 +89,7 @@ class ScanReport:
     findings: list[Finding] = field(default_factory=list)
     incomplete: list[Incomplete] = field(default_factory=list)
     scanned: int = 0
+    other_types: int = 0
     lines: list[str] = field(default_factory=list)
     exit_code: int = 0
 
@@ -124,6 +130,8 @@ def _harmless(value: str) -> bool:
 
 
 def _path_ok(rel: str) -> bool:
+    if not rel.isprintable():  # control characters, newlines, undecodable bytes
+        return False
     for segment in rel.split("/"):
         stem = segment.rsplit(".", 1)[0] if "." in segment else segment
         if (
@@ -132,6 +140,11 @@ def _path_ok(rel: str) -> bool:
             or re.search(r"[^/\s:@]+:[^/\s@]+@", segment)
             or (PATH_OPAQUE.match(stem) is not None and _mixed(stem))
         ):
+            return False
+        try:
+            if _scan_text(segment):
+                return False
+        except ValueError:
             return False
     return True
 
@@ -274,9 +287,14 @@ def _gitignore_rule_ok(root: Path) -> bool:
 # ---------------------------------------------------------------------- scan
 
 
-def _candidates(root: Path) -> list[Path]:
+def _candidates(root: Path, unreadable: list[Path]) -> list[Path]:
     found: list[Path] = []
-    for base, dirs, names in os.walk(root, followlinks=False):
+
+    def remember(error: OSError) -> None:
+        if error.filename is not None:
+            unreadable.append(Path(os.fsdecode(error.filename)))
+
+    for base, dirs, names in os.walk(root, followlinks=False, onerror=remember):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
         for name in sorted(names + [d for d in dirs if (Path(base) / d).is_symlink()]):
             found.append(Path(base) / name)
@@ -292,12 +310,22 @@ def _wanted(path: Path) -> bool:
 def scan(folder: Path) -> ScanReport:
     root = Path(folder).resolve()
     report = ScanReport()
-    entries = [p for p in _candidates(root)]
-    rels = sorted(p.relative_to(root).as_posix() for p in entries)
+    unreadable: list[Path] = []
+    entries = _candidates(root, unreadable)
+    rels = sorted(
+        [p.relative_to(root).as_posix() for p in entries]
+        + [p.relative_to(root).as_posix() for p in unreadable if root in p.parents]
+    )
     index = {rel: n for n, rel in enumerate(rels, 1)}
+    for path in unreadable:
+        if root in path.parents:
+            rel = path.relative_to(root).as_posix()
+            report.incomplete.append(Incomplete(_display(rel, index), "unreadable"))
     for path in entries:
         rel = path.relative_to(root).as_posix()
         if not _wanted(path):
+            if path.name != ".gitignore":
+                report.other_types += 1
             continue
         shown = _display(rel, index)
         if path.is_symlink():
@@ -343,6 +371,11 @@ def _finish(report: ScanReport) -> None:
         f"scan summary: {len(report.findings)} finding(s), "
         f"{len(report.incomplete)} incomplete, {report.scanned} file(s) read"
     )
+    if report.other_types:
+        lines.append(
+            f"{report.other_types} file(s) of other type(s) not read: "
+            "the scan does not cover them"
+        )
     if report.incomplete:
         lines.append(
             "scan incomplete: the files above were not read; the result is not clean"

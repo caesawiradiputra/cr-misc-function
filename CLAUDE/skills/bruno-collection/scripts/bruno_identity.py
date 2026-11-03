@@ -18,6 +18,14 @@ from bruno_params import Source
 NOISE = re.compile(r"^(api|v\d+)$", re.IGNORECASE)
 INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 PARAM = re.compile(r"^\{([^}:]+)(?::[^}]*)?\}$")
+RESERVED = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
 
 
 @dataclass
@@ -97,6 +105,11 @@ def safe_name(text: str, limit: int = 80) -> str:
     return cleaned[:limit].strip(" .") or "unnamed"
 
 
+def windows_safe(name: str) -> str:
+    """Prefix a name that Windows reserves (`CON`, `aux.txt`, `LPT1`)."""
+    return "_" + name if name.split(".")[0].upper() in RESERVED else name
+
+
 def _segments(path: str) -> list[str]:
     return [s for s in normalize_path(path).split("/") if s and not NOISE.match(s)]
 
@@ -130,10 +143,10 @@ def request_names(ep: Endpoint) -> tuple[str, str]:
 
 def folder_for(ep: Endpoint) -> str:
     if ep.tags:
-        return safe_name(ep.tags[0])
+        return windows_safe(safe_name(ep.tags[0]))
     for segment in _segments(ep.path):
         if not PARAM.match(segment):
-            return safe_name(segment.lower())
+            return windows_safe(safe_name(segment.lower()))
     return "root"
 
 

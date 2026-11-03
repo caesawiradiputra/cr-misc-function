@@ -216,3 +216,12 @@ def test_endpoint_in_a_conflict_is_not_reported_as_disappeared(disc, idn):
     doc = idn.DocEntry(idn.identity(a), "handler", [], [])
     plan = idn.plan([a, make(disc, "GET", "/orders/")], state(idn, docs=[doc]))
     assert plan.disappeared == [] and len(plan.conflicts) == 1
+
+
+# ---- final review fixes
+
+
+def test_windows_reserved_folder_names_get_a_prefix(disc, idn):
+    for tag, expected in (("CON", "_CON"), ("lpt1", "_lpt1"), ("Orders", "Orders")):
+        assert idn.folder_for(make(disc, "GET", "/x", tags=[tag])) == expected
+    assert idn.folder_for(make(disc, "GET", "/aux/items")) == "_aux"

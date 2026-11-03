@@ -366,6 +366,10 @@ class _Gen:
             return self.todo(path, f"constraint {bad} is not statically resolvable")
         enum = c.get("enum")
         if isinstance(enum, list) and enum:
+            if "{{" in json.dumps(enum, default=str):
+                return self.todo(
+                    path, "an enum member contains '{{' which Bruno cannot escape"
+                )
             return f"pick({json.dumps(enum)})"
         kind = KINDS.get(type_name.lower())
         if kind is None:

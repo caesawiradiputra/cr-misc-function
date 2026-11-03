@@ -398,3 +398,16 @@ def test_date_and_datetime_bounds_are_respected(disc, vals):
         )
     bad = vals.random_js(P("x", "query", "date", True, None, {"ge": "not-a-date"}))
     assert [i.field for i in bad.incomplete] == ["x"]
+
+
+# ---- final review fixes
+
+
+def test_enum_member_with_double_brace_is_todo_in_random_mode():
+    val = load("bruno_values")
+    disc = load("bruno_discover")
+    p = disc.Param("sel", "query", "str", True, None, {"enum": ["ok", "{{enumEvil}}"]})
+    ep = disc.Endpoint("GET", "/x", [], "h", None, disc.Source("a.py", 1), [p])
+    res = val.random_request(ep)
+    assert "{{" not in res.script
+    assert any(i.field == "sel" for i in res.incomplete)
