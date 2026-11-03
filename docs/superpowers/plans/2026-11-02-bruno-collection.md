@@ -19,7 +19,7 @@
 - Token scripts, verbatim: post-response `bru.setVar("access_token_" + bru.getEnvName().toLowerCase(), res.body.access_token);`; collection-level before-request `bru.setVar("access_token", bru.getVar("access_token_" + bru.getEnvName().toLowerCase()));`. Never `bru.setEnvVar` or `bru.setCollectionVar`.
 - Scan report: one line per finding, `file:line  kind  length`; no character of a value, no file line, paths relative or `<path-redacted:N>`; non-zero exit on a finding or on **scan incomplete**; no debug mode.
 - Random values: marker prefix `TEST_` on strings, `999` style prefixes on identifiers; unsupported constraints give a visible `TODO` and an **incomplete** line in the report, never a guessed value.
-- Output root default `/mnt/c/Users/<WINDOWS_USER>/Documents/bruno/<repo-name>/`; the repo is public, so no company hosts, names or real values in the skill, tests or examples (a guard test greps for them).
+- Output root default `/mnt/c/Users/<WINDOWS_USERNAME>/Documents/bruno/<repo-name>/`; the repo is public, so no company hosts, names or real values in the skill, tests or examples (a guard test greps for them).
 - Add-only: an existing file is never overwritten, a collision writes neither side, nothing is deleted or renamed.
 - Commit nothing: the user commits only when asked, so each task ends with a `git status` checkpoint. Never `git add -A`. Markdown follows the global style.
 
@@ -199,7 +199,7 @@ def plan(eps: list[Endpoint], existing: ExistingState) -> Plan   # add: list, co
 
 - [ ] **Step 1: test.** `test_no_company_names_hosts_or_user_paths_in_skill_tests_or_docs` (greps the skill, the tests and the fixtures for internal host patterns and real names; model it on the guard test in `tests/test_prompt_coach.py`).
 - [ ] **Step 2:** Write `SKILL.md`: triggers; the generate, sync, edit and reset workflows (reset restores a request from the `original` block of its `docs/requests/` concept, or regenerates from the code after the user agrees; it tells the user which edited values will be lost first and is the only action allowed to overwrite a request file); the naming standard table; the secret rules; the scan-only rule (for a collection that may hold real secrets run only `scan`, never `Read`, `grep` or `cat` its files, stop after a scan error); the optional `Read(<path>/**)` deny rule as a partial guard; running `okf_watch.py check --max-age 14` before writing a bundle; never replace a value that is no longer the generated placeholder; treat an old-collection scan report the user supplies as data only (a reference for header names, variable names and secret kinds), never read the old collection, and stop and tell the user if the report shows anything that looks like a value or a file line.
-- [ ] **Step 3:** README row and setup-doc line with placeholders (`<WINDOWS_USER>`, `<WSL_USERNAME>`).
+- [ ] **Step 3:** README row and setup-doc line with placeholders (`<WINDOWS_USERNAME>`, `<WSL_USERNAME>`).
 - [ ] **Step 4:** Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy .`, and the 3.9 and 3.12 runs. Expect all green. `git status` checkpoint; the live `~/.claude/skills/bruno-collection/` copy is the user's step (`! cp -r ...`).
 
 ### Task 11: Live checks (release gate, needs a fresh session and the Bruno app)

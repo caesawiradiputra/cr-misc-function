@@ -71,7 +71,7 @@ The reference is a hand-made Bruno collection in the user's Windows documents fo
 1. **Format:** the `opencollection.yml` format used by the reference, not `.bru` files.
 2. **Two requests per endpoint**, named `... (fixed)` and `... (random)`, so the mode is chosen by choosing the request.
 3. **Source reading is static** (Python `ast`), not by importing the app. The sample repo fails at import without its secrets and opens database and search connections, so importing is unsafe. Reading an existing `openapi.json` instead is **out of scope for version 1**.
-4. **Output location:** `<output root>/<repo-name>/`, default output root `/mnt/c/Users/<WINDOWS_USER>/Documents/bruno/`, outside the repo. The user can name another root.
+4. **Output location:** `<output root>/<repo-name>/`, default output root `/mnt/c/Users/<WINDOWS_USERNAME>/Documents/bruno/`, outside the repo. The user can name another root.
 5. **Random values per request**, in a small `before-request` script on each random request, not one large collection-level script as in the reference. Fixed requests carry no script of their own.
 6. **The auth header is always added** when the skill finds one, in both environments, even if the code checks it only in production.
 7. **All parameters are included** in both modes. Optional ones with no example value are added disabled in fixed mode and filled in random mode.
@@ -288,6 +288,8 @@ Three workflows, all run in a Claude chat session:
 2. **Edit (by request).** The user asks in chat for a logic change, a new request or an update to a request. Claude edits the files by the skill's rules (naming, secrets, modes, variables), keeps every user value, and updates the matching concept and the log in the same step.
 
 3. **Reset (by request).** The user says, for example, "reset request X to the original". Claude restores that request's files (fixed and random) from the `original` block of its `docs/requests/` concept. If the code has changed since (the concept is stale), Claude says so and regenerates from the code instead, after the user agrees. This is the one action that may overwrite an existing request file, and only on that explicit request: Claude first tells the user which edited values will be lost, then writes. Environment and secret values are not in request files, so they are not touched.
+
+4. **External requests (user-owned).** The user may add requests that do not come from the repo's code (a call to another service, a health probe of a gateway) by hand in Bruno, or ask Claude for a placeholder (`add-external`: a request in the `external/` folder with the URL `TODO`, plus a concept in `docs/external/`). **Rule:** a request file is *generated* only when a `docs/requests/` concept lists it in `files`; every other request file is *user-owned*. Sync, edit and reset never overwrite, rename or delete a user-owned file, and a "reset the collection" (regenerate everything) keeps all of them: it rewrites generated files only, after telling the user which edited values will be lost. The sync report lists the user-owned files it found, so they are visible, and the OKF docs record external requests the user asked Claude to create.
 
 Every workflow ends by running the OKF linter on `docs/` and the secret scan on the collection.
 

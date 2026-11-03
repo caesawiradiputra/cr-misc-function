@@ -234,6 +234,17 @@ other skills in 4.3, start a new session, then run `/prompt-coach on`. It is off
 Prompts and reviews are stored under `~/.claude/prompt-coach/` with secrets masked on a
 best-effort basis; that folder is never part of any repo. Check `/prompt-coach status`.
 
+#### Bruno collection skill (optional)
+
+The `bruno-collection` skill needs only the skill folder (install it with the other skills
+in 4.3) and the `okf-writer` skill next to it for the OKF lint. Set the folder that holds
+your collections once, for example in WSL:
+`export BRUNO_COLLECTIONS_DIR=/mnt/c/Users/<WINDOWS_USERNAME>/Documents/bruno`. Install Bruno
+(desktop app 4.3.0 was used to verify the file format) on the Windows side and open the
+generated collection folder there. Optional partial guard in `settings.json`: a
+`Read(/mnt/c/Users/<WINDOWS_USERNAME>/Documents/bruno/**)` deny rule, so Claude cannot open old
+collections that may hold secrets (it does not block shell commands; use `scan` instead).
+
 ### 4.3 Skills
 
 ```powershell
