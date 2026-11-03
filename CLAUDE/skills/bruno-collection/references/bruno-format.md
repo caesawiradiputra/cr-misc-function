@@ -53,7 +53,8 @@ Test collection: `_verify` in the user's Windows `bruno` folder (not in this rep
 | --- | --- | --- |
 | A request-level `docs:` block (Markdown, `docs: \|-`) shows in the Docs tab | app, confirmed by the user (2026-11-03) | The generator writes it after `settings` |
 | An unquoted `{{random_x}}` inside the JSON body text is replaced by the variable's value, so a number or list keeps its JSON type | app, reported by the user; the user's reply "confirm for unquoted variable" was read as a confirmation | The variable holds JSON text (`JSON.stringify`) |
-| In the desktop app (QuickJS sandbox) a request script did not see functions defined in the collection-level script; the CLI did | app, reported by the user | The random helper functions are repeated in each request script |
+| In the desktop app a request script does not see a plain function declared in the collection-level script (the CLI did) | app, reported by the user | See the probe below |
+| Probe `_verify_helpers`, Bruno 4.3.0, 2026-11-03: a plain function: not visible; `globalThis.__lib` set in the collection script: **visible**; a variable holding a function's source: ok, and `eval` and `new Function` on it: ok; `require("./lib/helpers.js")` of a collection file: ok | app, run by the user | The generator shares the helpers through `globalThis.__lib` (no `eval`, no `require`, no dependency on the app's mode). Not checked in the Bruno CLI |
 
 ## Still open
 

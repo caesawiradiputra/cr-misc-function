@@ -67,7 +67,7 @@ def test_token_files_only_with_token_endpoint(tmp_path, disc, ren, rendered):
         load("bruno_launch").LaunchResult("http://localhost:8000", None, []),
     )
     assert not any(p.startswith("auth/") for p in plain.files)
-    assert "before-request" not in plain.files["opencollection.yml"]
+    assert "access_token" not in plain.files["opencollection.yml"]  # only the helpers
     assert "access_token" not in "".join(plain.files.values())
 
 
@@ -104,7 +104,9 @@ def test_other_requests_send_the_token_variable_without_their_own_script(rendere
 def test_scripts_verbatim(rendered):
     r = rendered("oauth")
     assert script_of(r.files["auth/Get token.yml"]) == SET_TOKEN
-    assert script_of(r.files["opencollection.yml"]) == USE_TOKEN
+    collection = script_of(r.files["opencollection.yml"])
+    assert USE_TOKEN in collection.splitlines()
+    assert "globalThis.__lib" in collection  # the shared helpers come first
     everything = "".join(r.files.values())
     assert "setEnvVar" not in everything and "setCollectionVar" not in everything
 

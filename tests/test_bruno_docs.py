@@ -398,3 +398,21 @@ def test_sync_does_not_repeat_known_decisions_in_the_log(world):
     second = log.read_text(encoding="utf-8")
     assert second.count("GET /api/v1/orders/export, POST /api/v1/orders/export") == 1
     assert "Added" in second
+
+
+def test_sync_uses_shared_helpers_only_when_the_collection_defines_them(world):
+    root = world.col / "opencollection.yml"
+    assert "globalThis.__lib" in root.read_text(encoding="utf-8")
+    with open(world.repo / "app" / "main.py", "a", encoding="utf-8") as f:
+        f.write('\n\n@app.get("/extra3")\ndef extra3(n: int = 1):\n    return 1\n')
+    assert world.run("sync") == 0
+    new = next(world.col.rglob("Get extra3 (random).yml")).read_text(encoding="utf-8")
+    assert "globalThis.__lib" in new and "const rnd" not in new
+    # a collection made before the shared helpers has no definition: keep helpers inline
+    text = root.read_text(encoding="utf-8")
+    root.write_text(text.split("request:")[0] + "bundled: false\n", encoding="utf-8")
+    with open(world.repo / "app" / "main.py", "a", encoding="utf-8") as f:
+        f.write('\n\n@app.get("/extra4")\ndef extra4(n: int = 1):\n    return 1\n')
+    assert world.run("sync") == 0
+    old = next(world.col.rglob("Get extra4 (random).yml")).read_text(encoding="utf-8")
+    assert "const rnd" in old and "globalThis" not in old

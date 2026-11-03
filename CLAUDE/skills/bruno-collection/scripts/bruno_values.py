@@ -525,22 +525,37 @@ def _var(prefix: str, name: str) -> str:
     return prefix + re.sub(r"\W", "_", name)
 
 
-def _wrap(lines: list[str]) -> str:
-    return "{\n" + PRELUDE + "\n".join(lines) + "\n}\n"
+# The helpers can live in the collection-level script (one copy for the whole collection):
+# Bruno 4.3.0 shares `globalThis` between that script and a request script, while a plain
+# function declared there is not visible (checked with a probe, 2026-11-03).
+HELPERS_REF = "const { rnd, pick, chars, ALNUM } = globalThis.__lib;\n"
+HELPERS_SCRIPT = (
+    "{\n" + PRELUDE + "globalThis.__lib = { rnd, pick, chars, ALNUM };\n}\n"
+)
 
 
-def random_js(spec: Param | ModelSpec, name_prefix: str = "random_") -> RandomResult:
+def _wrap(lines: list[str], central: bool = False) -> str:
+    return "{\n" + (HELPERS_REF if central else PRELUDE) + "\n".join(lines) + "\n}\n"
+
+
+def random_js(
+    spec: Param | ModelSpec, name_prefix: str = "random_", central: bool = False
+) -> RandomResult:
     """Script for one query/path/header parameter, or for a whole request body."""
     gen = _Gen()
     if isinstance(spec, ModelSpec):
         expr = gen.model(spec)
         if spec.is_list:
             expr = f"Array.from({{ length: rnd(1, 2) }}, () => ({expr}))"
-        return RandomResult(_wrap([f"req.setBody({expr});"]), [], gen.incomplete)
+        return RandomResult(
+            _wrap([f"req.setBody({expr});"], central), [], gen.incomplete
+        )
     expr = gen.value(spec.name, spec.type_name, spec.constraints)
     var = _var(name_prefix, spec.name)
     return RandomResult(
-        _wrap([f"bru.setVar({json.dumps(var)}, {expr});"]), [var], gen.incomplete
+        _wrap([f"bru.setVar({json.dumps(var)}, {expr});"], central),
+        [var],
+        gen.incomplete,
     )
 
 
@@ -581,7 +596,9 @@ def _body_vars(
     return "{\n" + ",\n".join(rows) + "\n}" if rows else "{}"
 
 
-def random_request(endpoint: Endpoint, name_prefix: str = "random_") -> RandomResult:
+def random_request(
+    endpoint: Endpoint, name_prefix: str = "random_", central: bool = False
+) -> RandomResult:
     """One script for the whole request: parameter variables and the body object."""
     gen = _Gen()
     lines: list[str] = []
@@ -619,4 +636,4 @@ def random_request(endpoint: Endpoint, name_prefix: str = "random_") -> RandomRe
             (p.name, p.type_name, p.constraints, False, None, False) for p in scalars
         ]
         template = _body_vars(gen, fields, name_prefix, lines, names)
-    return RandomResult(_wrap(lines), names, gen.incomplete, template)
+    return RandomResult(_wrap(lines, central), names, gen.incomplete, template)

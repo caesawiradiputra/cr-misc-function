@@ -459,3 +459,22 @@ def test_enum_value_with_double_brace_in_a_body_field_is_todo(disc, vals):
         result.body_template or ""
     )
     assert [i.field for i in result.incomplete] == ["kind"]
+
+
+# ---- shared helpers through globalThis (probe in Bruno 4.3.0, 2026-11-03)
+
+
+@needs_node
+def test_shared_helpers_script_and_central_request_script_work_together(disc, vals):
+    p = disc.Param("n", "query", "int", True, None, {"ge": 1, "le": 3})
+    ep = endpoint(disc, params=[p])
+    central = vals.random_request(ep, central=True)
+    assert "globalThis.__lib" in central.script and "const rnd" not in central.script
+    inline = vals.random_request(ep)
+    assert "const rnd" in inline.script and "globalThis" not in inline.script
+    # the collection script and the request script are separate scripts that share globalThis
+    first = (
+        f"new Function('bru', 'req', {json.dumps(vals.HELPERS_SCRIPT)})(bru, req);\n"
+    )
+    runs = run_js(first + central.script, 30)
+    assert all(r["vars"]["random_n"] in (1, 2, 3) for r in runs)

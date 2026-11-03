@@ -29,7 +29,13 @@ from bruno_identity import (
 )
 from bruno_launch import LaunchResult
 from bruno_params import ModelSpec, Param
-from bruno_values import fixed_body, fixed_value, random_js, random_request
+from bruno_values import (
+    HELPERS_SCRIPT,
+    fixed_body,
+    fixed_value,
+    random_js,
+    random_request,
+)
 
 MODES = ("fixed", "random")
 ENVIRONMENTS = ("LOCAL", "DEV", "PROD")
@@ -205,24 +211,24 @@ def _shape(spec: ModelSpec) -> dict[str, object]:
     return out
 
 
-def _random_script(ep: Endpoint) -> tuple[str, list[str]]:
+def _random_script(ep: Endpoint, central: bool) -> tuple[str, list[str]]:
     scripts: list[str] = []
     notes: list[str] = []
-    main = random_request(ep)
+    main = random_request(ep, central=central)
     has_body = ep.body is not None or any(p.location == "body" for p in ep.params)
     if main.vars or has_body:
         scripts.append(main.script)
     notes += [f"{i.field}: {i.reason}" for i in main.incomplete]
     for p in ep.params:
         if p.location == "form":
-            res = random_js(p)
+            res = random_js(p, central=central)
             scripts.append(res.script)
             notes += [f"{i.field}: {i.reason}" for i in res.incomplete]
     # path parameters the code did not declare as parameters get a plain id
     declared = {p.name for p in ep.params if p.location == "path"}
     for n in _path_names(ep.path):
         if n not in declared:
-            scripts.append(random_js(Param(n, "path", "str")).script)
+            scripts.append(random_js(Param(n, "path", "str"), central=central).script)
     return "".join(scripts), notes
 
 
@@ -312,7 +318,13 @@ def _docs(ep: Endpoint, mode: str) -> str:
 
 
 def build_request(
-    ep: Endpoint, ident: str, name: str, mode: str, seq: int, auth: AuthPlan
+    ep: Endpoint,
+    ident: str,
+    name: str,
+    mode: str,
+    seq: int,
+    auth: AuthPlan,
+    central: bool = True,
 ) -> _Built:
     todos: list[str] = []
     incomplete: list[str] = []
@@ -393,7 +405,7 @@ def build_request(
     lines.append("  auth: inherit")
 
     if mode == "random":
-        script, notes = _random_script(ep)
+        script, notes = _random_script(ep, central)
         incomplete += [f"{ident}: {n}" for n in notes]
         if script:
             lines += [
@@ -543,6 +555,7 @@ def render_collection(
     name: str,
     launch: LaunchResult,
     existing: ExistingState | None = None,
+    central_helpers: bool = True,
 ) -> Rendered:
     """All collection files as relative path -> text, for the endpoints to add."""
     token = result.token
@@ -552,9 +565,14 @@ def render_collection(
     auth = AuthPlan.from_discovery(result)
     secrets = [auth.secret] if auth.secret else []
     collection_scripts: list[tuple[str, str]] = []
+    codes: list[str] = []
+    if central_helpers and the_plan.add:
+        codes.append(HELPERS_SCRIPT)
     if token:
         secrets += [camel(i) for i in token.grant_inputs if camel(i) not in secrets]
-        collection_scripts.append(("before-request", USE_TOKEN))
+        codes.append(USE_TOKEN)
+    if codes:
+        collection_scripts.append(("before-request", "\n".join(codes)))
 
     files: dict[str, str] = {
         "opencollection.yml": _opencollection(name, collection_scripts),
@@ -590,7 +608,7 @@ def render_collection(
                 f"info:\n  name: {q(folder)}\n  type: folder\n  seq: {len(folders)}\n\n"
                 "request:\n  auth: inherit\n"
             )
-        _add_pair(rendered, item, folder, seqs, auth)
+        _add_pair(rendered, item, folder, seqs, auth, central_helpers)
 
     if launch.url.endswith("<port>"):
         rendered.placeholders.append(
@@ -614,12 +632,17 @@ def render_collection(
 
 
 def _add_pair(
-    rendered: Rendered, item: Planned, folder: str, seqs: dict[str, int], auth: AuthPlan
+    rendered: Rendered,
+    item: Planned,
+    folder: str,
+    seqs: dict[str, int],
+    auth: AuthPlan,
+    central: bool,
 ) -> None:
     for mode, req_name in zip(MODES, (item.fixed_name, item.random_name)):
         seqs[folder] = seqs.get(folder, 0) + 1
         built = build_request(
-            item.endpoint, item.identity, req_name, mode, seqs[folder], auth
+            item.endpoint, item.identity, req_name, mode, seqs[folder], auth, central
         )
         rendered.files[f"{folder}/{req_name}.yml"] = built.text
         rendered.todos += built.todos

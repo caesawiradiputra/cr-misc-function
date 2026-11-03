@@ -360,3 +360,40 @@ def test_write_rolls_back_files_it_created_when_a_write_fails(tmp_path, ren):
     assert (out / "blocker").read_text(
         encoding="utf-8"
     ) == "a file where a folder is needed"
+
+
+# ---- shared helpers (the collection-level script defines them once)
+
+
+def test_helpers_are_defined_once_in_the_collection_script(disc, ren, launch):
+    p = disc.Param("n", "query", "int", True, None, {"ge": 1, "le": 3})
+    r = ren.render_collection(
+        result(disc, [ep(disc, params=[p])]), "svc", local(launch)
+    )
+    root = r.files["opencollection.yml"]
+    assert "globalThis.__lib = { rnd, pick, chars, ALNUM };" in root
+    rand = next(t for k, t in r.files.items() if k.endswith("(random).yml"))
+    assert "const { rnd, pick, chars, ALNUM } = globalThis.__lib;" in rand
+    assert "const rnd" not in rand
+    fixed = next(t for k, t in r.files.items() if k.endswith("(fixed).yml"))
+    assert "scripts" not in fixed
+
+
+def test_helpers_stay_inline_for_a_collection_made_before_the_shared_helpers(
+    disc, ren, launch
+):
+    p = disc.Param("n", "query", "int", True, None, {"ge": 1, "le": 3})
+    r = ren.render_collection(
+        result(disc, [ep(disc, params=[p])]),
+        "svc",
+        local(launch),
+        central_helpers=False,
+    )
+    assert "globalThis" not in r.files["opencollection.yml"]
+    rand = next(t for k, t in r.files.items() if k.endswith("(random).yml"))
+    assert "const rnd" in rand and "globalThis" not in rand
+
+
+def test_no_endpoint_means_no_helper_script(disc, ren, launch):
+    r = ren.render_collection(result(disc, []), "svc", local(launch))
+    assert "scripts" not in r.files["opencollection.yml"]
