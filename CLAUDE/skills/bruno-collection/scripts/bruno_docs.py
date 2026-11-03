@@ -457,7 +457,9 @@ def sync_docs(rendered: Rendered, out_dir: Path, model: str, reason: str) -> lis
     root = Path(out_dir) / "docs"
     now = _now()
     items = rendered.plan.add
-    entry = _log_entry(rendered, items, reason, False)
+    known = (root / "log.md").read_text(encoding="utf-8")
+    # A decision that is already in the log is not repeated on every sync.
+    entry = [x for x in _log_entry(rendered, items, reason, False) if x not in known]
     if not entry:
         return []
     taken = (

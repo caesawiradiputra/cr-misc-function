@@ -47,6 +47,14 @@ Test collection: `_verify` in the user's Windows `bruno` folder (not in this rep
 | `{{` inside a sample string value can be escaped | **not possible** (no escape in Bruno's docs; interpolation is recursive, so a variable value containing `{{x}}` is resolved too) | Policy: a code-derived sample value containing `{{` is never written; it becomes a `TODO` and is listed in the report |
 | The Bruno CLI (`bru run --env`) cannot switch environments inside one run | pending; the CLI is not installed here | The live check covers it |
 
+## Reported by the user's test on a real repo (2026-11-03, not re-checked here)
+
+| Fact | Status | Notes |
+| --- | --- | --- |
+| A request-level `docs:` block (Markdown, `docs: \|-`) shows in the Docs tab | app, reported by the user | The generator writes it after `settings` |
+| An unquoted `{{random_x}}` inside the JSON body text is replaced by the variable's value, so a number or list keeps its JSON type | app, reported by the user | The variable holds JSON text (`JSON.stringify`) |
+| In the desktop app (QuickJS sandbox) a request script did not see functions defined in the collection-level script; the CLI did | app, reported by the user | The random helper functions are repeated in each request script |
+
 ## Still open
 
 - The Bruno CLI cannot switch environments inside one run: not checkable here (the CLI is not installed). The live check in plan Task 11 covers it.

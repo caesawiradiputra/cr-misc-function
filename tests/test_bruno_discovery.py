@@ -130,3 +130,51 @@ def test_results_are_deterministic(disc, app_root):
     second = [(e.method, e.path) for e in disc.discover(app_root).endpoints]
     assert first == second
     assert first == sorted(first, key=lambda mp: (mp[1], mp[0]))
+
+
+# ---- review: mounts made inside functions the app module calls, and return keys
+
+FOLLOW_FILES = {
+    "svc/__init__.py": "",
+    "svc/main.py": (
+        "from fastapi import FastAPI\nfrom svc.setup import init\n\n"
+        "app = FastAPI()\ninit(app)\n"
+    ),
+    "svc/setup.py": (
+        "def init(app):\n    init_routers(app)\n\n\n"
+        "def init_routers(app):\n    from svc.routes import router\n"
+        '    app.include_router(router, prefix="/api")\n'
+    ),
+    "svc/routes.py": (
+        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n"
+        '@router.post("/phone/get_by_priority")\n'
+        "def get_phone_by_priority():\n"
+        '    def helper():\n        return {"wrong": 1}\n'
+        '    return {"result": 1, "total_rows": 2}\n'
+    ),
+}
+
+
+def test_mount_inside_a_followed_function_is_found_and_not_reported(tmp_path):
+    disc = load("bruno_discover")
+    fx.write_files(tmp_path, FOLLOW_FILES)
+    result = disc.discover(tmp_path)
+    assert [(e.method, e.path) for e in result.endpoints] == [
+        ("POST", "/api/phone/get_by_priority")
+    ]
+    assert not any("dynamically" in s.reason for s in result.skipped)
+    assert result.endpoints[0].return_keys == ["result", "total_rows"]
+
+
+def test_mount_under_a_condition_or_a_recursive_call_is_still_reported(tmp_path):
+    disc = load("bruno_discover")
+    files = dict(FOLLOW_FILES)
+    files["svc/setup.py"] = (
+        "def init(app):\n    init(app)\n    init_routers(app)\n\n\n"
+        "def init_routers(app):\n    from svc.routes import router\n"
+        '    if True:\n        app.include_router(router, prefix="/api")\n'
+    )
+    fx.write_files(tmp_path, files)
+    result = disc.discover(tmp_path)
+    assert result.endpoints == []
+    assert any("dynamically" in s.reason for s in result.skipped)

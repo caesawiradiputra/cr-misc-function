@@ -225,3 +225,29 @@ def test_windows_reserved_folder_names_get_a_prefix(disc, idn):
     for tag, expected in (("CON", "_CON"), ("lpt1", "_lpt1"), ("Orders", "Orders")):
         assert idn.folder_for(make(disc, "GET", "/x", tags=[tag])) == expected
     assert idn.folder_for(make(disc, "GET", "/aux/items")) == "_aux"
+
+
+# ---- review of the action-name change
+
+
+def test_action_paths_drop_the_method_and_other_paths_keep_it(disc, idn):
+    names = {
+        ("POST", "/mdt/phone/api/get_by_priority"): "Get phone by priority",
+        ("POST", "/phone/search_by_id"): "Search phone by id",
+        ("GET", "/orders/{order_id}"): "Get orders by id",
+        ("POST", "/orders"): "Post orders",
+        ("GET", "/orders/export"): "Export orders",
+    }
+    for (method, path), expected in names.items():
+        assert idn.request_names(make(disc, method, path))[0] == f"{expected} (fixed)"
+
+
+def test_same_action_path_with_two_methods_is_reported_not_overwritten(disc, idn):
+    a = make(disc, "GET", "/orders/export", file="a.py", line=1)
+    b = make(disc, "POST", "/orders/export", file="a.py", line=9)
+    result = idn.plan([a, b], state(idn))
+    assert result.add == [] and len(result.collisions) == 1
+    assert set(result.collisions[0].identities) == {
+        "GET /orders/export",
+        "POST /orders/export",
+    }

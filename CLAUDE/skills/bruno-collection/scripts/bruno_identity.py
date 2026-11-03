@@ -135,9 +135,44 @@ def _resource(path: str) -> str:
     return " ".join(tokens) or "root"
 
 
+VERBS = {
+    "get", "list", "find", "search", "fetch", "create", "add", "update", "delete",
+    "remove", "set", "check", "upload", "download", "export", "import", "send",
+    "validate", "calculate", "generate",
+}  # fmt: skip
+
+
+def _action_name(ep: Endpoint) -> str | None:
+    """`get_by_priority` under `/phone` -> `get phone by priority`, else None."""
+    segments = _segments(ep.path)
+    if not segments or PARAM.match(segments[-1]):
+        return None
+    words = _words(segments[-1])
+    if not words or words[0] not in VERBS:
+        return None
+    resource = (
+        _words(segments[-2])
+        if len(segments) > 1 and not PARAM.match(segments[-2])
+        else []
+    )
+    if resource and words[1 : 1 + len(resource)] != resource:
+        words = [words[0], *resource, *words[1:]]
+    return " ".join(words)
+
+
 def request_names(ep: Endpoint) -> tuple[str, str]:
-    """`<Verb> <resource> (fixed)` and `(random)`; the file name equals the name."""
-    base = safe_name(f"{ep.method.capitalize()} {_resource(ep.path)}")
+    """`<Action> <resource> (fixed)` and `(random)`; the file name equals the name.
+
+    The method is not repeated (Bruno shows it). An action path such as
+    `/phone/api/get_by_priority` becomes `Get phone by priority`; any other path
+    keeps `<Method> <resource>`.
+    """
+    action = _action_name(ep)
+    base = safe_name(
+        action.capitalize()
+        if action
+        else f"{ep.method.capitalize()} {_resource(ep.path)}"
+    )
     return f"{base} (fixed)", f"{base} (random)"
 
 

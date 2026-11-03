@@ -384,3 +384,17 @@ def test_add_external_method_is_an_allow_list(world):
     assert "method: POST" in (world.col / "external" / "ok.yml").read_text(
         encoding="utf-8"
     )
+
+
+def test_sync_does_not_repeat_known_decisions_in_the_log(world):
+    log = world.col / "docs" / "log.md"
+    first = log.read_text(encoding="utf-8")
+    assert "Needs a decision" in first  # the export pair collides at generate time
+    assert world.run("sync") == 0
+    assert log.read_text(encoding="utf-8") == first
+    with open(world.repo / "app" / "main.py", "a", encoding="utf-8") as f:
+        f.write('\n\n@app.get("/extra2")\ndef extra2():\n    return 1\n')
+    assert world.run("sync") == 0
+    second = log.read_text(encoding="utf-8")
+    assert second.count("GET /api/v1/orders/export, POST /api/v1/orders/export") == 1
+    assert "Added" in second

@@ -224,7 +224,43 @@ def test_json_body_fixed_and_random(disc, ren, launch):
     fixed = next(t for k, t in r.files.items() if k.endswith("(fixed).yml"))
     rand = next(t for k, t in r.files.items() if k.endswith("(random).yml"))
     assert "type: json" in fixed and '"name": "Ann"' in fixed
-    assert "req.setBody(" in rand and "type: json" in rand
+    # an object body is written in the Body tab with the random variables
+    assert '"name": "{{random_name}}"' in rand and "req.setBody(" not in rand
+    assert 'bru.setVar("random_name"' in rand
+
+
+def test_list_body_keeps_set_body_and_shows_a_shape_preview(disc, ren, launch):
+    f = disc.FieldSpec("name", "str", True, "Ann")
+    model = disc.ModelSpec("C", [f], disc.Source("m.py", 1), None, True)
+    r = ren.render_collection(
+        result(disc, [ep(disc, "POST", "/c", body=model)]), "svc", local(launch)
+    )
+    rand = next(t for k, t in r.files.items() if k.endswith("(random).yml"))
+    assert "req.setBody(" in rand
+    assert "<random: set by the before-request script>" in rand
+    assert "{}" not in rand.split("data:")[1].split("auth:")[0]
+
+
+def test_every_request_gets_a_docs_section_from_the_code_only(disc, ren, launch):
+    f = disc.FieldSpec("mode", "str", False, None, {"enum": ["a", "b"]})
+    model = disc.ModelSpec("C", [f], disc.Source("m.py", 1))
+    p = disc.Param("q", "query", "int", True)
+    e = ep(disc, "POST", "/c", params=[p], body=model, doc="Makes a thing.\n\nDetails.")
+    e.return_keys = ["result", "total"]
+    r = ren.render_collection(result(disc, [e]), "svc", local(launch))
+    for key, text in r.files.items():
+        if not key.endswith(").yml"):
+            continue
+        docs = text.split("\ndocs: |-\n", 1)[1]
+        assert "Makes a thing." in docs and "Details." not in docs
+        assert "Handler `handler` (`app/x.py:3`)." in docs
+        assert "| `q` | query | `int` | required |" in docs
+        assert "| `mode` | `str` | optional |" in docs
+        assert "### Allowed values" in docs and "`a`, `b`" in docs
+        assert "Fields: `result`, `total`." in docs
+        assert "TODO" not in docs.split("### About this request")[0]
+    fixed = next(t for k, t in r.files.items() if k.endswith("(fixed).yml"))
+    assert "Fixed values." in fixed
 
 
 def test_form_params_become_form_body(disc, ren, launch):

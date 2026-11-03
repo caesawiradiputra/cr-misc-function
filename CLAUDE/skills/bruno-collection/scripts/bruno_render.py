@@ -28,7 +28,7 @@ from bruno_identity import (
     windows_safe,
 )
 from bruno_launch import LaunchResult
-from bruno_params import Param
+from bruno_params import ModelSpec, Param
 from bruno_values import fixed_body, fixed_value, random_js, random_request
 
 MODES = ("fixed", "random")
@@ -192,6 +192,19 @@ def _url(ep: Endpoint, entries: list[_Entry], auth: AuthPlan) -> str:
     return "{{baseUrl}}" + _path_url(ep.path) + suffix
 
 
+RANDOM_MARK = "<random: set by the before-request script>"
+
+
+def _shape(spec: ModelSpec) -> dict[str, object]:
+    """Every field the random script sends (same model walk), values as markers."""
+    out: dict[str, object] = {}
+    for f in spec.fields:
+        value: object = _shape(f.children) if f.children else RANDOM_MARK
+        is_list = f.is_list or f.type_name.startswith("list[")
+        out[f.name] = [value] if is_list else value
+    return out
+
+
 def _random_script(ep: Endpoint) -> tuple[str, list[str]]:
     scripts: list[str] = []
     notes: list[str] = []
@@ -211,6 +224,91 @@ def _random_script(ep: Endpoint) -> tuple[str, list[str]]:
         if n not in declared:
             scripts.append(random_js(Param(n, "path", "str")).script)
     return "".join(scripts), notes
+
+
+def _cell(text: object) -> str:
+    return str(text).replace("|", "\\|").replace("\n", " ")
+
+
+def _type_label(type_name: str, is_list: bool) -> str:
+    label = type_name or "str"
+    return f"list[{label}]" if is_list and not label.startswith("list[") else label
+
+
+def _docs(ep: Endpoint, mode: str) -> str:
+    """Markdown for the request's Docs tab; facts from the code only, no sample values."""
+    lines: list[str] = []
+    if ep.docstring:
+        first = ep.docstring.strip().split("\n\n")[0].strip()
+        if first and "Example input parameter" not in first:
+            lines += [" ".join(first.split()), ""]
+    lines.append(f"Handler `{ep.function}` (`{ep.source.file}:{ep.source.line}`).")
+    others = [p for p in ep.params if p.location != "body"]
+    if others:
+        lines += [
+            "",
+            "### Parameters",
+            "",
+            "| Name | In | Type | Required |",
+            "| --- | --- | --- | --- |",
+        ]
+        lines += [
+            f"| `{_cell(p.name)}` | {p.location} | `{_cell(p.type_name or 'str')}` "
+            f"| {'required' if p.required else 'optional'} |"
+            for p in others
+        ]
+    rows = [
+        (
+            f.name,
+            _type_label(f.type_name, f.is_list),
+            f.required,
+            f.constraints.get("enum"),
+        )
+        for f in (ep.body.fields if ep.body else [])
+    ] + [
+        (p.name, p.type_name or "str", p.required, p.constraints.get("enum"))
+        for p in ep.params
+        if p.location == "body"
+    ]
+    rows.sort(key=lambda r: not r[2])  # required first, order kept inside each group
+    if rows:
+        shape = (
+            "a list of objects"
+            if ep.body is not None and ep.body.is_list
+            else "an object"
+        )
+        lines += [
+            "",
+            f"### Body ({shape})",
+            "",
+            "| Field | Type | Required |",
+            "| --- | --- | --- |",
+        ]
+        lines += [
+            f"| `{_cell(n)}` | `{_cell(t)}` | {'required' if r else 'optional'} |"
+            for n, t, r, _ in rows
+        ]
+        enums = [(n, e) for n, _, _, e in rows if isinstance(e, list) and e]
+        if enums:
+            lines += ["", "### Allowed values", ""]
+            lines += [
+                f"- `{_cell(n)}`: " + ", ".join(f"`{_cell(v)}`" for v in e)
+                for n, e in enums
+            ]
+    keys = ep.return_keys or ep.response_fields
+    if keys:
+        lines += [
+            "",
+            "### Response",
+            "",
+            "Fields: " + ", ".join(f"`{_cell(k)}`" for k in keys) + ".",
+        ]
+    if mode == "fixed":
+        note = "Fixed values. `TODO` means the code gave no example; fill it in."
+    else:
+        note = "Random fake values, set by the before-request script; they check the request shape, not real results."
+    lines += ["", "### About this request", "", note]
+    return "\n".join(lines)
 
 
 def build_request(
@@ -277,8 +375,15 @@ def build_request(
                 if res.enabled:
                     data[p.name] = res.value
             body_json = json.dumps(data, indent=2)
-    elif ep.body is not None or embedded:
-        body_json = "{}"
+    elif (template := random_request(ep).body_template) is not None:
+        # The body refers to the random_<field> variables set by the script.
+        body_json = template
+    elif ep.body is not None:
+        # List body: shape preview only, the script replaces it with req.setBody.
+        shape = _shape(ep.body)
+        body_json = json.dumps([shape] if ep.body.is_list else shape, indent=2)
+    elif embedded:
+        body_json = json.dumps({p.name: RANDOM_MARK for p in embedded}, indent=2)
     if body_json is not None:
         lines += ["  body:", "    type: json", f"    data: {block(body_json, 6)}"]
     elif forms:
@@ -298,7 +403,7 @@ def build_request(
                 "    - type: before-request",
                 f"      code: {block(script, 8)}",
             ]
-    lines += ["", SETTINGS.rstrip("\n"), ""]
+    lines += ["", SETTINGS.rstrip("\n"), "", "docs: " + block(_docs(ep, mode), 2), ""]
     return _Built("\n".join(lines), todos, incomplete)
 
 

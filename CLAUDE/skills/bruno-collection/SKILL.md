@@ -50,7 +50,8 @@ Every workflow ends by running the OKF lint on `docs/` and the secret scan on th
 ## Fixed and random requests
 
 - **Fixed:** sample values from, in order, an `Example input parameter` block in the route docstring, a declared `example`, a model-level example, a default, the first enum member, else a visible `TODO`. An optional parameter with no value is added disabled. A value containing `{{` is never written (Bruno has no escape): it becomes `TODO` and is reported.
-- **Random:** a before-request script builds fake values from the declared type and constraints (strings carry a `TEST_` marker, ids use `999...`) into variables `random_<field>`; a body is built as one object with `req.setBody`. An unsupported or contradictory constraint gives a visible `TODO` and an "incomplete" line in the report, never a guessed value. Random values prove the request shape, not real results.
+- **Random:** a before-request script builds fake values from the declared type and constraints (strings carry a `TEST_` marker, ids use `999...`) into variables `random_<field>`; the body of an object-body request is written in the Body tab with those variables (`"customer_id": "{{random_customer_id}}"`; a number, bool, list or object is unquoted, `"sumber_data": {{random_sumber_data}}`, its variable holding JSON text), so the body shown is the body sent and the user can edit it. Never `{}`, which looks like an empty body being sent. Only a list body, or a model body together with embedded fields, is built with `req.setBody`, and its Body tab then shows the field names with the marker `<random: set by the before-request script>`. An unsupported or contradictory constraint gives a visible `TODO` and an "incomplete" line in the report, never a guessed value. Random values prove the request shape, not real results. The helper functions (`rnd`, `pick`, `chars`, `ALNUM`) are repeated at the top of each random request script on purpose: in the Bruno desktop app (QuickJS sandbox) a request script did not see functions defined in the collection-level script, although the CLI did, so do not move them there.
+- **Docs:** every request gets a `docs` section (Bruno Docs tab) from the code only, without repeating the URL bar: the first paragraph of the route docstring (when there is one), the handler and source line, parameter and body tables with type and required first, an "Allowed values" list for fields that declare an enum, a Response line with the keys of a literal `return {...}`, and one line on fixed versus random. No sample values and no secrets. Do not add the router's declared 404 (the handler may still answer 200). A purpose line, allowed values the code does not declare, and similar facts are written by hand in the collection (marked as unreviewed) and carried over unchanged by any later docs change.
 
 ## Authentication and tokens
 
@@ -82,7 +83,7 @@ Every workflow ends by running the OKF lint on `docs/` and the secret scan on th
 | Header names | Exactly as the API expects | `apikey: {{apiKey}}` |
 | Collection | The repo name | `<repo-name>` |
 | Folders | One per tag or resource | `orders` |
-| Requests and files | `<Verb> <resource> (fixed\|random)`; file name equals request name | `Get orders by id (fixed)` |
+| Requests and files | `<Action> <resource> (fixed\|random)`; file name equals request name; the method is not repeated, Bruno shows it (two methods on the same action-style path, such as `GET` and `POST /orders/export`, map to one name and are reported as a collision) | `/phone/api/get_by_priority` → `Get phone by priority (fixed)`; other paths `<Method> <resource>` |
 
 ## Secret scan
 
@@ -94,6 +95,7 @@ Every workflow ends by running the OKF lint on `docs/` and the secret scan on th
 
 ## Limits
 
+- A router mounted inside a plain function that the app module calls with the app (for example `init(app)` → `init_routers(app)` with `from x import router` inside) is followed, to depth 4, through straight-line statements and function-local imports. Mounts under `if`/`for`/`try`/`with`, in decorated functions, and app factories (`app = create_app()`) are not followed and are listed as "not statically resolvable".
 - FastAPI only; routes registered dynamically are listed as "found but not statically resolvable", and routers never mounted on an app as "not mounted". Reading an existing `openapi.json` is out of scope for version 1.
 - Multipart form bodies are out of scope for version 1.
 - A declared trailing slash is dropped from the request URL (`@app.get("/users/")` is requested as `/users`); the API may answer with a redirect, or a 404 when slash redirects are off. Check the report.

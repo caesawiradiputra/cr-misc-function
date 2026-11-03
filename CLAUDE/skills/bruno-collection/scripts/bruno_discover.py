@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ast
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from bruno_params import (
@@ -71,6 +71,9 @@ class Endpoint:
     body: ModelSpec | None = None
     notes: list[str] = field(default_factory=list)
     response_fields: list[str] = field(default_factory=list)
+    return_keys: list[str] = field(
+        default_factory=list
+    )  # keys of a literal `return {...}`
 
 
 @dataclass
@@ -168,6 +171,7 @@ class _Include:
     tags: list[str]
     source: Source
     mod: _Module
+    resolved: _Router | None = None
 
 
 @dataclass
@@ -328,6 +332,9 @@ class _Discovery:
         self.registry: dict[str, _Module] = {}
         self.modules: list[_Module] = []
         self._seen_skips: set[tuple[str, int, str]] = set()
+        # Mounts made inside functions that are called with a router (see _follow_call).
+        self._handled: set[tuple[str, int]] = set()
+        self._deferred: list[tuple[Source, str]] = []
         self.analyzer = Analyzer(self.lookup_class, _rel_of)
 
     def skip(self, source: Source, reason: str, kind: str = "unresolved") -> None:
@@ -511,6 +518,8 @@ class _Discovery:
                 self._scan_block(mod, stmt.body, True)
             elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
                 self._call(mod, stmt.value, nested)
+                if not nested:
+                    self._follow_call(mod, stmt.value, {}, (), 0)
             else:
                 for sub in _child_blocks(stmt):
                     self._scan_block(mod, sub, True)
@@ -562,7 +571,8 @@ class _Discovery:
             return
         source = Source(mod.rel, call.lineno)
         if nested:
-            self.skip(source, DYNAMIC)
+            # Reported at the end, unless a followed function call mounted it.
+            self._deferred.append((source, DYNAMIC))
             return
         if attr == "include_router":
             target = _arg(call, 0, "router")
@@ -596,8 +606,119 @@ class _Discovery:
             )
         )
 
+    # -- mounts made inside a function that the app module calls
+    def _follow_call(
+        self,
+        mod: _Module,
+        call: ast.Call,
+        bindings: dict[str, _Router],
+        stack: tuple[int, ...],
+        depth: int,
+    ) -> None:
+        """Follow `init(app)` into the function body, binding its parameters.
+
+        Only a plain function called by name, with straight-line statements, is
+        followed (no if/for/try/with, no decorated function, depth <= 4). A
+        function-local `from x import y` is honoured. Anything else keeps the
+        existing "registered dynamically" skip.
+        """
+        if (
+            depth >= 4
+            or isinstance(call.func, ast.Attribute)
+            and call.func.attr
+            in (
+                "include_router",
+                "add_api_route",
+            )
+        ):
+            return
+        found = self._find_function(mod, call.func)
+        if found is None:
+            return
+        func, fmod = found
+        if (
+            not isinstance(func, ast.FunctionDef)
+            or func.decorator_list
+            or id(func) in stack
+        ):
+            return
+        params = [a.arg for a in [*func.args.posonlyargs, *func.args.args]]
+        params += [a.arg for a in func.args.kwonlyargs]
+        inner: dict[str, _Router] = {}
+        for name, arg in zip(params, call.args):
+            router = self._resolve_scoped(mod, bindings, arg)
+            if router is not None:
+                inner[name] = router
+        for kw in call.keywords:
+            router = self._resolve_scoped(mod, bindings, kw.value)
+            if kw.arg in params and router is not None:
+                inner[kw.arg] = router
+        scoped = replace(fmod, imports=dict(fmod.imports))
+        for stmt in func.body:
+            if isinstance(stmt, ast.ImportFrom):
+                base = self._import_base(fmod, stmt)
+                for alias in stmt.names:
+                    scoped.imports[alias.asname or alias.name] = (base, alias.name)
+            elif isinstance(stmt, ast.Import):
+                for alias in stmt.names:
+                    if alias.asname:
+                        scoped.imports[alias.asname] = (alias.name, None)
+                    else:
+                        head = alias.name.split(".")[0]
+                        scoped.imports[head] = (head, None)
+            elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+                self._mount(scoped, stmt.value, inner)
+                self._follow_call(
+                    scoped, stmt.value, inner, (*stack, id(func)), depth + 1
+                )
+            elif not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for node in ast.walk(stmt):
+                    if (
+                        isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in ("include_router", "add_api_route")
+                    ):
+                        self.skip(Source(fmod.rel, node.lineno), DYNAMIC)
+
+    def _resolve_scoped(
+        self, mod: _Module, bindings: dict[str, _Router], expr: ast.AST
+    ) -> _Router | None:
+        if isinstance(expr, ast.Name) and expr.id in bindings:
+            return bindings[expr.id]
+        return self.resolve(mod, expr)
+
+    def _mount(
+        self, mod: _Module, call: ast.Call, bindings: dict[str, _Router]
+    ) -> None:
+        if not isinstance(call.func, ast.Attribute):
+            return
+        if call.func.attr != "include_router":
+            return
+        router = self._resolve_scoped(mod, bindings, call.func.value)
+        target = _arg(call, 0, "router")
+        if router is None or target is None:
+            return
+        prefix = (
+            "" if _kw(call, "prefix") is None else _const_str(mod, _kw(call, "prefix"))
+        )
+        self._handled.add((mod.rel, call.lineno))
+        router.includes.append(
+            _Include(
+                target,
+                prefix,
+                _str_list(_kw(call, "tags")),
+                Source(mod.rel, call.lineno),
+                mod,
+                self._resolve_scoped(mod, bindings, target),
+            )
+        )
+
     # -- phase 3: walk from each app
     def endpoints(self) -> tuple[list[Endpoint], bool]:
+        for source, reason in self._deferred:
+            if (source.file, source.line) not in self._handled:
+                self.skip(source, reason)
+        self._deferred = []
         apps = [r for m in self.modules for r in m.routers.values() if r.kind == "app"]
         reached: set[tuple[str, str]] = set()
         out: list[Endpoint] = []
@@ -653,10 +774,11 @@ class _Discovery:
                         body,
                         notes,
                         self._response_fields(route),
+                        self._return_keys(route),
                     )
                 )
         for inc in router.includes:
-            child = self.resolve(inc.mod, inc.target)
+            child = inc.resolved or self.resolve(inc.mod, inc.target)
             if child is None:
                 self.skip(
                     inc.source, "include_router target is not statically resolvable"
@@ -672,6 +794,31 @@ class _Discovery:
                     reached,
                     out,
                 )
+
+    @staticmethod
+    def _return_keys(route: _Route) -> list[str]:
+        """String keys of the handler's own first `return {...}` literal.
+
+        A nested function, lambda or class is not searched: its `return` is not
+        the handler's response.
+        """
+        if route.func is None:
+            return []
+        pending: list[ast.AST] = list(route.func.body)
+        while pending:
+            node = pending.pop(0)
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+            ):
+                continue
+            if isinstance(node, ast.Return) and isinstance(node.value, ast.Dict):
+                return [
+                    k.value
+                    for k in node.value.keys
+                    if isinstance(k, ast.Constant) and isinstance(k.value, str)
+                ]
+            pending[:0] = list(ast.iter_child_nodes(node))
+        return []
 
     def _response_fields(self, route: _Route) -> list[str]:
         if route.response is None or route.fmod is None:

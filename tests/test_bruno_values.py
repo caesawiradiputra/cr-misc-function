@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -250,6 +251,24 @@ def run_js(script: str, iterations: int = 1, env: str = "DEV"):
     return json.loads(done.stdout)
 
 
+def bodies(result, runs: int = 1):
+    """Request bodies as Bruno sends them: the Body tab text with each `{{var}}` replaced by
+    the variable the before-request script set (raw insertion, no escaping), or the
+    `req.setBody` value for list bodies."""
+    out = []
+    for run in run_js(result.script, runs):
+        if result.body_template is None:
+            out.append(run["body"])
+        else:
+            values: dict[str, object] = run["vars"]
+
+            def fill(m: re.Match[str], values: dict[str, object] = values) -> str:
+                return str(values[m.group(1)])
+
+            out.append(json.loads(re.sub(r"\{\{(\w+)\}\}", fill, result.body_template)))
+    return out
+
+
 def validator(variant: str, text: str, model: str):
     mod = pydantic_mod(variant)
     text = text.replace("from pydantic import", f"from {mod.__name__} import")
@@ -267,16 +286,15 @@ def test_supported_constraints_hold(disc, vals, tmp_path, variant):
     check = validator(variant, text, "Payload")
     result = vals.random_request(ep)
     assert result.incomplete == [], result.incomplete
-    runs = run_js(result.script, 400)
-    for run in runs:
-        body = run["body"]
+    all_bodies = bodies(result, 400)
+    for body in all_bodies:
         check(body)
         assert body["short"] and len(body["short"]) <= 2
         assert len(body["tiny"]) == 1
         assert 2 <= len(body["name"]) <= 4
         assert body["step"] % 10 == 0
-    assert any(r["body"]["inners"] for r in runs)
-    assert {r["body"]["count"] for r in runs} == {5, 6, 7, 8, 9}
+    assert any(b["inners"] for b in all_bodies)
+    assert {b["count"] for b in all_bodies} == {5, 6, 7, 8, 9}
 
 
 @needs_node
@@ -286,8 +304,8 @@ def test_regex_subset_supported(disc, vals, tmp_path, variant):
     check = validator(variant, text, "Rx")
     result = vals.random_request(ep)
     assert result.incomplete == [], result.incomplete
-    for run in run_js(result.script, 200):
-        check(run["body"])
+    for body in bodies(result, 200):
+        check(body)
 
 
 @needs_node
@@ -299,7 +317,7 @@ def test_unsupported_or_contradictory_gives_todo_and_incomplete(
     result = vals.random_request(ep)
     assert {i.field for i in result.incomplete} == {"a", "b", "c", "d", "e", "f", "g"}
     assert all(i.reason for i in result.incomplete)
-    body = run_js(result.script, 5)[0]["body"]
+    body = bodies(result, 5)[0]
     assert all(body[k] == "TODO" for k in "abcdefg")
     assert body["ok"] in (1, 2, 3)
 
@@ -343,33 +361,36 @@ def test_depth_limit_gives_todo(disc, vals, tmp_path):
     eps = {(e.method, e.path): e for e in disc.discover(root).endpoints}
     result = vals.random_request(eps[("POST", "/deep")])
     assert [i.field for i in result.incomplete] == ["l2.l3.l4"]
-    body = run_js(result.script, 3)[0]["body"]
+    body = bodies(result, 3)[0]
     assert body["l2"]["l3"]["l4"] == "TODO"
 
 
 @needs_node
-def test_body_is_one_object_without_per_field_variables(disc, vals, tmp_path):
+def test_object_body_is_written_with_variables_and_a_list_body_uses_set_body(
+    disc, vals, tmp_path
+):
     root = tmp_path / "bodyobj"
     fx.write_files(root, fx.PARAMS_APP_FILES)
     eps = {(e.method, e.path): e for e in disc.discover(root).endpoints}
     result = vals.random_request(eps[("POST", "/customers")])
-    assert result.vars == []
-    run = run_js(result.script, 20)[0]
-    assert run["vars"] == {}
-    body = run["body"]
+    assert (
+        result.body_template is not None and "{{random_name}}" in result.body_template
+    )
+    assert "req.setBody" not in result.script
+    body = bodies(result, 20)[0]
     assert isinstance(body["address"], dict) and isinstance(body["previous"], list)
     assert 1 <= len(body["name"]) <= 30
     bulk = vals.random_request(eps[("POST", "/bulk")])
-    assert isinstance(run_js(bulk.script, 1)[0]["body"], list)
+    assert bulk.body_template is None and "req.setBody" in bulk.script
+    assert isinstance(bodies(bulk, 1)[0], list)
 
 
 @needs_node
 def test_same_field_name_in_two_models_no_collision(disc, vals, tmp_path):
     ep, _ = discover_model(disc, tmp_path, MODELS, "Payload", "v2")
-    runs = run_js(vals.random_request(ep).script, 100)
-    assert all(len(r["body"]["inner"]["code"]) == 3 for r in runs)
-    assert all(len(r["body"]["other"]["code"]) == 6 for r in runs)
-    assert all(r["vars"] == {} for r in runs)
+    runs = bodies(vals.random_request(ep), 100)
+    assert all(len(b["inner"]["code"]) == 3 for b in runs)
+    assert all(len(b["other"]["code"]) == 6 for b in runs)
 
 
 @needs_node
@@ -411,3 +432,30 @@ def test_enum_member_with_double_brace_is_todo_in_random_mode():
     res = val.random_request(ep)
     assert "{{" not in res.script
     assert any(i.field == "sel" for i in res.incomplete)
+
+
+# ---- review of the body-in-the-Body-tab change
+
+
+@needs_node
+def test_body_field_never_shares_a_variable_with_a_query_parameter(disc, vals):
+    f = disc.FieldSpec("limit", "str", True, None, {"max_length": 3})
+    model = disc.ModelSpec("B", [f], disc.Source("a.py", 1))
+    q = disc.Param("limit", "query", "int", True, None, {"ge": 1, "le": 5})
+    ep = disc.Endpoint("POST", "/x", [], "h", None, disc.Source("a.py", 2), [q], model)
+    result = vals.random_request(ep)
+    assert len(result.vars) == len(set(result.vars)) == 2
+    run = run_js(result.script, 50)
+    assert all(1 <= r["vars"]["random_limit"] <= 5 for r in run)
+    assert all(len(b["limit"]) <= 3 for b in bodies(result, 50))
+
+
+def test_enum_value_with_double_brace_in_a_body_field_is_todo(disc, vals):
+    f = disc.FieldSpec("kind", "str", True, None, {"enum": ["ok", "{{evil}}"]})
+    model = disc.ModelSpec("B", [f], disc.Source("a.py", 1))
+    ep = disc.Endpoint("POST", "/x", [], "h", None, disc.Source("a.py", 2), [], model)
+    result = vals.random_request(ep)
+    assert "{{evil}}" not in result.script and "{{evil}}" not in (
+        result.body_template or ""
+    )
+    assert [i.field for i in result.incomplete] == ["kind"]

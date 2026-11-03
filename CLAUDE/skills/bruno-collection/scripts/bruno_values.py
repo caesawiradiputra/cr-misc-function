@@ -182,6 +182,9 @@ class RandomResult:
     script: str
     vars: list[str] = field(default_factory=list)
     incomplete: list[Incomplete] = field(default_factory=list)
+    # JSON for the Body tab that refers to the random_<field> variables; None when
+    # the body is built by req.setBody (a list body, or a model plus embedded fields).
+    body_template: str | None = None
 
 
 def _regex_expr(pattern: str) -> str | None:
@@ -541,6 +544,43 @@ def random_js(spec: Param | ModelSpec, name_prefix: str = "random_") -> RandomRe
     )
 
 
+TEXT_KINDS = {"str", "uuid", "date", "datetime", "email", "url"}
+
+
+def _body_vars(
+    gen: _Gen, fields: list, prefix: str, lines: list[str], names: list[str]
+) -> str:
+    """One variable per body field; returns the Body tab JSON that refers to them.
+
+    A plain text field is `"name": "{{var}}"`; a number, bool, list or object is
+    `"name": {{var}}` with the variable holding JSON text, so the sent body keeps
+    the field's real type. A variable is never shared with a query, path or header
+    parameter of the same name (it would overwrite that value with a value that
+    breaks its constraints): a clash gets the prefix `random_body_`.
+    """
+    rows: list[str] = []
+    for name, type_name, c, is_list, children, unexpanded in fields:
+        var = _var(prefix, name)
+        if var in names:
+            var = _var(prefix + "body_", name)
+        expr = gen.value(name, type_name, c, is_list, children, unexpanded)
+        enum = c.get("enum")
+        text = (
+            not is_list
+            and children is None
+            and not unexpanded
+            and not (isinstance(enum, list) and enum)
+            and not re.fullmatch(r"list\[.*\]", type_name)
+            and KINDS.get(type_name.lower()) in TEXT_KINDS
+        )
+        value = expr if text else f"JSON.stringify({expr})"
+        lines.append(f"bru.setVar({json.dumps(var)}, {value});")
+        names.append(var)
+        ref = "{{" + var + "}}"
+        rows.append(f"  {json.dumps(name)}: " + (f'"{ref}"' if text else ref))
+    return "{\n" + ",\n".join(rows) + "\n}" if rows else "{}"
+
+
 def random_request(endpoint: Endpoint, name_prefix: str = "random_") -> RandomResult:
     """One script for the whole request: parameter variables and the body object."""
     gen = _Gen()
@@ -555,7 +595,14 @@ def random_request(endpoint: Endpoint, name_prefix: str = "random_") -> RandomRe
             f"bru.setVar({json.dumps(var)}, {gen.value(p.name, p.type_name, p.constraints)});"
         )
         names.append(var)
-    if endpoint.body is not None:
+    template: str | None = None
+    if endpoint.body is not None and not endpoint.body.is_list and not scalars:
+        fields = [
+            (f.name, f.type_name, f.constraints, f.is_list, f.children, f.unexpanded)
+            for f in endpoint.body.fields
+        ]
+        template = _body_vars(gen, fields, name_prefix, lines, names)
+    elif endpoint.body is not None:
         expr = gen.model(endpoint.body)
         if endpoint.body.is_list:
             expr = f"Array.from({{ length: rnd(1, 2) }}, () => ({expr}))"
@@ -568,9 +615,8 @@ def random_request(endpoint: Endpoint, name_prefix: str = "random_") -> RandomRe
                 )
             )
     elif scalars:
-        items = [
-            f"{json.dumps(p.name)}: {gen.value(p.name, p.type_name, p.constraints)}"
-            for p in scalars
+        fields = [
+            (p.name, p.type_name, p.constraints, False, None, False) for p in scalars
         ]
-        lines.append("req.setBody({ " + ", ".join(items) + " });")
-    return RandomResult(_wrap(lines), names, gen.incomplete)
+        template = _body_vars(gen, fields, name_prefix, lines, names)
+    return RandomResult(_wrap(lines), names, gen.incomplete, template)
