@@ -390,3 +390,4 @@ def test_environment_is_documented_as_optional_with_organization_secrets() -> No
     assert "Create it when you want" in standard
     assert "required only when" in standard
     assert "so create it properly" not in standard
+    assert "tested on 2026-11-03" in standard and "Not tested yet" in standard
