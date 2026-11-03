@@ -48,7 +48,7 @@ The scripts copy exactly two things: the DAG file `airflow/dags/<DAG_EXECUTOR>` 
 | --- | --- | --- |
 | 1 | The App's private key and ID are stored only as an organization secret or as a secret of the Environment `airflow-sync` (limited to the branches `master`, `dev` and `sit`). Never create it as a repository-level secret. An organization secret shared with the DAG repositories is the default because an admin manages it centrally; it trades the branch restriction for that (section 4). | A repository-level secret is readable from every branch and bypasses the Environment's branch restriction, with no central owner. An Environment secret overrides a repo secret of the same name, so the repo-level copy adds exposure and no function. |
 | 2 | The workflow's own `GITHUB_TOKEN` is `contents: read`. | Write access to the deployment repo comes only from that secret. |
-| 3 | Only `master`, `dev` and `sit` reach the `sync` job (checked by `if:` as well as by the Environment). Any other branch runs the `dry-run` job, which has no `environment:` and no `secrets.*`. | A feature branch must be able to show what a sync would copy without being able to push. |
+| 3 | Only `master`, `dev` and `sit` reach the `sync` job (checked by `if:`, and also by the Environment when it limits the deployment branches). Any other branch runs the `dry-run` job, which has no `environment:` and no `secrets.*`. | A feature branch must be able to show what a sync would copy without being able to push. |
 | 4 | `master` publishes through a PR, never a direct push. `dev` and `sit` push directly. | Production DAGs are reviewed by Data Ops; the dev branch is shared with other teams and changes often. |
 | 5 | The bot branch `sync/<slug>` is pushed with `--force-with-lease=<branch>:<current remote tip>`, the tip read with `git ls-remote`. | A fresh clone has no tracking ref for that branch, so a bare `--force-with-lease` has nothing to compare and refuses. An empty tip means the branch must not exist yet. |
 | 6 | A direct push retries once after `git pull --rebase`. | Other teams push to the same branch at any time. |
@@ -73,7 +73,7 @@ The sync needs to write to a repository other than its own, which the workflow's
 | Who acts in the deployment repo | The App (PRs and commits show the App as author) |
 | Needs an org admin | Yes, once, to create and install the App |
 
-The `sync` job is on the Environment `airflow-sync` (the job names it; GitHub creates it without branch limits if it is missing, so create it properly). In the DAG repository: **Settings > Environments > New environment** named `airflow-sync`, *Deployment branches and tags* set to *Selected branches and tags* with `master`, `dev` and `sit`.
+The `sync` job names the Environment `airflow-sync`. **With organization secrets (the default) creating it is optional:** GitHub creates it on the first run without branch limits, and the job's `if:` already limits the branches to `master`, `dev` and `sit`; the Environment adds nothing to who can read an organization secret. Create it when you want a second guard (*Deployment branches and tags* set to *Selected branches and tags* with `master`, `dev` and `sit`), required approvers or a deployment history: in the DAG repository, **Settings > Environments > New environment** named `airflow-sync`. It is **required only when** the key is an Environment secret (4.1, step 5), because then only the Environment's branch restriction protects it.
 
 ### 4.1 Create and install the App
 
@@ -127,7 +127,7 @@ DAG_SLUG=my-dag DAG_EXECUTOR=my_dag_executor.py DAG_UTILS=my_dag_utils \
 Do these in order; each one proves a different rule.
 
 1. **Feature branch dispatch:** `gh workflow run sync-dags.yml --ref <feature-branch>`. Only the `dry-run` job must run, and its summary lists the two paths. This proves rule 3.
-2. **`sit` dispatch or push:** the `sync` job must succeed, with a new commit on the dev branch of the deployment repo, and a rerun must say *No changes to publish*. This proves the token, the Environment and rule 12.
+2. **`sit` dispatch or push:** the `sync` job must succeed, with a new commit on the dev branch of the deployment repo, and a rerun must say *No changes to publish*. This proves the token and the branch rules (and the Environment, if you created it).
 3. **`master` push (the real release):** a PR from `sync/<slug>` into `master` must open, and a second push must update the same PR instead of opening another. This path cannot be tested earlier without publishing a production DAG.
 4. **Negative check:** `gh secret list` shows no `DA_AIRFLOW_SYNC_TOKEN` and no `DA_AIRFLOW_SYNC_PRIVATE_KEY` at repository level (rule 1); an organization-level App key is expected only when section 4.1 chose it. Also check that the *Create the deployment repository token* step succeeds and that the PR in step 3 is authored by the App.
 

@@ -379,3 +379,14 @@ def test_workflow_creates_the_token_after_resolving_the_target_and_before_clonin
 
 def test_the_personal_token_variant_is_gone() -> None:
     assert not (TEMPLATE / "sync-dags.github-app.yml").exists()
+
+
+def test_environment_is_documented_as_optional_with_organization_secrets() -> None:
+    standard = (
+        Path(__file__).resolve().parents[1]
+        / "docs/guidelines/AIRFLOW-DAG-SYNC-STANDARD.md"
+    ).read_text()
+    assert "optional" in TEXT.lower() and "organization secrets" in TEXT
+    assert "Create it when you want" in standard
+    assert "required only when" in standard
+    assert "so create it properly" not in standard

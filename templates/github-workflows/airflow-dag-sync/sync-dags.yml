@@ -22,12 +22,14 @@
 #   push to dev or sit -> pushes straight to the deployment repository's development branch
 #   any other branch   -> dry run only: no token, nothing is pushed
 #
-# Required in this repository (Settings > Environments):
+# Required in this repository:
 #   - the secrets DA_AIRFLOW_SYNC_APP_ID (the GitHub App's ID) and DA_AIRFLOW_SYNC_PRIVATE_KEY
-#     (its private key, PEM), either as organization secrets shared with this repository, or in
-#     the Environment "airflow-sync" (deployment branches limited to master, dev and sit). The
-#     organization secrets are easier to manage but readable from every branch, so they bypass
-#     the Environment's branch restriction.
+#     (its private key, PEM). Default: organization secrets shared with this repository; the
+#     Environment "airflow-sync" is then optional (GitHub creates it on the first run; create it
+#     yourself, with deployment branches limited to master, dev and sit, only for a second guard).
+#     Organization secrets are readable from every branch, so they bypass the Environment's
+#     branch restriction. Stricter: store both as secrets of the Environment "airflow-sync",
+#     which is then required.
 #   The App is installed on the deployment repository only, with Contents and Pull requests
 #   read and write. Do NOT also store the key as a repository-level secret.
 
@@ -44,7 +46,8 @@ on:
   workflow_dispatch:
 
 # The built-in token only reads this repository. Write access to the deployment repository comes
-# from a GitHub App token created in the job, using the "airflow-sync" Environment's key.
+# from a GitHub App token created in the job, using the App key from the organization secrets
+# or the "airflow-sync" Environment.
 permissions:
   contents: read
 
