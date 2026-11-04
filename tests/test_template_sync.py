@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ SCRIPT = ROOT / "CLAUDE/skills/template-sync/scripts/template_sync.py"
 spec = importlib.util.spec_from_file_location("template_sync", SCRIPT)
 assert spec and spec.loader
 ts = importlib.util.module_from_spec(spec)
+sys.modules["template_sync"] = ts  # dataclasses look the module up here
 spec.loader.exec_module(ts)
 
 
@@ -71,8 +73,9 @@ def apply(source: Path, repo: Path) -> None:
 
 
 def status(source: Path, repo: Path, tid: str) -> str:
-    manifest = ts.load_manifest(source)
-    return ts.compare(source, repo, ts.get(manifest, tid))[0]  # type: ignore[no-any-return]
+    sources = ts.find_sources([str(source)])
+    src, template = ts.get(sources, tid)
+    return str(ts.compare(src, repo, template)[0])
 
 
 def test_bump_writes_marker_and_digest_that_verify_accepts(source: Path) -> None:
@@ -186,9 +189,168 @@ def test_unknown_template_and_missing_source_are_reported(
 
 def test_the_real_registry_is_consistent() -> None:
     """A template file changed without `bump` fails here, so the version is always honest."""
-    manifest = ts.load_manifest(ROOT)
-    assert ts.problems(ROOT, manifest) == []
-    assert {t["id"] for t in manifest["templates"]} >= {
-        "docker-image",
-        "airflow-dag-sync",
+    sources = ts.find_sources([str(ROOT)])
+    assert ts.problems(sources) == []
+    ids = {t["id"] for _, t in ts.entries(sources)}
+    assert ids >= {"docker-image", "airflow-dag-sync"}
+
+
+# ---- layout checks, deviations and several sources
+
+
+@pytest.fixture()
+def py_source(tmp_path: Path) -> Path:
+    """A second source: a layout template tied to rule ids, plus one rule heading."""
+    src = tmp_path / "pysource"
+    (src / "docs/standards/common").mkdir(parents=True)
+    (src / "docs/standards/common/layout.md").write_text(
+        "## C-LAYOUT-01 App folder\n\nRule text.\n\n## C-CFG-01 One settings module\n",
+        encoding="utf-8",
+    )
+    manifest = {
+        "schema": 1,
+        "templates": [
+            {
+                "id": "python-layout",
+                "title": "Python layout",
+                "kind": "layout",
+                "version": 0,
+                "expect": [
+                    {"path": "app/main.py", "rule": "C-LAYOUT-01"},
+                    {"path": "app/configs/config.py", "rule": "C-CFG-01"},
+                    {"path": "tests/test_*.py", "rule": "C-TEST-02"},
+                    {"path": "src", "rule": "C-LAYOUT-01", "absent": True},
+                ],
+            }
+        ],
     }
+    (src / "docs/standards/template-manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    assert ts.main(["bump", "python-layout", "--source", str(src), "--force"]) == 0
+    return src
+
+
+def layout(py_source: Path, repo: Path) -> list[tuple[str, str]]:
+    sources = ts.find_sources([str(py_source)])
+    _, template = ts.get(sources, "python-layout")
+    deviations, _ = ts.read_deviations(repo)
+    return list(ts.compare_layout(repo, template, deviations))
+
+
+def test_layout_reports_missing_and_forbidden_paths(
+    py_source: Path, repo: Path
+) -> None:
+    (repo / "app/configs").mkdir(parents=True)
+    (repo / "app/main.py").write_text("", encoding="utf-8")
+    (repo / "src").mkdir()
+    states = {line.split(" ")[0]: state for state, line in layout(py_source, repo)}
+    assert states["app/main.py"] == "ok"
+    assert states["app/configs/config.py"] == "drift"
+    assert states["tests/test_*.py"] == "drift"
+    assert states["src"] == "drift"
+
+
+def test_a_recorded_deviation_makes_drift_deliberate(
+    py_source: Path, repo: Path
+) -> None:
+    assert (
+        ts.main(
+            [
+                "accept",
+                "C-LAYOUT-01",
+                str(repo),
+                "--reason",
+                "installable library",
+                "--source",
+                str(py_source),
+            ]
+        )
+        == 0
+    )
+    (repo / "src").mkdir()
+    results = layout(py_source, repo)
+    src = next(line for state, line in results if line.startswith("src"))
+    assert ("deliberate", src) in results and "installable library" in src
+    missing_main = next(
+        (s for s, line in results if line.startswith("app/main.py")), ""
+    )
+    assert missing_main == "deliberate"  # the same rule covers the missing app/main.py
+
+
+def test_accept_refuses_unknown_ids_empty_reasons_and_duplicates(
+    py_source: Path, repo: Path
+) -> None:
+    base = ["--source", str(py_source)]
+    assert ts.main(["accept", "C-NOPE-99", str(repo), "--reason", "x", *base]) == 2
+    assert ts.main(["accept", "C-CFG-01", str(repo), "--reason", "  ", *base]) == 2
+    assert (
+        ts.main(["accept", "C-CFG-01", str(repo), "--reason", "own loader", *base]) == 0
+    )
+    assert ts.main(["accept", "C-CFG-01", str(repo), "--reason", "again", *base]) == 1
+    text = (repo / "docs/standards-deviations.md").read_text()
+    assert text.startswith("# Deviations from the standards")
+    assert text.count("`C-CFG-01`") == 1
+
+
+def test_malformed_bullets_are_invalid_not_deliberate(
+    py_source: Path, repo: Path
+) -> None:
+    path = repo / "docs/standards-deviations.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "- `C-CFG-01` no date or colon\n- `C-LAYOUT-01`: ok reason (2026-11-04)\n",
+        encoding="utf-8",
+    )
+    found, invalid = ts.read_deviations(repo)
+    assert list(found) == ["C-LAYOUT-01"] and len(invalid) == 1
+    assert ts.main(["deviations", str(repo), "--source", str(py_source)]) == 1
+
+
+def test_a_deviation_on_a_template_id_downgrades_stale_to_deliberate(
+    source: Path, repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    apply(source, repo)
+    (repo / ".github/a.yml").write_text(
+        "name: a\nvalue: 1\n", encoding="utf-8"
+    )  # unmarked
+    assert (
+        ts.main(["check", str(repo), "--source", str(source), "--only", "tpl-a"]) == 1
+    )
+    ts.main(
+        [
+            "accept",
+            "tpl-a",
+            str(repo),
+            "--reason",
+            "custom pipeline",
+            "--source",
+            str(source),
+        ]
+    )
+    capsys.readouterr()
+    assert (
+        ts.main(["check", str(repo), "--source", str(source), "--only", "tpl-a"]) == 0
+    )
+    assert "DELIBERATE" in capsys.readouterr().out
+
+
+def test_two_sources_are_read_together_and_duplicate_ids_are_refused(
+    source: Path, py_source: Path, repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    both = ["--source", str(source), "--source", str(py_source)]
+    assert ts.main(["list", *both]) == 0
+    out = capsys.readouterr().out
+    assert "tpl-a" in out and "python-layout" in out
+    assert ts.main(["verify", *both]) == 0
+    assert ts.main(["list", "--source", str(source), "--source", str(source)]) == 2
+
+
+def test_layout_digest_changes_force_a_bump(py_source: Path) -> None:
+    manifest_path = py_source / "docs/standards/template-manifest.json"
+    data = json.loads(manifest_path.read_text())
+    data["templates"][0]["expect"].append({"path": "Dockerfile", "rule": "C-DOCKER-01"})
+    manifest_path.write_text(json.dumps(data), encoding="utf-8")
+    assert ts.main(["verify", "--source", str(py_source)]) == 1
+    assert ts.main(["bump", "python-layout", "--source", str(py_source)]) == 0
+    assert ts.main(["verify", "--source", str(py_source)]) == 0
