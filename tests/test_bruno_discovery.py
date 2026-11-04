@@ -178,3 +178,46 @@ def test_mount_under_a_condition_or_a_recursive_call_is_still_reported(tmp_path)
     result = disc.discover(tmp_path)
     assert result.endpoints == []
     assert any("dynamically" in s.reason for s in result.skipped)
+
+
+def test_fstring_prefix_from_imported_getenv_default(disc, tmp_path: Path):
+    """Prefixes built as f-strings over config constants (`os.getenv` defaults) resolve."""
+    root = tmp_path / "repo"
+    (root / "app" / "routes").mkdir(parents=True)
+    (root / "app" / "__init__.py").write_text("")
+    (root / "app" / "routes" / "__init__.py").write_text("")
+    (root / "app" / "config.py").write_text(
+        "import os\n"
+        'REL = os.getenv("REL", "v1")\n'
+        'REL2 = os.environ.get("REL2", "v2")\n'
+        'DEFAULT = os.getenv("DEFAULT", REL)\n'
+        'NOENV = os.getenv("NOENV")\n'
+    )
+    (root / "app" / "routes" / "items.py").write_text(
+        "from fastapi import APIRouter\n"
+        'router = APIRouter(prefix="/items")\n'
+        '@router.get("/")\n'
+        "def items():\n    return {}\n"
+    )
+    (root / "app" / "routes" / "router.py").write_text(
+        "from fastapi import APIRouter\n"
+        "from ..config import REL, REL2, DEFAULT, NOENV\n"
+        "from . import items\n"
+        'router = APIRouter(prefix="/api")\n'
+        'router.include_router(items.router, prefix=f"/{REL}")\n'
+        'router.include_router(items.router, prefix=f"/{REL2}")\n'
+        'router.include_router(items.router, prefix=f"/{DEFAULT}-x")\n'
+        'router.include_router(items.router, prefix=f"/{NOENV}")\n'
+    )
+    (root / "app" / "main.py").write_text(
+        "from fastapi import FastAPI\n"
+        "from .routes import router\n"
+        "app = FastAPI()\n"
+        "app.include_router(router.router)\n"
+    )
+    result = disc.discover(root)
+    paths = {e.path for e in result.endpoints}
+    assert {"/api/v1/items/", "/api/v2/items/", "/api/v1-x/items/"} <= paths
+    # an env variable without a literal default stays unresolved and is reported
+    assert not any("None" in p for p in paths)
+    assert any("not a literal string" in s.reason for s in result.skipped)

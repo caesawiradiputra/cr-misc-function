@@ -194,6 +194,7 @@ class _Module:
     tree: ast.Module
     imports: dict[str, tuple[str, str | None]] = field(default_factory=dict)
     consts: dict[str, str] = field(default_factory=dict)
+    reg: dict[str, _Module] = field(default_factory=dict, repr=False)
     routers: dict[str, _Router] = field(default_factory=dict)
     classes: dict[str, ast.ClassDef] = field(default_factory=dict)
     functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = field(
@@ -280,14 +281,55 @@ def _flatten(node: ast.AST) -> list[str] | None:
     return None
 
 
+def _imported_const(mod: _Module, name: str, depth: int = 0) -> str | None:
+    """A string constant imported by name (`from .config import NAME`), through re-exports."""
+    if depth > 4 or name not in mod.imports:
+        return None
+    base, attr = mod.imports[name]
+    other = mod.reg.get(base)
+    if attr is None or other is None:
+        return None
+    if attr in other.consts:
+        return other.consts[attr]
+    return _imported_const(other, attr, depth + 1)
+
+
 def _const_str(mod: _Module, node: ast.AST | None) -> str | None:
+    """A string known without running the code.
+
+    Handles literals, module constants (also imported ones), `+`, f-strings made of such
+    parts, and `os.getenv("X", "default")` / `os.environ.get("X", "default")`, whose
+    literal default is taken (the running service may set the variable to another value).
+    """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.Name):
-        return mod.consts.get(node.id)
+        found = mod.consts.get(node.id)
+        return found if found is not None else _imported_const(mod, node.id)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         left, right = _const_str(mod, node.left), _const_str(mod, node.right)
         return None if left is None or right is None else left + right
+    if isinstance(node, ast.JoinedStr):
+        parts: list[str] = []
+        for item in node.values:
+            if isinstance(item, ast.FormattedValue):
+                if item.conversion != -1 or item.format_spec is not None:
+                    return None
+                value = _const_str(mod, item.value)
+            else:
+                value = _const_str(mod, item)
+            if value is None:
+                return None
+            parts.append(value)
+        return "".join(parts)
+    if isinstance(node, ast.Call):
+        name = _flatten(node.func)
+        if (
+            name
+            and name[-1] in ("getenv", "get")
+            and (name in (["os", "getenv"], ["getenv"], ["os", "environ", "get"]))
+        ):
+            return _const_str(mod, _arg(node, 1, "default"))
     return None
 
 
@@ -370,11 +412,19 @@ class _Discovery:
             dotted, package = _dotted(rel)
             mod = _Module(rel, dotted, package, tree)
             self.modules.append(mod)
+            mod.reg = self.registry
             self.registry[dotted] = mod
             if dotted.startswith("src."):
                 self.registry.setdefault(dotted[4:], mod)
         for mod in self.modules:
             self._collect_module(mod)
+        # Constants may depend on constants of other modules: two rounds settle chains
+        # such as `DEFAULT = os.getenv("X", RELEASE)`.
+        for _ in range(2):
+            for mod in self.modules:
+                self._collect_consts(mod)
+        for mod in self.modules:
+            self._collect_routers(mod)
 
     def _collect_module(self, mod: _Module) -> None:
         for stmt in mod.tree.body:
@@ -395,14 +445,25 @@ class _Discovery:
                 mod.classes[stmt.name] = stmt
             elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 mod.functions[stmt.name] = stmt
-            elif isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+
+    def _collect_consts(self, mod: _Module) -> None:
+        for stmt in mod.tree.body:
+            if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
                 target = stmt.targets[0]
-                if not isinstance(target, ast.Name):
-                    continue
-                value = _const_str(mod, stmt.value)
-                if value is not None:
-                    mod.consts[target.id] = value
-                elif isinstance(stmt.value, ast.Call):
+                if isinstance(target, ast.Name):
+                    value = _const_str(mod, stmt.value)
+                    if value is not None:
+                        mod.consts[target.id] = value
+
+    def _collect_routers(self, mod: _Module) -> None:
+        for stmt in mod.tree.body:
+            if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+                target = stmt.targets[0]
+                if (
+                    isinstance(target, ast.Name)
+                    and target.id not in mod.consts
+                    and isinstance(stmt.value, ast.Call)
+                ):
                     self._maybe_router(mod, target.id, stmt.value, stmt.lineno)
 
     @staticmethod

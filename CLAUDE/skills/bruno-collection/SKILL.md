@@ -96,6 +96,7 @@ Every workflow ends by running the OKF lint on `docs/` and the secret scan on th
 ## Limits
 
 - A router mounted inside a plain function that the app module calls with the app (for example `init(app)` → `init_routers(app)` with `from x import router` inside) is followed, to depth 4, through straight-line statements and function-local imports. Mounts under `if`/`for`/`try`/`with`, in decorated functions, and app factories (`app = create_app()`) are not followed and are listed as "not statically resolvable".
+- Router prefixes may be literals, module constants (also imported ones), `+`, f-strings of those, or `os.getenv("X", "default")` / `os.environ.get("X", "default")`; the literal default is used, so the running service may expose another prefix when the variable is set. A variable with no literal default stays "not statically resolvable".
 - FastAPI only; routes registered dynamically are listed as "found but not statically resolvable", and routers never mounted on an app as "not mounted". Reading an existing `openapi.json` is out of scope for version 1.
 - Multipart form bodies are out of scope for version 1.
 - A declared trailing slash is dropped from the request URL (`@app.get("/users/")` is requested as `/users`); the API may answer with a redirect, or a 404 when slash redirects are off. Check the report.
