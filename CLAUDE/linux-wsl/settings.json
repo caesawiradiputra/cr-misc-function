@@ -106,7 +106,8 @@
     "command": "sh ~/.claude/statusline-command.sh"
   },
   "env": {
-    "NO_PROXY": "api.anthropic.com,claude.ai,claude.com,platform.claude.com,.anthropic.com,.claude.ai,.claude.com,mcp.context7.com"
+    "NO_PROXY": "api.anthropic.com,claude.ai,claude.com,platform.claude.com,.anthropic.com,.claude.ai,.claude.com,mcp.context7.com,mcp.atlassian.com,.atlassian.com,.atlassian.net,github.com,.github.com,.githubusercontent.com",
+    "no_proxy": "api.anthropic.com,claude.ai,claude.com,platform.claude.com,.anthropic.com,.claude.ai,.claude.com,mcp.context7.com,mcp.atlassian.com,.atlassian.com,.atlassian.net,github.com,.github.com,.githubusercontent.com"
   },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true,
