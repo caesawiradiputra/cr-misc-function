@@ -57,11 +57,14 @@ import json
 import logging
 import os
 import sys
+import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, TypedDict
 
 from loguru import logger
+
+from app.configs.log_redaction import collect_secret_values, redact
 
 # Import LoggingConfig schema and DEBUG flag
 try:
@@ -132,6 +135,39 @@ def _location_filter(record: dict) -> bool:
         record["name"], record["function"], record["line"], width=60
     )
     return True
+
+
+def _make_redaction_patcher(secrets: list[str]):
+    """Build a loguru patcher that masks secrets in every record before any sink sees it.
+
+    The message and string values in ``extra`` are masked. An exception is turned into
+    masked text appended to the message, so the console, JSON and file sinks all get
+    the same safe output (loguru's own traceback rendering would bypass the patcher).
+
+    Args:
+        secrets: Exact secret values to mask (see ``collect_secret_values``).
+
+    Returns:
+        A function that edits the record in place.
+    """
+
+    def _patch(record: dict) -> None:
+        message = record["message"]
+        exception = record["exception"]
+        if exception and exception.type is not None:
+            trace = "".join(
+                traceback.format_exception(
+                    exception.type, exception.value, exception.traceback
+                )
+            ).rstrip()
+            message = f"{message}\n{trace}"
+            record["exception"] = None
+        record["message"] = redact(message, secrets)
+        for key, value in record["extra"].items():
+            if isinstance(value, str):
+                record["extra"][key] = redact(value, secrets)
+
+    return _patch
 
 
 class LogFileEntry(TypedDict):
@@ -348,6 +384,9 @@ def init_logging(script_name: str = "app", cleanup: bool = True) -> None:
 
     # Remove default handler to avoid duplicates
     logger.remove()
+
+    # Mask secrets (secret-named env values, URL passwords, password=...) in every sink
+    logger.configure(patcher=_make_redaction_patcher(collect_secret_values()))
 
     # Setup standard logging bridge first (captures third-party library logs)
     _setup_std_logging_bridge(level=log_level)
