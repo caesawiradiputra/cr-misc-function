@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "templates": [
+    {
+      "id": "docker-image",
+      "title": "Docker image CI (build and push to ACR)",
+      "version": 1,
+      "standard": "docs/guidelines/DOCKER-IMAGE-CI-STANDARD.md",
+      "skill": "github-actions-templates",
+      "files": [
+        {
+          "src": "templates/github-workflows/docker-image.yml",
+          "dest": ".github/workflows/docker-image.yml",
+          "marker": true
+        }
+      ],
+      "digest": "47fb3bc4c1a3dec5ac701440acf240b042337a123519a9a91c64b609115df711"
+    },
+    {
+      "id": "airflow-dag-sync",
+      "title": "Airflow DAG sync to the deployment repository (GitHub App token)",
+      "version": 1,
+      "standard": "docs/guidelines/AIRFLOW-DAG-SYNC-STANDARD.md",
+      "skill": "github-actions-templates",
+      "files": [
+        {
+          "src": "templates/github-workflows/airflow-dag-sync/sync-dags.yml",
+          "dest": ".github/workflows/sync-dags.yml",
+          "marker": true
+        },
+        {
+          "src": "templates/github-workflows/airflow-dag-sync/scripts/sync_dags.sh",
+          "dest": "scripts/sync_dags.sh"
+        },
+        {
+          "src": "templates/github-workflows/airflow-dag-sync/scripts/publish_dags.sh",
+          "dest": "scripts/publish_dags.sh"
+        }
+      ],
+      "digest": "65454c0aa0fe7e0f56eab57c767c97c5d970e1181229893d795e81a6ec24e528"
+    },
+    {
+      "id": "ruff",
+      "title": "Ruff lint and format configuration",
+      "version": 1,
+      "files": [
+        {
+          "src": "templates/ruff.toml",
+          "dest": "ruff.toml",
+          "marker": true
+        }
+      ],
+      "digest": "9c72bbf53c293136be313fe0d08f5413831eebb72e4d179f309ef18912c5f789"
+    },
+    {
+      "id": "mypy",
+      "title": "mypy configuration",
+      "version": 1,
+      "files": [
+        {
+          "src": "templates/mypy.ini",
+          "dest": "mypy.ini",
+          "marker": true
+        }
+      ],
+      "digest": "93f8ebe42221c27a0c08d0f13f51b6ebbfa5d3cc34b62eead4782095b3e487c7"
+    },
+    {
+      "id": "vscode-settings",
+      "title": "VS Code workspace settings",
+      "version": 1,
+      "files": [
+        {
+          "src": "templates/vscode/settings.json",
+          "dest": ".vscode/settings.json",
+          "marker": true
+        }
+      ],
+      "digest": "3ca86c70d1a60b52893d41e49555949a863228d1db617a2ff20b66234dee316e"
+    },
+    {
+      "id": "vscode-extensions",
+      "title": "VS Code recommended extensions",
+      "version": 1,
+      "files": [
+        {
+          "src": "templates/vscode/extensions.json",
+          "dest": ".vscode/extensions.json",
+          "marker": true
+        }
+      ],
+      "digest": "1e9d447785111859e0c8f96a224503349accd191888202018b518e6e2e80e1c9"
+    }
+  ]
+}
