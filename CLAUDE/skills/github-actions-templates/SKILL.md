@@ -20,6 +20,8 @@ The `cr-misc-function` repository (commonly checked out at `~/repo/cr-misc-funct
 
 ## Workflow
 
+To see which standard files a repo is missing or has out of date, use the `template-sync` skill first; it reads `templates/manifest.json` and the version marker (`# template: <id>@<n>`) on the first line of each applied file. Keep that line when you edit.
+
 1. **Read the repo's current state first.** `ls .github/workflows/`, then read the file you will change. Check `git status` (check state before writing). If the repo already has the workflow, this is an *update*: diff it against the template and list the differences before editing.
 2. **Pick the template** from the table and read its standard, not only the YAML. The standard's *Why* column explains rules that look optional.
 3. **New repo:** copy the template to `.github/workflows/` under the standard's file name, replace every `TODO` and `<PLACEHOLDER>`, and check the repo meets the prerequisites the standard lists (for Docker: a Dockerfile that pins its base image by digest and its tools, `.env*` in `.dockerignore`; for the DAG sync: the `dags/<DAG_EXECUTOR>` plus `dags/<DAG_UTILS>/` layout and the token variant).

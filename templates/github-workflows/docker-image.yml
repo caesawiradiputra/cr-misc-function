@@ -1,3 +1,4 @@
+# template: docker-image@1
 name: Docker Image CI
 
 # STANDARD TEMPLATE — see docs/guidelines/DOCKER-IMAGE-CI-STANDARD.md for the rules behind each choice.
