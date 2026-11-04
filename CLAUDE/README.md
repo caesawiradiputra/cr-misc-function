@@ -99,7 +99,7 @@ file into `~/.claude/`:
 
 | Placeholder | Where | Replace with |
 | --- | --- | --- |
-| `<WINDOWS_USERNAME>` | `windows/settings.json`, `CLAUDE.md`, `skills/jira-ticket-kickoff`, `skills/jira-in-da-sync` | The Windows account name |
+| `<WINDOWS_USERNAME>` | `windows/settings.json`, `CLAUDE.md`, `skills/jira-ticket-kickoff`, `skills/jira-in-da-sync`, `skills/bruno-collection` | The Windows account name |
 | `<ATLASSIAN_SITE>` | `skills/jira-ticket-kickoff`, `skills/bast-*` | The Atlassian site name (`<site>.atlassian.net`) |
 | `<ATLASSIAN_CLOUD_ID>` | `skills/bast-*` | The site's cloud ID (from `getAccessibleAtlassianResources`) |
 | `PROJ` (as in `PROJ-1234`) | `skills/jira-ticket-kickoff`, `skills/bast-*` | Your own Jira project key |
@@ -244,6 +244,7 @@ description. You can also call them by name.
 | `graphify-setup` | Set up Graphify (code knowledge graph) safely in a repo or every child repo of an umbrella folder: `.graphifyignore` with secret patterns, `graphify-out/` in `.gitignore`, AST-only build with no LLM and no hooks, adds a marked "Code graph (Graphify)" section to the repo's `CLAUDE.md` so Claude uses it, optional cross-repo merge |
 | `github-actions-templates` | Start any GitHub Actions workflow (Docker image to ACR, Airflow DAG sync) from the standard template in this repo instead of hand-writing one: picks the template and standard, fills the placeholders, tests with `gh workflow run`, reports drift when updating an existing workflow |
 | `prompt-coach` | Coach your written English prompts: a `UserPromptSubmit` hook saves each prompt locally (secrets masked, nothing leaves the machine), Claude adds a short note after each reply (how it was understood, a clearer sentence, other possible readings) and a full review goes to `~/.claude/prompt-coach/YYYY-MM.md`; `/prompt-coach on\|off\|status\|show`. WSL/bash only; includes the `coach.py` helper. Off until you run `/prompt-coach on`. Design: `docs/superpowers/specs/2026-11-02-prompt-coach-design.md` |
+| `bruno-collection` | Generate and maintain one Bruno API collection per repo from a FastAPI repo's code: a fixed and a random request per endpoint, `LOCAL`, `DEV` and `PROD` environments (secrets empty), an optional per-environment token workflow, an OKF `docs/` bundle, add-only `sync`, user-owned external requests that survive a reset, and a read-only `scan` for plain-text secrets that never prints a value. Includes the `bruno_collection.py` helper. Output goes to your Bruno folder (`/mnt/c/Users/<WINDOWS_USERNAME>/Documents/bruno/`) via `--out` or `BRUNO_COLLECTIONS_DIR`. Design: `docs/superpowers/specs/2026-11-02-bruno-collection-design.md` |
 | `okf-writer` | Create, update or lint an Open Knowledge Format bundle (concept files with provenance, `index.md`, `log.md`); includes the `okf_lint.py` checker. See `docs/guidelines/OKF-OPEN-KNOWLEDGE-FORMAT.md` |
 | `confluence-ops-docs` | Business/ops documentation for Confluence derived from a codebase |
 | `documentation_auditor` | Audit docstrings and comments |

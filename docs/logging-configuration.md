@@ -302,13 +302,38 @@ With optional context:
 
 ---
 
+## Secret Redaction
+
+`init_logging()` installs a loguru patcher (`_make_redaction_patcher` in `app/configs/log_config.py`,
+helpers in `app/configs/log_redaction.py`) so secrets never reach the console, JSON or file output.
+
+| What is masked | How |
+| --- | --- |
+| Values of environment variables named like a secret (`PASSWORD`, `PASSWD`, `SECRET`, `ACCESS_KEY`, `TOKEN`, `API_KEY`, `PRIVATE_KEY`) | exact value, wherever it appears in the message, the extra fields or a traceback |
+| `scheme://user:password@host` | the password part |
+| `password=...`, `'token': '...'`, `access_key = ...` pairs | the value, even when it is not in the environment |
+
+Behavior to know:
+
+- The secret values are read when `init_logging()` runs, after `.env` has been loaded. Call it after the
+  configuration is loaded, not before.
+- Values shorter than 4 characters are not masked, because they would blank out ordinary words.
+- An exception is rendered with the standard `traceback` text and appended to the message, so the same
+  masked traceback goes to every sink. The JSON sink therefore has no separate `exception` field, and
+  `diagnose` (variable values in tracebacks) no longer applies.
+- Never log a whole config object. If you must, name the non-secret fields (host, port, database).
+
+Test: `tests/test_log_redaction.py`.
+
+---
+
 ## Plug-and-Play Usage
 
 ### For Existing Projects
 
 To add this logging to an existing project:
 
-1. **Copy `log_config.py`** to your project's config directory
+1. **Copy `log_config.py` and `log_redaction.py`** (it imports it) to your project's config directory; use `log_config_39.py` instead of `log_config.py` on Python 3.9
 2. **Add to your main script:**
 
    ```python
