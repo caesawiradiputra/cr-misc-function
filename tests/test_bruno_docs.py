@@ -105,7 +105,10 @@ def test_frontmatter_generated_by_and_draft_no_verified(world):
 
 
 def test_log_newest_first_with_reason_and_source(world, docs_mod, monkeypatch):
-    days = iter([dt.datetime(2026, 11, 5, 9, 0, tzinfo=dt.timezone.utc)])  # noqa: UP017 (dt.UTC needs 3.11; this also runs on 3.9)
+    # The first docs run uses the real date, so the second must be a later day or the
+    # log gets one heading, not two (a fixed date broke this test on that very day).
+    later = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=1)  # noqa: UP017 (dt.UTC needs 3.11; this also runs on 3.9)
+    days = iter([later])
     monkeypatch.setattr(docs_mod, "_now", lambda: next(days))
     with open(world.repo / "app" / "main.py", "a", encoding="utf-8") as f:
         f.write('\n\n@app.get("/extra")\ndef extra():\n    return 1\n')
