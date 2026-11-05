@@ -100,6 +100,26 @@ def test_finds_header_variable_name_jwt_private_key_url_credential_opaque_and_mi
     assert report.exit_code != 0
 
 
+def test_source_file_path_in_a_docs_line_is_not_an_opaque_string(tmp_path, scan):
+    put(
+        tmp_path,
+        "docs/requests/get-orders.md",
+        "Handler `get_orders` (`app/api/api_v1/endpoints/OrdersRoute.py:42`).\n",
+    )
+    assert "opaque-string" not in kinds(scan.scan(tmp_path))
+
+
+def test_token_with_slashes_and_no_file_extension_is_still_opaque(tmp_path, scan):
+    token = "aB3/" + "xY7Q/" * 8
+    put(tmp_path, "notes.md", f"see {token}\n")
+    assert "opaque-string" in kinds(scan.scan(tmp_path))
+
+
+def test_a_long_token_inside_a_path_with_an_extension_is_still_opaque(tmp_path, scan):
+    put(tmp_path, "notes.md", f"file app/{OPAQUE}/x.py here\n")
+    assert "opaque-string" in kinds(scan.scan(tmp_path))
+
+
 def test_report_line_format(tmp_path, scan):
     hostile(tmp_path)
     report = scan.scan(tmp_path)

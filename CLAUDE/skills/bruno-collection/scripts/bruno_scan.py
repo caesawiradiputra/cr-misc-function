@@ -58,6 +58,9 @@ CLOUD = re.compile(
 BEARER = re.compile(r"\bBearer\s+([A-Za-z0-9._~+/=\-]{16,})")
 OPAQUE = re.compile(r"[A-Za-z0-9+/_=\-]{32,}")
 HEX = re.compile(r"^[0-9a-fA-F]{32,}$")
+# A source file path such as app/api/endpoints/OrdersRoute.py (a slash-separated
+# run that ends in a file extension) is documentation, not a secret.
+FILE_PATH = re.compile(r"[A-Za-z0-9_\-]+(?:/[A-Za-z0-9_\-]+)+\.[A-Za-z0-9]{1,5}\b")
 PATH_JWT = re.compile(r"eyJ[A-Za-z0-9_-]{5,}")
 PATH_ASSIGN = re.compile(
     r"(?i)(password|passwd|pwd|pw|pass|secret|token|key|auth)\s*[=:]\s*\S"
@@ -169,8 +172,16 @@ def _mixed(token: str) -> bool:
     )
 
 
+def _blank_path(match: re.Match[str]) -> str:
+    """Blank a file path, unless one of its segments is long enough to be a token."""
+    if any(len(part) >= 32 for part in match.group(0).split("/")):
+        return match.group(0)
+    return " "
+
+
 def _opaque_hit(line: str) -> int | None:
     stripped = re.sub(r"\{\{[^}]*\}\}", " ", line)
+    stripped = FILE_PATH.sub(_blank_path, stripped)
     for match in OPAQUE.finditer(stripped):
         token = match.group(0)
         mixed = _mixed(token)
