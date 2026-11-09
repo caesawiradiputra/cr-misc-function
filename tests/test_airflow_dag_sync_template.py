@@ -359,8 +359,10 @@ def test_workflow_mints_a_scoped_app_token_and_stores_no_pat() -> None:
     assert re.search(r"^    environment: airflow-sync$", TEXT, re.M)
 
 
-def test_workflow_reads_app_id_and_key_as_secrets() -> None:
-    assert "app-id: ${{ secrets.DA_AIRFLOW_SYNC_APP_ID }}" in TEXT
+def test_workflow_reads_client_id_and_key_as_secrets() -> None:
+    ## The org secret keeps the name ..._APP_ID, but its value is the Client ID, so it feeds `client-id`.
+    assert "client-id: ${{ secrets.DA_AIRFLOW_SYNC_APP_ID }}" in TEXT
+    assert "app-id:" not in TEXT
     assert "private-key: ${{ secrets.DA_AIRFLOW_SYNC_PRIVATE_KEY }}" in TEXT
     assert "DA_AIRFLOW_SYNC_APP_CLIENT_ID" not in TEXT
     assert "vars." not in TEXT
