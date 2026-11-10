@@ -19,7 +19,7 @@
     {
       "id": "airflow-dag-sync",
       "title": "Airflow DAG sync to the deployment repository (GitHub App token)",
-      "version": 1,
+      "version": 3,
       "standard": "docs/guidelines/AIRFLOW-DAG-SYNC-STANDARD.md",
       "skill": "github-actions-templates",
       "files": [
@@ -37,7 +37,7 @@
           "dest": "scripts/publish_dags.sh"
         }
       ],
-      "digest": "65454c0aa0fe7e0f56eab57c767c97c5d970e1181229893d795e81a6ec24e528"
+      "digest": "cdaad0e5d3cc075664a88ece183c0e90f0d9164de24a4d4ff726303f355f9d01"
     },
     {
       "id": "ruff",

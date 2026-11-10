@@ -1,4 +1,4 @@
-# template: airflow-dag-sync@1
+# template: airflow-dag-sync@3
 # Template: Sync DAGs to the Airflow deployment repository
 #
 # The write token is not a stored personal access token: each run asks a GitHub App for a
@@ -24,7 +24,7 @@
 #   any other branch   -> dry run only: no token, nothing is pushed
 #
 # Required in this repository:
-#   - the secrets DA_AIRFLOW_SYNC_APP_ID (the GitHub App's ID) and DA_AIRFLOW_SYNC_PRIVATE_KEY
+#   - the secrets DA_AIRFLOW_SYNC_APP_ID (its value is the GitHub App's Client ID) and DA_AIRFLOW_SYNC_PRIVATE_KEY
 #     (its private key, PEM). Default: organization secrets shared with this repository; the
 #     Environment "airflow-sync" is then optional (GitHub creates it on the first run; create it
 #     yourself, with deployment branches limited to master, dev and sit, only for a second guard).
@@ -52,8 +52,10 @@ on:
 permissions:
   contents: read
 
-# One run at a time per target, queued rather than cancelled: two runs on the same target would
-# race on the same branch. The group names are labels, not branch names.
+# One run at a time per target: two runs on the same target would race on the same branch. A run
+# in progress is not cancelled, but GitHub keeps only ONE pending run per group and cancels an older
+# pending one (a newer push replaces a waiting run; both only copy files, so the newest state wins).
+# The group names are labels, not branch names.
 concurrency:
   group: sync-dags-${{ github.ref_name == 'master' && 'master' || 'airflow-dev' }}
   cancel-in-progress: false
@@ -98,7 +100,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.DA_AIRFLOW_SYNC_APP_ID }}
+          client-id: ${{ secrets.DA_AIRFLOW_SYNC_APP_ID }}
           private-key: ${{ secrets.DA_AIRFLOW_SYNC_PRIVATE_KEY }}
           owner: ${{ steps.target.outputs.owner }}
           repositories: ${{ steps.target.outputs.repo }}
