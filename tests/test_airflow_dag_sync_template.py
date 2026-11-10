@@ -287,6 +287,19 @@ def test_pr_mode_still_opens_a_pr_when_none_is_open_for_the_same_files(
     assert log.read_text().count("pr create") == 2
 
 
+def test_pr_mode_closes_the_open_pr_when_the_base_already_has_the_files(
+    source: Path, remote: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """A change that was merged and then reverted leaves a PR with nothing to merge."""
+    _, clone = remote
+    stub, log = make_gh_stub(tmp_path, existing_pr="42")
+    publish(source, clone, "direct", "master")  # the base now holds the DAG files
+    out = publish(source, clone, "pr", "master", sha="1234567abcdef", gh=stub).stdout
+    assert "Closed PR #42" in out and "No changes to publish" in out
+    calls = log.read_text()
+    assert "pr close 42" in calls and "pr create" not in calls
+
+
 def test_publish_rejects_an_unknown_mode_and_a_bad_slug(
     source: Path, remote: tuple[Path, Path]
 ) -> None:

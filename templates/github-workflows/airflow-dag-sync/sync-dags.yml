@@ -1,4 +1,4 @@
-# template: airflow-dag-sync@2
+# template: airflow-dag-sync@3
 # Template: Sync DAGs to the Airflow deployment repository
 #
 # The write token is not a stored personal access token: each run asks a GitHub App for a
@@ -52,8 +52,10 @@ on:
 permissions:
   contents: read
 
-# One run at a time per target, queued rather than cancelled: two runs on the same target would
-# race on the same branch. The group names are labels, not branch names.
+# One run at a time per target: two runs on the same target would race on the same branch. A run
+# in progress is not cancelled, but GitHub keeps only ONE pending run per group and cancels an older
+# pending one (a newer push replaces a waiting run; both only copy files, so the newest state wins).
+# The group names are labels, not branch names.
 concurrency:
   group: sync-dags-${{ github.ref_name == 'master' && 'master' || 'airflow-dev' }}
   cancel-in-progress: false
