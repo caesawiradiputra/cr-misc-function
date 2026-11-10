@@ -10,11 +10,21 @@
     template_sync.py verify     [--source DIR ...]
     template_sync.py bump       <id> [--source DIR ...] [--force]
 
-Registries ("sources"): each source repository holds a manifest, `templates/manifest.json`
-or `docs/standards/template-manifest.json`. A `files` template has an integer `version`, a
+Registries ("sources"): each source repository holds a manifest, `templates/manifest.json`,
+`docs/standards/template-manifest.json` or `template-docs/template-manifest.json`. A `files` template has an integer `version`, a
 `digest` of its files and one primary file that carries a marker line
 (`# template: <id>@<version>`, `//` in JSON). A `layout` template lists paths a repo is
 expected to have (or not to have), each tied to a rule id of the Python standards.
+
+A source can declare `"repo_kind": "airflow-dags"` or `"airflow-image"` (da-template-airflow-dags and
+da-template-airflow-image), `"overrides": [<template ids>]` and
+`"excludes": [<template ids>]` (templates that do not apply to that kind of repo, for example a
+Docker image workflow in a DAG-only repo). For a repo
+of that kind it is the primary source: its templates win over a same-id template of another source
+(the fallback, for example cr-misc-function), and the fallback still supplies every id it does not
+define. For any other repo that source is ignored. A template may name a variable in its `dest`
+(`dags/{DAG_UTILS}/common/helpers.py`) and define it in `"vars"` (a file and a regex), so that a
+file inside a package named per repo can be compared.
 
 A repo records a difference it keeps on purpose in `docs/standards-deviations.md`
 (`accept`); `check` then shows `DELIBERATE` instead of a problem. `check`, `diff`, `list`
@@ -39,10 +49,18 @@ from typing import Any
 
 ENV_SOURCES = "TEMPLATE_SOURCES"  # folders separated by the OS path separator
 DEFAULT_SOURCES = (
+    "~/repo/cr-misc-function/da-template-airflow-dags",
+    "~/repo/cr-misc-function/da-template-airflow-image",
     "~/repo/cr-misc-function/cr-misc-function",
     "~/repo/cr-misc-function/da-template-python-repo",
 )
-MANIFESTS = ("templates/manifest.json", "docs/standards/template-manifest.json")
+MANIFESTS = (
+    "templates/manifest.json",
+    "docs/standards/template-manifest.json",
+    "template-docs/template-manifest.json",
+)
+KIND_AIRFLOW_DAGS = "airflow-dags"
+KIND_AIRFLOW_IMAGE = "airflow-image"
 DEVIATIONS = "docs/standards-deviations.md"
 DEVIATIONS_HEADING = "# Deviations from the standards"
 MARKER = re.compile(r"^\s*(?:#|//)\s*template:\s*([A-Za-z0-9_-]+)@(\d+)\s*$")
@@ -80,8 +98,69 @@ def _load(path: Path) -> Source | None:
     return None
 
 
-def find_sources(args_sources: list[str] | None) -> list[Source]:
-    """Sources from the flags, then the environment, then the usual places."""
+def repo_kind(repo: Path) -> str | None:
+    """`airflow-image` for a job-image repo, `airflow-dags` for a DAG-only repo, else None.
+
+    An image repo is recognised by a folder named `da-*-airflow-image` or by the template-managed
+    `app/pipelines/_cli.py`. It is tested first, so an image repo that still carries a `dags/` folder
+    during a move is treated as an image repo. A DAG repo is recognised by the sync workflow with a
+    DAG_EXECUTOR, by an `*_executor.py` under `dags/`, or by a folder named `da-*-airflow-dags`.
+    An older code repo that holds both an image and its DAG (`da-*-airflow` with `dags/`) is still
+    read as a DAG repo.
+    """
+    if (repo.name.startswith("da-") and repo.name.endswith("-airflow-image")) or (
+        repo / "app/pipelines/_cli.py"
+    ).is_file():
+        return KIND_AIRFLOW_IMAGE
+    workflow = repo / ".github/workflows/sync-dags.yml"
+    if workflow.is_file() and "DAG_EXECUTOR" in workflow.read_text(
+        encoding="utf-8", errors="replace"
+    ):
+        return KIND_AIRFLOW_DAGS
+    if any((repo / "dags").glob("*_executor.py")):
+        return KIND_AIRFLOW_DAGS
+    if repo.name.startswith("da-") and repo.name.endswith("-airflow-dags"):
+        return KIND_AIRFLOW_DAGS
+    return None
+
+
+def _for_repo(found: list[Source], repo: Path) -> list[Source]:
+    """Order and filter the sources for one repo: the source of its kind first, the rest as fallback.
+
+    A source whose `repo_kind` does not match is dropped. A template id that the primary source
+    lists in `overrides` is removed from the fallback sources, so the primary one decides.
+    """
+    kind_now = repo_kind(repo)
+    usable = [s for s in found if s.manifest.get("repo_kind") in (None, kind_now)]
+    primary_sources = [s for s in usable if s.manifest.get("repo_kind")]
+    shadowed = {
+        i
+        for s in primary_sources
+        for i in s.manifest.get("overrides", []) + s.manifest.get("excludes", [])
+    }
+    ordered = primary_sources + [s for s in usable if s not in primary_sources]
+    result: list[Source] = []
+    for s in ordered:
+        if s in primary_sources or not shadowed:
+            result.append(s)
+            continue
+        manifest = {
+            **s.manifest,
+            "templates": [
+                t for t in s.manifest["templates"] if t["id"] not in shadowed
+            ],
+        }
+        result.append(Source(s.path, s.manifest_path, manifest))
+    return result
+
+
+def find_sources(
+    args_sources: list[str] | None, repo: Path | None = None
+) -> list[Source]:
+    """Sources from the flags, then the environment, then the usual places.
+
+    With ``repo``, the sources are ordered and filtered for that repo's kind (see ``_for_repo``).
+    """
     explicit = list(args_sources or [])
     if not explicit and os.environ.get(ENV_SOURCES):
         explicit = [p for p in os.environ[ENV_SOURCES].split(os.pathsep) if p]
@@ -97,11 +176,22 @@ def find_sources(args_sources: list[str] | None) -> list[Source]:
     if not found:
         raise TemplateError(
             f"no template source found; pass --source or set {ENV_SOURCES} to the "
-            "cr-misc-function and da-template-python-repo checkouts"
+            "cr-misc-function, da-template-airflow-dags, da-template-airflow-image and "
+            "da-template-python-repo checkouts"
         )
+    overrides = {
+        i
+        for s in found
+        if s.manifest.get("repo_kind")
+        for i in s.manifest.get("overrides", [])
+    }
+    if repo is not None:
+        found = _for_repo(found, repo)
     seen: dict[str, Path] = {}
     for src in found:
         for t in src.manifest["templates"]:
+            if t["id"] in seen and t["id"] in overrides:
+                continue  # declared override: the first (primary) source decides
             if t["id"] in seen:
                 raise TemplateError(
                     f"template id '{t['id']}' is in both {seen[t['id']]} and {src.path}"
@@ -155,6 +245,30 @@ def digest(source: Source, template: dict[str, Any]) -> str:
         _, body = split_marker(text)
         h.update(f["src"].encode() + b"\0" + "\n".join(body).encode() + b"\0")
     return h.hexdigest()
+
+
+def resolve(repo: Path, template: dict[str, Any]) -> dict[str, Any]:
+    """The template with ``{VAR}`` in each ``dest`` replaced from the repo (see ``vars``).
+
+    Raises:
+        TemplateError: when a variable cannot be read from the repo.
+    """
+    names = template.get("vars") or {}
+    if not names or kind(template) == "layout":
+        return template
+    values: dict[str, str] = {}
+    for name, spec in names.items():
+        path = repo / spec["file"]
+        if not path.is_file():
+            raise TemplateError(f"cannot resolve {{{name}}}: {spec['file']} is missing")
+        found = re.search(spec["regex"], path.read_text(encoding="utf-8"), re.MULTILINE)
+        if not found:
+            raise TemplateError(
+                f"cannot resolve {{{name}}}: no match in {spec['file']}"
+            )
+        values[name] = found.group(1)
+    files = [{**f, "dest": f["dest"].format(**values)} for f in template["files"]]
+    return {**template, "files": files}
 
 
 def primary(template: dict[str, Any]) -> dict[str, Any]:
@@ -340,13 +454,20 @@ def _repo(arg: str) -> Path:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    sources = find_sources(args.source)
     repo = _repo(args.repo)
+    sources = find_sources(args.source, repo)
     chosen = [get(sources, args.only)] if args.only else entries(sources)
     for source in sources:
         for line in source_info(source):
             print(line)
-    print(f"repo: {repo}")
+    print(f"repo: {repo} ({repo_kind(repo) or 'generic'})")
+    if any(s.manifest.get("repo_kind") for s in sources):
+        print(
+            "source of truth: "
+            + sources[0].path.resolve().name
+            + "; fallback: "
+            + ", ".join(s.path.resolve().name for s in sources[1:])
+        )
     deviations, invalid = read_deviations(repo)
     bad = 0
     for source, t in chosen:
@@ -363,6 +484,12 @@ def cmd_check(args: argparse.Namespace) -> int:
                 if state != "ok":
                     print(f"    {state.upper()}: {line}")
             bad += 1 if drift else 0
+            continue
+        try:
+            t = resolve(repo, t)
+        except TemplateError as exc:
+            print(f"{'NOT-APPLIED':<11} {t['id']} (latest v{t['version']})")
+            print(f"    {exc}")
             continue
         status, details = compare(source, repo, t)
         label = status.upper()
@@ -392,10 +519,11 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
-    source, template = get(find_sources(args.source), args.id)
+    repo = _repo(args.repo)
+    source, template = get(find_sources(args.source, repo), args.id)
     if kind(template) == "layout":
         raise TemplateError("a layout template has no files to diff; use check")
-    repo = _repo(args.repo)
+    template = resolve(repo, template)
     for f in template["files"]:
         target = repo / f["dest"]
         _, a = split_marker((source.path / f["src"]).read_text(encoding="utf-8"))
@@ -417,10 +545,11 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
 def cmd_stamp(args: argparse.Namespace) -> int:
     """Write the marker line of the primary file; nothing else in the file changes."""
-    _, template = get(find_sources(args.source), args.id)
+    repo = _repo(args.repo)
+    _, template = get(find_sources(args.source, repo), args.id)
     if kind(template) == "layout":
         raise TemplateError("a layout template has no marker to stamp")
-    repo = _repo(args.repo)
+    template = resolve(repo, template)
     main = primary(template)
     target = repo / main["dest"]
     if not target.is_file():
@@ -439,8 +568,8 @@ def cmd_stamp(args: argparse.Namespace) -> int:
 
 def cmd_accept(args: argparse.Namespace) -> int:
     """Record a deviation the user decided to keep. Only on the user's say-so."""
-    sources = find_sources(args.source)
     repo = _repo(args.repo)
+    sources = find_sources(args.source, repo)
     reason = " ".join(args.reason.split())
     if not reason:
         raise TemplateError("--reason is required")
@@ -473,8 +602,8 @@ def cmd_accept(args: argparse.Namespace) -> int:
 
 
 def cmd_deviations(args: argparse.Namespace) -> int:
-    sources = find_sources(args.source)
     repo = _repo(args.repo)
+    sources = find_sources(args.source, repo)
     found, invalid = read_deviations(repo)
     known = known_ids(sources)
     for did, (reason, date) in found.items():
