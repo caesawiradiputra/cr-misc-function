@@ -5,14 +5,18 @@ description: Check whether the current repo applies the standard templates (Dock
 
 # Template sync
 
-Two repositories are template sources, each with its own manifest:
+Four repositories are template sources, each with its own manifest:
 
 - `cr-misc-function`: `templates/manifest.json` (Docker image CI, Airflow DAG sync, `ruff.toml`, `mypy.ini`, VS Code files).
+- `da-template-airflow-dags`: `template-docs/template-manifest.json`. **The source of truth for an Airflow DAG repo** (the sync workflow and scripts, the template-managed `common/` modules, CI, the Variable check and docs test, and the `airflow-dags-layout` list). It declares `repo_kind: airflow-dags`, `overrides` (`airflow-dag-sync`) and `excludes` (templates that make no sense in a DAG-only repo: Docker image CI, the Python layout, config and logging templates).
+- `da-template-airflow-image`: `template-docs/template-manifest.json`. **The source of truth for an Airflow job-image repo** (`da-<project>-airflow-image`: the `main.py --step/--run-date` entrypoint and `pipelines/_cli.py`, the `/secrets/.env`-aware `config.py`, the Dockerfile, CI with the docs and deny-rules tests, and the `airflow-image-layout` list). It declares `repo_kind: airflow-image` and `excludes` (`python-config`, because the image has its own `airflow-image-config` that also reads the mounted secret file, and `airflow-dag-sync`). The contract it shares with the DAG template is `template-docs/pod-contract.md`.
 - `da-template-python-repo`: `docs/standards/template-manifest.json` (`app/configs/config.py`, `app/configs/log_config.py` with its redaction module, and a `python-layout` list of the folders and root files a Python repo should have, each tied to a rule id of `docs/standards/`).
 
 Each `files` template has an integer `version`; its primary file carries a marker line, `# template: <id>@<version>` (`//` in JSON), so a repo records which version it applied. The `python-layout` template has no file: its paths are checked live.
 
-Helper: `python3 ~/.claude/skills/template-sync/scripts/template_sync.py` (stdlib only, Python 3.9 and newer). Sources come from `--source` (repeat it), then `TEMPLATE_SOURCES` (paths separated by `:`), then the two usual checkouts under `~/repo/cr-misc-function/`. For workflow templates this skill defers to `github-actions-templates` (tag rules, hardening, `gh workflow run` test); for the rules behind the Python layout it uses `python-standards-learn` (`compare <repo>` audits a repo against the full standards, beyond what the layout list checks).
+**Repo kind and precedence.** The helper recognises an image repo (a folder named `da-*-airflow-image`, or `app/pipelines/_cli.py`; tested first) and a DAG repo (a `.github/workflows/sync-dags.yml` with `DAG_EXECUTOR`, an `*_executor.py` under `dags/`, or a folder named `da-*-airflow-dags`). An older code repo that holds both an image and its DAG (`da-*-airflow` with `dags/`) is still read as a DAG repo until its image moves to a `da-<project>-airflow-image` repo. For an image repo `da-template-airflow-image` is the source of truth, and `cr-misc-function` and `da-template-python-repo` are the fallback (their `docker-image`, `ruff`, `mypy`, `python-logging` and `python-layout` still apply; `python-config` and `airflow-dag-sync` do not). For a DAG repo `da-template-airflow-dags` is the source of truth and `cr-misc-function` is the fallback: a template id the DAG source defines is taken from it only, every other id (ruff, mypy, VS Code) still comes from the fallback sources, and `check` prints `source of truth: ...; fallback: ...`. For any other repo the DAG source is ignored. A `files` template may use `{DAG_UTILS}` in its `dest` (the `common/` modules live in a package named per repo); the helper reads the name from `sync-dags.yml`.
+
+Helper: `python3 ~/.claude/skills/template-sync/scripts/template_sync.py` (stdlib only, Python 3.9 and newer). Sources come from `--source` (repeat it), then `TEMPLATE_SOURCES` (paths separated by `:`), then the four usual checkouts under `~/repo/cr-misc-function/`. For workflow templates this skill defers to `github-actions-templates` (tag rules, hardening, `gh workflow run` test); for the rules behind the Python layout it uses `python-standards-learn` (`compare <repo>` audits a repo against the full standards, beyond what the layout list checks).
 
 ## Workflow
 
@@ -34,6 +38,27 @@ Helper: `python3 ~/.claude/skills/template-sync/scripts/template_sync.py` (stdli
 5. **Deviations.** When a difference is on purpose (a library with `src/`, a repo with no Docker image, a custom pipeline), ask the user whether to keep it. Only when they say so, run `accept <template-id-or-rule-id> <repo> --reason "<why>"`. It appends one bullet to `docs/standards-deviations.md` in the repo (`- \`C-LAYOUT-01\`: installable library (2026-11-04)`), which is reviewed in the PR like any file. Never record a deviation on your own to make the report green. A rule id covers every path tied to that rule; a template id downgrades that template's `STALE` or `UNMARKED`. Re-ask when a template's version moves a lot after the date. `deviations <repo>` lists and validates the file (unknown ids and malformed bullets are reported).
 6. **Verify.** Run `check --only <id>` again (it must say `CURRENT`), then the repo's own checks (`ruff`, `mypy`, `pytest`) for config templates. For a workflow, follow `github-actions-templates` step 6 (test from the work branch with `gh workflow run`); say plainly if it was not run.
 7. **Report.** Per template: status before and after, what was taken from the template, what was kept, anything still to do (secrets to create, test run). Commit only when the user asks, on the current branch.
+
+### Airflow image repos: the same rule
+
+For a repo of kind `airflow-image` apply the DAG-repo procedure below with `da-template-airflow-image` as the source of truth: before planning edits, check that it really holds what the image repo needs, and copy anything that is only elsewhere into it (a branch and PR there, asking first), then apply it from there. Missing in the image template: a rule or standard goes to `template-docs/` as a sourced note; a workflow or script goes in with a manifest entry (`bump <id> --force`). A change to the pod contract (`template-docs/pod-contract.md`) also needs the DAG template changed; say so in the report. For new image repos, `setup-image-repo` (in the template) is the setup guide; for an existing code repo that still holds its DAG, the move is described in `template-docs/setup.md` of the image template and `template-docs/migrating-dags-from-a-code-repo.md` of the DAG template.
+
+### Airflow DAG repos: complete the source of truth first
+
+Before planning edits for a DAG repo, check that `da-template-airflow-dags` really holds what the repo needs. If
+something about DAG repos is only in another place, **copy it into `da-template-airflow-dags`** (a branch and PR there,
+asking the user first), then apply it from there; do not apply from the other place.
+
+| Missing in the template repo | Copy from |
+| --- | --- |
+| A rule or standard (the DAG sync standard, branch flow, secrets rules) | `cr-misc-function` `docs/guidelines/`, as a file in `template-docs/` that says where it came from |
+| A workflow, script or config the DAG repo needs | `cr-misc-function` `templates/`, then register it in the template's manifest (`bump <id> --force`) |
+| A working rule or a hard-won fact about DAG repos (Airflow 3 target, master-only deploy, no secrets in Variables) | the user's `~/.claude/CLAUDE.md` and the project memory of the DAG repos, written as a short sourced note in `template-docs/` |
+| A lesson from the repo being checked (a deliberate deviation worth keeping) | `docs/standards-deviations.md` of that repo, after the user agrees |
+
+Copy only what is generic. Company hosts, registry names and secret values never go into `cr-misc-function` (public); the template repo is
+private but still holds no secret values. Note the source and date in the copied file. A fallback template that the DAG source now covers is
+added to its `overrides`, so the two cannot drift again.
 
 ## Rules
 

@@ -4,7 +4,8 @@
 #   direct: push HEAD to <base_branch> (one rebase retry; other teams push there too)
 #   pr:     push the fixed branch sync/<DAG_SLUG> (updated per run) and open (or reuse) a PR
 #           into <base_branch>
-# Nothing is committed, pushed or opened when the DAG files have no diff against <base_branch>,
+# Nothing is committed, pushed or opened when the DAG files have no diff against <base_branch>
+# (in pr mode an open sync PR is then closed: it has nothing left to merge),
 # and in pr mode also not when an open PR's branch already holds exactly these files.
 # env:    DAG_SLUG, DAG_EXECUTOR, DAG_UTILS (required), DAG_DEST_DIR (default airflow/dags),
 #         SOURCE_REPO (default: the source repository name), GH_BIN, GIT_USER_NAME, GIT_USER_EMAIL
@@ -42,6 +43,15 @@ fi
 bash "${HERE}/sync_dags.sh" "${SRC}" "${CLONE}"
 git add -A -- "${DEST_DIR}/${EXECUTOR}" "${DEST_DIR}/${UTILS}"
 if git diff --cached --quiet; then
+  if [ "${MODE}" = "pr" ]; then
+    # A change that was merged and then reverted on the source branch leaves an open PR with
+    # nothing to merge: close it, so Data Ops does not merge a stale change.
+    stale=$("${GH}" pr list --head "${BRANCH}" --base "${BASE}" --state open --json number --jq '.[0].number // empty')
+    if [ -n "${stale}" ]; then
+      "${GH}" pr close "${stale}" --comment "Closed by the sync: ${BASE} already has the DAG from ${SOURCE_REPO}@${SHORT}, so this PR has nothing left to merge."
+      echo "Closed PR #${stale}: it has nothing left to merge"
+    fi
+  fi
   echo "No changes to publish (${BASE} already has the DAG from ${SHORT})"
   exit 0
 fi

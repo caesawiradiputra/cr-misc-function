@@ -354,3 +354,141 @@ def test_layout_digest_changes_force_a_bump(py_source: Path) -> None:
     assert ts.main(["verify", "--source", str(py_source)]) == 1
     assert ts.main(["bump", "python-layout", "--source", str(py_source)]) == 0
     assert ts.main(["verify", "--source", str(py_source)]) == 0
+
+
+def _kind_source(tmp_path: Path, name: str, extra: dict) -> Path:
+    """A second source with one template (same id as tpl-a when asked) and a repo kind."""
+    src = tmp_path / name
+    (src / "template-docs").mkdir(parents=True)
+    (src / "a.yml").write_text("name: a-from-dags\n", encoding="utf-8")
+    manifest = {
+        "schema": 1,
+        "repo_kind": "airflow-dags",
+        "templates": [
+            {
+                "id": "tpl-a",
+                "title": "A (DAG source)",
+                "version": 0,
+                "files": [{"src": "a.yml", "dest": ".github/a.yml", "marker": True}],
+            }
+        ],
+        **extra,
+    }
+    (src / "template-docs/template-manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    assert ts.main(["bump", "tpl-a", "--source", str(src), "--force"]) == 0
+    return src
+
+
+def _dag_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "da-demo-airflow-dags"
+    (repo / "dags").mkdir(parents=True)
+    (repo / "dags/demo_executor.py").write_text("", encoding="utf-8")
+    return repo
+
+
+def test_a_dag_repo_takes_the_dag_source_first_and_the_fallback_for_the_rest(
+    source: Path, tmp_path: Path
+) -> None:
+    dags = _kind_source(tmp_path, "dags-src", {"overrides": ["tpl-a"]})
+    repo = _dag_repo(tmp_path)
+    sources = ts.find_sources([str(source), str(dags)], repo)
+    assert sources[0].path == dags
+    ids = {s.path.name: [t["id"] for t in s.manifest["templates"]] for s in sources}
+    assert ids == {"dags-src": ["tpl-a"], "source": ["tpl-c"]}
+
+
+def test_a_generic_repo_ignores_the_dag_source(source: Path, tmp_path: Path) -> None:
+    dags = _kind_source(tmp_path, "dags-src", {"overrides": ["tpl-a"]})
+    repo = tmp_path / "plain"
+    repo.mkdir()
+    sources = ts.find_sources([str(source), str(dags)], repo)
+    assert [s.path for s in sources] == [source]
+
+
+def test_the_same_id_in_two_sources_is_an_error_unless_it_is_an_override(
+    source: Path, tmp_path: Path
+) -> None:
+    undeclared = _kind_source(tmp_path, "dags-src", {})
+    with pytest.raises(ts.TemplateError, match="tpl-a"):
+        ts.find_sources([str(source), str(undeclared)])
+
+
+def test_excludes_drop_fallback_templates_that_do_not_fit_a_dag_repo(
+    source: Path, tmp_path: Path
+) -> None:
+    dags = _kind_source(
+        tmp_path, "dags-src", {"overrides": ["tpl-a"], "excludes": ["tpl-c"]}
+    )
+    sources = ts.find_sources([str(source), str(dags)], _dag_repo(tmp_path))
+    assert [t["id"] for _, t in ts.entries(sources)] == ["tpl-a"]
+
+
+def test_dest_variables_are_read_from_the_repo(tmp_path: Path) -> None:
+    repo = _dag_repo(tmp_path)
+    wf = repo / ".github/workflows"
+    wf.mkdir(parents=True)
+    (wf / "sync-dags.yml").write_text(
+        'env:\n  DAG_UTILS: "demo_utils"\n', encoding="utf-8"
+    )
+    template = {
+        "id": "u",
+        "version": 1,
+        "vars": {
+            "DAG_UTILS": {
+                "file": ".github/workflows/sync-dags.yml",
+                "regex": '^\\s*DAG_UTILS:\\s*"?(\\w+)',
+            }
+        },
+        "files": [
+            {"src": "x.py", "dest": "dags/{DAG_UTILS}/common/x.py", "marker": True}
+        ],
+    }
+    assert (
+        ts.resolve(repo, template)["files"][0]["dest"] == "dags/demo_utils/common/x.py"
+    )
+    (wf / "sync-dags.yml").write_text("env: {}\n", encoding="utf-8")
+    with pytest.raises(ts.TemplateError, match="DAG_UTILS"):
+        ts.resolve(repo, template)
+
+
+def test_repo_kind_tells_an_image_repo_from_a_dag_repo(tmp_path: Path) -> None:
+    image = tmp_path / "da-demo-airflow-image"
+    image.mkdir()
+    assert ts.repo_kind(image) == "airflow-image"
+    assert ts.repo_kind(_dag_repo(tmp_path)) == "airflow-dags"
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert ts.repo_kind(plain) is None
+
+
+def test_the_entrypoint_helper_marks_an_image_repo_whatever_its_folder_is_called(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "renamed"
+    (repo / "app/pipelines").mkdir(parents=True)
+    (repo / "app/pipelines/_cli.py").write_text("", encoding="utf-8")
+    assert ts.repo_kind(repo) == "airflow-image"
+
+
+def test_an_old_code_repo_that_holds_its_dag_stays_a_dag_repo(tmp_path: Path) -> None:
+    """`da-*-airflow` with `dags/` is not renamed to an image repo by the new kind."""
+    repo = tmp_path / "da-demo-airflow"
+    (repo / "dags").mkdir(parents=True)
+    (repo / "dags/demo_executor.py").write_text("", encoding="utf-8")
+    assert ts.repo_kind(repo) == "airflow-dags"
+
+
+def test_an_image_repo_ignores_the_dag_source_and_takes_the_image_source(
+    source: Path, tmp_path: Path
+) -> None:
+    dags = _kind_source(tmp_path, "dags-src", {"overrides": ["tpl-a"]})
+    image = _kind_source(
+        tmp_path, "image-src", {"repo_kind": "airflow-image", "overrides": ["tpl-a"]}
+    )
+    repo = tmp_path / "da-demo-airflow-image"
+    repo.mkdir()
+    sources = ts.find_sources([str(source), str(dags), str(image)], repo)
+    assert sources[0].path == image
+    assert dags not in [s.path for s in sources]
