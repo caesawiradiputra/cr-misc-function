@@ -52,13 +52,13 @@ The scripts copy exactly two things: the DAG file `airflow/dags/<DAG_EXECUTOR>` 
 | 4 | `master` publishes through a PR, never a direct push. `dev` and `sit` push directly. | Production DAGs are reviewed by Data Ops; the dev branch is shared with other teams and changes often. |
 | 5 | The bot branch `sync/<slug>` is pushed with `--force-with-lease=<branch>:<current remote tip>`, the tip read with `git ls-remote`. | A fresh clone has no tracking ref for that branch, so a bare `--force-with-lease` has nothing to compare and refuses. An empty tip means the branch must not exist yet. |
 | 6 | A direct push retries once after `git pull --rebase`. | Other teams push to the same branch at any time. |
-| 7 | `concurrency` groups by target (`master` or the dev branch), `cancel-in-progress: false`. | Two runs on one target would race on the same branch. Queue them; cancelling could drop a sync. |
+| 7 | `concurrency` groups by target (`master` or the dev branch), `cancel-in-progress: false`. | Two runs on one target would race on the same branch, so a run in progress is never cancelled. GitHub keeps only one pending run per group and cancels an older pending one; that is safe because a run only copies files, so the newest state wins. |
 | 8 | The scripts take their names from the environment and reject anything but plain names (`[A-Za-z0-9_]`, `.py` for the file, relative folders for the destination). | The values reach `rm -rf` and `git add`. A name like `..` must fail before anything is removed. |
 | 9 | Workflow values reach shell scripts only through `env:`, never as `${{ ... }}` inside `run:`. | Prevents shell injection through ref names or inputs. |
 | 10 | Every `run:` step sets `shell: bash`; checkout uses `persist-credentials: false`. | `shell: bash` turns on `pipefail`, so a failing script is not hidden by `tee`. The checkout does not need to keep a token. |
 | 11 | Write the run summary through `tee -a "$GITHUB_STEP_SUMMARY"`. | The step log then shows the real values as well as the summary page. |
 | 12 | A commit that changes nothing publishes nothing (`git diff --cached --quiet`). | A rerun, or a push that touched only the sync files, must not create empty commits or PR noise. |
-| 13 | In `pr` mode, with a PR already open, nothing is pushed when its branch already holds exactly these files. | A force-push would only rewrite the commit (a new SHA in the message) under the reviewer. A rerun with the same files stays silent; with no open PR the PR is still created. |
+| 13 | In `pr` mode, with a PR already open, nothing is pushed when its branch already holds exactly these files. | A force-push would only rewrite the commit (a new SHA in the message) under the reviewer. A rerun with the same files stays silent; with no open PR the PR is still created. When the files have no diff against the base at all (a change that was merged and then reverted), the open sync PR is closed with a comment, because it has nothing left to merge (template version 3). |
 
 ## 4. Token: the GitHub App
 
