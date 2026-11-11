@@ -70,7 +70,7 @@ added to its `overrides`, so the two cannot drift again.
 
 ## Maintaining the registry (in `cr-misc-function`)
 
-- A change to a template file needs a version bump: `bump <id>` raises `version`, rewrites the marker and recomputes the digest in the source's manifest. `verify` (and `tests/test_template_sync.py`) fail when a template changed without a bump, so a repo is never told it is current when the template moved.
+- A change to a template file needs a version bump: `bump <id>` raises `version`, rewrites the marker of every file of the template that carries one (they share the version) and recomputes the digest in the source's manifest. `verify` (and `tests/test_template_sync.py`) fail when a template changed without a bump, so a repo is never told it is current when the template moved.
 - Put the reason for the bump in the commit message. Template fixes land in `cr-misc-function` on their own PR before they are applied to repos.
 - A new template: add its entry to the right manifest with `"version": 0` and `"marker": true` on exactly one file (a `layout` entry has `"kind": "layout"` and an `expect` list instead of files), then `bump <id> --force`. A layout change (a path added or removed) is a change too: `bump` it.
 - Template ids are unique across sources; the helper refuses a duplicate.
