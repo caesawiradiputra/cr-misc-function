@@ -686,6 +686,26 @@ def cmd_bump(args: argparse.Namespace) -> int:
         path.write_bytes(
             put_marker(path.read_bytes().decode("utf-8"), line).encode("utf-8")
         )
+        ## Every other file of the template that carries this template's marker moves to the same number
+        ## (a template whose files must share one version, such as da-airflow-utils); the digest ignores markers.
+        for other in template["files"]:
+            if other is main:
+                continue
+            other_path = source.path / other["src"]
+            lines = (
+                other_path.read_bytes()
+                .decode("utf-8")
+                .replace("\r\n", "\n")
+                .split("\n")
+            )
+            for i, text_line in enumerate(lines[:MARKER_LINES]):
+                found = MARKER.match(text_line)
+                if found and found.group(1) == template["id"]:
+                    lines[i] = marker_line(
+                        template["id"], template["version"], other["dest"]
+                    )
+                    other_path.write_bytes("\n".join(lines).encode("utf-8"))
+                    break
     template["digest"] = digest(source, template)
     source.manifest_path.write_text(
         json.dumps(source.manifest, indent=2, ensure_ascii=False) + "\n",
