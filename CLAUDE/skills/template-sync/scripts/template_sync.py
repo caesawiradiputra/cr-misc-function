@@ -234,6 +234,22 @@ def split_marker(text: str) -> tuple[tuple[str, int] | None, list[str]]:
     return None, lines
 
 
+def put_marker(text: str, line: str) -> str:
+    """Return ``text`` with the marker ``line`` written in place.
+
+    An existing marker is replaced where it stands. A new one goes first, except after the opening ``---`` of a
+    YAML frontmatter (a SKILL.md must start with it; the marker is then a YAML comment) and after a ``#!`` line.
+    """
+    lines = text.replace("\r\n", "\n").split("\n")
+    for i, current in enumerate(lines[:MARKER_LINES]):
+        if MARKER.match(current):
+            lines[i] = line
+            return "\n".join(lines)
+    at = 1 if lines and (lines[0].strip() == "---" or lines[0].startswith("#!")) else 0
+    lines.insert(at, line)
+    return "\n".join(lines)
+
+
 def digest(source: Source, template: dict[str, Any]) -> str:
     """Hash of the template's files (without the marker line) or of its layout list."""
     h = hashlib.sha256()
@@ -556,9 +572,8 @@ def cmd_stamp(args: argparse.Namespace) -> int:
         raise TemplateError(f"{main['dest']} does not exist in the repo")
     text = target.read_bytes().decode("utf-8")  # read_text would hide the CRLF
     crlf = "\r\n" in text
-    _, rest = split_marker(text)
     line = marker_line(template["id"], int(template["version"]), main["dest"])
-    new = "\n".join([line, *rest])
+    new = put_marker(text, line)
     target.write_text(
         new.replace("\n", "\r\n") if crlf else new, encoding="utf-8", newline=""
     )
@@ -667,9 +682,10 @@ def cmd_bump(args: argparse.Namespace) -> int:
     if kind(template) == "files":
         main = primary(template)
         path = source.path / main["src"]
-        _, rest = split_marker(path.read_bytes().decode("utf-8"))
         line = marker_line(template["id"], template["version"], main["dest"])
-        path.write_bytes("\n".join([line, *rest]).encode("utf-8"))
+        path.write_bytes(
+            put_marker(path.read_bytes().decode("utf-8"), line).encode("utf-8")
+        )
     template["digest"] = digest(source, template)
     source.manifest_path.write_text(
         json.dumps(source.manifest, indent=2, ensure_ascii=False) + "\n",
