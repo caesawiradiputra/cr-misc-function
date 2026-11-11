@@ -386,6 +386,9 @@ class Analyzer:
         calls = ([default] if isinstance(default, ast.Call) else []) + t.metas
         for call in calls:
             if _call_name(call) in ("Depends", "Security"):
+                expanded = self._depends_model(call, t, ctx, notes)
+                if expanded is not None:
+                    return expanded
                 target = _flatten(call.args[0]) if call.args else None
                 notes.append(
                     f"dependency {'.'.join(target or ['?'])}: its parameters are not read"
@@ -432,6 +435,44 @@ class Analyzer:
             constraints,
             opts.example,
         )
+
+    def _depends_model(
+        self, call: ast.Call, t: _Type, ctx: object, notes: list[str]
+    ) -> list[Param] | None:
+        """Query parameters of a model used as a dependency (`q: Model = Depends()`).
+
+        FastAPI turns the fields of a class dependency into query parameters. Returns
+        None when the dependency is not a model class (a plain function, for example).
+        """
+        found = t.model
+        if call.args:
+            parts = _flatten(call.args[0])
+            found = self.lookup(ctx, parts) if parts else None
+            if not found or not self.is_model(found[0], found[1]):
+                return None
+        if found is None:
+            return None
+        spec = self.model_spec(found[0], found[1], notes, (), 1)
+        params: list[Param] = []
+        for f in spec.fields:
+            if f.children is not None or f.unexpanded:
+                notes.append(
+                    f"dependency model {spec.name}: nested field {f.name} is not "
+                    "a query parameter; not generated"
+                )
+                continue
+            params.append(
+                Param(
+                    f.name,
+                    "query",
+                    f.type_name,
+                    f.required,
+                    f.default,
+                    f.constraints,
+                    f.example,
+                )
+            )
+        return params
 
     # ----------------------------------------------------------------- models
     def model_spec(
