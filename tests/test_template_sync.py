@@ -492,3 +492,62 @@ def test_an_image_repo_ignores_the_dag_source_and_takes_the_image_source(
     sources = ts.find_sources([str(source), str(dags), str(image)], repo)
     assert sources[0].path == image
     assert dags not in [s.path for s in sources]
+
+
+def test_bump_moves_the_marker_of_every_file_of_the_template(source: Path) -> None:
+    """A template whose files share one version (da-airflow-utils) keeps all its markers in step."""
+    other = source / "templates/b.sh"
+    other.write_text("# template: tpl-a@1\necho b\n", encoding="utf-8")
+    assert ts.main(["bump", "tpl-a", "--source", str(source), "--force"]) == 0
+    assert other.read_text().splitlines()[0] == "# template: tpl-a@2"
+    assert (source / "templates/a.yml").read_text().startswith("# template: tpl-a@2\n")
+    assert other.read_text().endswith("echo b\n")
+    assert ts.main(["verify", "--source", str(source)]) == 0
+
+
+def test_the_marker_goes_after_a_frontmatter_and_a_shebang_and_stays_where_it_is(
+    tmp_path: Path,
+) -> None:
+    """A SKILL.md must start with its ``---``; a script with its ``#!``; a stamped marker is replaced in place."""
+    put = ts.put_marker
+    skill = "---\nname: x\n---\n\n# Title\n"
+    assert put(skill, "# template: t@1").split("\n")[:3] == [
+        "---",
+        "# template: t@1",
+        "name: x",
+    ]
+    assert put("#!/bin/sh\necho 1\n", "# template: t@1").startswith(
+        "#!/bin/sh\n# template: t@1\necho 1"
+    )
+    assert put("echo 1\n", "# template: t@1").startswith("# template: t@1\necho 1")
+    again = put(put(skill, "# template: t@1"), "# template: t@2")
+    assert again.count("template:") == 1 and again.split("\n")[1] == "# template: t@2"
+
+
+def test_a_skill_file_keeps_its_frontmatter_through_bump_and_verify(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "source"
+    (src / "templates").mkdir(parents=True)
+    skill = src / "templates/SKILL.md"
+    skill.write_text("---\nname: x\ndescription: y\n---\n\n# Title\n", encoding="utf-8")
+    manifest = {
+        "schema": 1,
+        "templates": [
+            {
+                "id": "skills",
+                "title": "S",
+                "version": 0,
+                "files": [
+                    {"src": "templates/SKILL.md", "dest": "SKILL.md", "marker": True}
+                ],
+            }
+        ],
+    }
+    (src / "templates/manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    assert ts.main(["bump", "skills", "--source", str(src), "--force"]) == 0
+    lines = skill.read_text().split("\n")
+    assert lines[:3] == ["---", "# template: skills@1", "name: x"]
+    assert ts.main(["verify", "--source", str(src)]) == 0
+    assert ts.main(["bump", "skills", "--source", str(src), "--force"]) == 0
+    assert skill.read_text().count("template:") == 1
