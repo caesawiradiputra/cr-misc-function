@@ -1,5 +1,7 @@
 # cr-misc-function
 
+Version: 0.1.0 · Updated: 2026-11-13
+
 Shared commons library providing reusable database abstraction, utility functions,
 AI tooling templates, and development scripts for use across multiple projects.
 
@@ -273,7 +275,7 @@ A snapshot of the global `~/.claude` config, installed per machine (see
 | --- | --- |
 | `CLAUDE.md` | Always-on instructions: environment detection (Windows vs WSL), uv, branch strategy, execution-discipline rules |
 | `commands/` | 22 slash commands: `/commit`, `/generate-pr-message`, `/handover`, `/clean-gone`, `/refactor-python`, CDE commands, `/setup-workspace`, and "runs on Opus" wrappers such as `/brainstorming` and `/systematic-debugging` |
-| `skills/` | `migrate-to-uv`, `upgrade-python-version`, `jira-ticket-kickoff`, `bast-generator`, `bast-learn`, `okf-writer`, `confluence-ops-docs`, auditors, and more |
+| `skills/` | `migrate-to-uv`, `upgrade-python-version`, `jira-ticket-kickoff`, `bast-generator`, `bast-learn`, `okf-writer`, `umbrella-review`, `confluence-ops-docs`, auditors, and more |
 | `windows/`, `linux-wsl/` | Per-OS `settings.json` (deny rules, hooks, plugins) and the SessionStart / UserPromptSubmit hooks |
 
 Sync `CLAUDE.md` + commands to the global folder after changes:

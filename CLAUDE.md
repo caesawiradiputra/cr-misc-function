@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Version: 0.1.0 · Updated: 2026-11-13
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Repository Location
