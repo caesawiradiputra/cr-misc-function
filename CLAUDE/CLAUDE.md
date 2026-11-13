@@ -298,6 +298,16 @@ hand-write a new variant.
   change went to a new branch with no ticket key when I wanted to test on the
   work branch, and my uncommitted file was staged by mistake.)
 - **Type hints**: Match project Python version — check `pyproject.toml` first
+- **Docs version line**: `README.md` and `CLAUDE.md` of every repo carry one
+  line near the top, `Version: x.y.z · Updated: YYYY-MM-DD`. When a branch is
+  ready for a PR to `dev`, and at every release or deploy, update both files
+  (at least the version and the date, even when nothing else changed), so their
+  last edit stays close to the point the work counts as done. `x.y.z` is the
+  repo's release version (the `pyproject.toml` version, or the image tag); a
+  repo with no version starts at `0.1.0`. The `umbrella-review` skill flags a
+  missing line, a version that differs from the manifest, and docs older than
+  the last release. (Added 2026-11-13: finished work was handed over for
+  testing and then forgotten, and the docs had not moved with it.)
 
 ---
 
