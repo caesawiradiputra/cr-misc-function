@@ -139,8 +139,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
     except DocsError as exc:
         print(f"refused: {exc}; nothing was written")
         return 1
-    # A collection made before the shared helpers has no `globalThis.__lib` definition in
-    # its collection script, so new random requests keep their helpers inline.
+    # A collection made before the shared helpers has no `globalThis.__lib` definition with
+    # `fake` in its collection script, so new random requests keep their helpers inline.
     try:
         root_text = (out_dir / "opencollection.yml").read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -150,7 +150,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         name,
         local_base_url(repo),
         existing,
-        central_helpers="globalThis.__lib" in root_text,
+        central_helpers="globalThis.__lib = { rnd, pick, chars, ALNUM, fake }" in root_text,
     )
     report = write_collection(rendered.files, out_dir)
     if report.refused:

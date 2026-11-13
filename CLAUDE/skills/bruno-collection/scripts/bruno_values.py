@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
 from bruno_discover import Endpoint
+from bruno_fake import FAKE_JS, fake_expr, float_expr, int_expr
 from bruno_params import UNRESOLVED, FieldSpec, ModelSpec, Param
 
 UTC = timezone.utc  # noqa: UP017 - the helper must also run on Python 3.9
@@ -306,16 +307,40 @@ class _Gen:
         self.incomplete.append(Incomplete(path, reason))
         return '"TODO"'
 
+    def field_expr(self, f: FieldSpec, path: str) -> str | None:
+        """A realistic value (the `fake` library) for a plain string or integer field.
+
+        Only when the field has no pattern, enum or size limit of its own; those keep
+        the constraint-driven value."""
+        c = f.constraints
+        if f.is_list or f.children is not None or f.unexpanded:
+            return None
+        if any(k in c for k in ("pattern", "enum", "min_length", "max_length")):
+            return None
+        kind = KINDS.get(f.type_name.lower())
+        if kind == "str":
+            return fake_expr(path, f.example)
+        if kind == "float" and not any(k in c for k in ("ge", "gt", "le", "lt")):
+            return float_expr(path)
+        if kind == "int" and not any(
+            k in c for k in ("ge", "gt", "le", "lt", "multiple_of")
+        ):
+            return int_expr(path, f.example)
+        return None
+
     def model(self, spec: ModelSpec, prefix: str = "") -> str:
         items = [
             f"{json.dumps(f.name)}: "
-            + self.value(
-                prefix + f.name,
-                f.type_name,
-                f.constraints,
-                f.is_list,
-                f.children,
-                f.unexpanded,
+            + (
+                self.field_expr(f, prefix + f.name)
+                or self.value(
+                    prefix + f.name,
+                    _date_kind(f),
+                    f.constraints,
+                    f.is_list,
+                    f.children,
+                    f.unexpanded,
+                )
             )
             for f in spec.fields
         ]
@@ -521,6 +546,30 @@ class _Gen:
         return self._date(path, name, c, full=True)
 
 
+_ISO_DATETIME = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _date_kind(f: FieldSpec) -> str:
+    """Type name for random values: a plain `str` whose declared example is an ISO
+    date or datetime is generated as one, because the service usually parses or stores
+    it as a date (a `TEST_` string fails there). Any other field keeps its own type."""
+    if (
+        KINDS.get(f.type_name.lower()) == "str"
+        and not f.is_list
+        and f.children is None
+        and not any(
+            k in f.constraints for k in ("pattern", "enum", "min_length", "max_length")
+        )
+        and isinstance(f.example, str)
+    ):
+        if _ISO_DATETIME.match(f.example):
+            return "datetime"
+        if _ISO_DATE.fullmatch(f.example):
+            return "date"
+    return f.type_name
+
+
 def _var(prefix: str, name: str) -> str:
     return prefix + re.sub(r"\W", "_", name)
 
@@ -528,14 +577,19 @@ def _var(prefix: str, name: str) -> str:
 # The helpers can live in the collection-level script (one copy for the whole collection):
 # Bruno 4.3.0 shares `globalThis` between that script and a request script, while a plain
 # function declared there is not visible (checked with a probe, 2026-11-03).
-HELPERS_REF = "const { rnd, pick, chars, ALNUM } = globalThis.__lib;\n"
+HELPERS_REF = "const { rnd, pick, chars, ALNUM, fake } = globalThis.__lib;\n"
 HELPERS_SCRIPT = (
-    "{\n" + PRELUDE + "globalThis.__lib = { rnd, pick, chars, ALNUM };\n}\n"
+    "{\n"
+    + PRELUDE
+    + FAKE_JS
+    + "globalThis.__lib = { rnd, pick, chars, ALNUM, fake };\n}\n"
 )
 
 
 def _wrap(lines: list[str], central: bool = False) -> str:
-    return "{\n" + (HELPERS_REF if central else PRELUDE) + "\n".join(lines) + "\n}\n"
+    body = "\n".join(lines)
+    inline = PRELUDE + (FAKE_JS if "fake." in body else "")
+    return "{\n" + (HELPERS_REF if central else inline) + body + "\n}\n"
 
 
 def random_js(
@@ -574,11 +628,13 @@ def _body_vars(
     breaks its constraints): a clash gets the prefix `random_body_`.
     """
     rows: list[str] = []
-    for name, type_name, c, is_list, children, unexpanded in fields:
+    for name, type_name, c, is_list, children, unexpanded, *rest in fields:
         var = _var(prefix, name)
         if var in names:
             var = _var(prefix + "body_", name)
-        expr = gen.value(name, type_name, c, is_list, children, unexpanded)
+        expr = (rest[0] if rest else None) or gen.value(
+            name, type_name, c, is_list, children, unexpanded
+        )
         enum = c.get("enum")
         text = (
             not is_list
@@ -615,7 +671,15 @@ def random_request(
     template: str | None = None
     if endpoint.body is not None and not endpoint.body.is_list and not scalars:
         fields = [
-            (f.name, f.type_name, f.constraints, f.is_list, f.children, f.unexpanded)
+            (
+                f.name,
+                f.type_name,
+                f.constraints,
+                f.is_list,
+                f.children,
+                f.unexpanded,
+                gen.field_expr(f, f.name),
+            )
             for f in endpoint.body.fields
         ]
         template = _body_vars(gen, fields, name_prefix, lines, names)
