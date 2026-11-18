@@ -133,3 +133,37 @@ def test_nesting_deeper_than_3_stops_and_is_reported(eps):
     assert l3.name == "L3"
     assert field(l3, "l4").children is None
     assert any("deeper than 3" in n for n in ep.notes)
+
+
+def test_depends_model_fields_become_query_params(tmp_path):
+    """`q: Model = Depends()` and `Depends(Model)` expose the model fields as query params."""
+    disc = load("bruno_discover")
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "main.py").write_text(
+        "from typing import Optional\n"
+        "from fastapi import Depends, FastAPI\n"
+        "from pydantic import BaseModel, Field\n"
+        "app = FastAPI()\n"
+        "def get_db():\n    return None\n"
+        "class Filter(BaseModel):\n"
+        '    kind: str = Field(..., min_length=1, examples=["P", "C"])\n'
+        '    name: Optional[str] = Field(None, examples=["Ann"])\n'
+        "class Inner(BaseModel):\n    x: int\n"
+        "class Outer(BaseModel):\n    a: str\n    inner: Inner\n"
+        '@app.get("/one")\n'
+        "def one(request: Filter = Depends(), db=Depends(get_db)):\n    return {}\n"
+        '@app.get("/two")\n'
+        "def two(request: Filter = Depends(Filter)):\n    return {}\n"
+        '@app.get("/three")\n'
+        "def three(request: Outer = Depends()):\n    return {}\n"
+    )
+    eps = {e.path: e for e in disc.discover(root).endpoints}
+    for path in ("/one", "/two"):
+        params = {p.name: p for p in eps[path].params}
+        assert set(params) == {"kind", "name"}
+        assert params["kind"].location == "query" and params["kind"].required
+        assert params["kind"].example == "P"
+        assert not params["name"].required
+    assert [p.name for p in eps["/three"].params] == ["a"]
+    assert eps["/one"].body is None

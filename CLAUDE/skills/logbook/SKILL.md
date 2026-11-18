@@ -81,8 +81,8 @@ there is one, else of the DA ticket; the first logbook date only when there is n
 `Development` → `DEVELOPMENT`, `Testing` → `TESTING`, `Ready For Release` → `READY FOR RELEASE`,
 `Deployment` → `DEPLOYMENT`, `PAT` → `PAT`, `Done` → `DONE`, plus `FIXING` and `HOLD`; a Jira
 status refreshed within 7 days and mapped outranks the logbook status), `Project`
-from `config.json` `projects` (repo name when unmapped). `To Do` is the latest `task` in
-bold, followed by **collapsed expands** (`Description` first: a one or two sentence summary of the SRF/requirement) that keep rows compact (the same pattern as the
+from `config.json` `projects` (repo name when unmapped). `To Do` is the `task` of the ticket's first logbook row, in
+bold (it does not change when later rows are added; later work shows in `Task List`), followed by **collapsed expands** (`Description` first: a one or two sentence summary of the SRF/requirement) that keep rows compact (the same pattern as the
 user's old tracker): `Task List` (only when the ticket has rows on several days: one dated
 line per day) and `Update` (only when a row has `notes`: dated entries split by a divider).
 

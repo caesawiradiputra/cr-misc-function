@@ -371,9 +371,10 @@ def test_helpers_are_defined_once_in_the_collection_script(disc, ren, launch):
         result(disc, [ep(disc, params=[p])]), "svc", local(launch)
     )
     root = r.files["opencollection.yml"]
-    assert "globalThis.__lib = { rnd, pick, chars, ALNUM };" in root
+    assert "globalThis.__lib = { rnd, pick, chars, ALNUM, fake };" in root
+    assert "const fake = (() => {" in root
     rand = next(t for k, t in r.files.items() if k.endswith("(random).yml"))
-    assert "const { rnd, pick, chars, ALNUM } = globalThis.__lib;" in rand
+    assert "const { rnd, pick, chars, ALNUM, fake } = globalThis.__lib;" in rand
     assert "const rnd" not in rand
     fixed = next(t for k, t in r.files.items() if k.endswith("(fixed).yml"))
     assert "scripts" not in fixed
