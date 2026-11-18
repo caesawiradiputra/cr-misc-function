@@ -210,14 +210,15 @@ deployed (Jira `PAT`, then `Done`); `Rollback` and `Cancel` are exceptions. The 
 ticket is the one with the highest `Column 1`; a ticket whose rows contradict each other is shown
 as ambiguous and gets no flags.
 
-PAT: `Last PAT Date` is the planned end of the 7-day window; when it is blank the helper assumes
-deploy date + 7 days. `Status PAT` is a formula in the register, not a hand-set value: `NA` when
-`Last PAT Date` is blank, `Closed` when today is past it, otherwise `Open`. So `NA` means "no end
-date filled in yet", never "no PAT needed", and `Closed` only says the planned window has passed.
-PAT is **assumed done** on the planned end date (or the default) unless there is an error signal: a
-`Rollback`, `CAB Ulang` or `Cancel` status, or a `Fixing` logbook row between the deploy date and
-the planned end. The board lists those tickets in one batch, "PAT done: propose Done"; the Jira
-transition and the logbook row are written only after the user's OK.
+PAT: `Last PAT Date` is the planned end of the 7-day window. `Status PAT` is a formula in the
+register, not a hand-set value: `NA` when `Last PAT Date` is blank, `Closed` when today is past it,
+otherwise `Open`. So `NA` means "no end date filled in yet", never "no PAT needed", and `Closed`
+only says the planned window has passed. PAT is **assumed done** on the planned end date unless
+there is an error signal: a `Rollback`, `CAB Ulang` or `Cancel` status, or a `Fixing` logbook row
+between the deploy date and the planned end. With no end date PAT is never assumed done (only the
+deployment notice email falls back to deploy date + 7 days). The board lists the assumed-done
+tickets in one batch, "PAT done: propose Done"; the Jira transition and the logbook row are
+written only after the user's OK.
 
 Other flags (live Jira, fresh register): "not registered for CAB" (Jira `Ready For Release` for
 `cab_grace_days` or more with no register row), "register ahead of Jira" (deployed per the

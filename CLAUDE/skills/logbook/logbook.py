@@ -1190,8 +1190,8 @@ def build_register(
             "type": rawrow["TYPE CAB"], "kategori": rawrow["Kategori"],
             "name": rawrow["Nama CAB"], "keys": keys, "reg": reg, "reg_note": note,
             "cab": cab, "plan": plan, "real": real, "pat_end": pat_end,
-            "user": rawrow["User Requester"], "link": rawrow["Link"],
-            "plan_time": rawrow["Deploy Plan Time"], "srf": rawrow["IN / Project"],
+            "user": rawrow.get("User Requester", ""), "link": rawrow.get("Link", ""),
+            "plan_time": rawrow.get("Deploy Plan Time", ""), "srf": rawrow.get("IN / Project", ""),
         })  # fmt: skip
     by_ticket: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -1249,16 +1249,13 @@ def cab_info(
     info: dict[str, Any] = {
         "ticket": ticket, "history": entry["history"], "ambiguous": entry["ambiguous"],
         "row": row, "stage": "", "planned_end": None, "pat_confirmed": False,
-        "pat_assumed": False, "error_signal": "", "pat_end_default": False,
+        "pat_assumed": False, "error_signal": "",
     }  # fmt: skip
     if row is None:
         return info
     status = row["status"].lower()
     stage = CAB_STATUS_STAGE.get(status, "unknown")
     end = row["pat_end"]
-    if end is None and (row["real"] or row["plan"]):
-        end = (row["real"] or row["plan"]) + dt.timedelta(days=CAB_PAT_DAYS)
-        info["pat_end_default"] = True  # the register has no end date: deploy + 7 days
     info["planned_end"] = end
     signal = ""
     if status in CAB_ERROR_STATUS:
