@@ -146,7 +146,8 @@ def test_library_output_has_the_right_formats(vals, fk):
     import re
 
     for r in data["out"]:
-        assert re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", r["uuid"])
+        # the first 5 characters are "bruno", so a Bruno call is told apart from a real request
+        assert re.fullmatch(r"bruno[0-9a-f]{3}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", r["uuid"])
         assert re.fullmatch(r"\d{16}", r["ktp"])
         assert 1 <= int(r["ktp"][6:8]) % 40 <= 31 and 1 <= int(r["ktp"][8:10]) <= 12
         assert re.fullmatch(r"[A-Z][a-z]+ [A-Z][a-z]+", r["name"])

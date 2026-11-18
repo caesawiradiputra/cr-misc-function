@@ -28,7 +28,7 @@ FAKE_JS = r"""const fake = (() => {
   return {
     opts,
     sp,
-    uuid: () => [chars(8, "0123456789abcdef"), chars(4, "0123456789abcdef"), "4" + chars(3, "0123456789abcdef"), pick(["8", "9", "a", "b"]) + chars(3, "0123456789abcdef"), chars(12, "0123456789abcdef")].join("-"),
+    uuid: () => ["bruno" + chars(3, "0123456789abcdef"), chars(4, "0123456789abcdef"), "4" + chars(3, "0123456789abcdef"), pick(["8", "9", "a", "b"]) + chars(3, "0123456789abcdef"), chars(12, "0123456789abcdef")].join("-"),
     name: () => sp(pick(FIRST) + " " + pick(LAST)),
     company: () => sp("PT " + pick(LAST) + " " + pick(["Sejahtera", "Makmur", "Abadi", "Mandiri", "Jaya"])),
     email: () => (pick(FIRST) + "." + pick(LAST) + rnd(1, 99) + "@example.com").toLowerCase(),
