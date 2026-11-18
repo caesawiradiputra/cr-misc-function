@@ -1445,7 +1445,9 @@ def _iso(value: dt.date | None) -> str:
 
 
 CAB_NOTICE_STATUS = "done cab and progress deployment"
-CAB_PAT_DAYS = 7  # default PAT window when neither the register nor the BAST gives an end
+CAB_PAT_DAYS = (
+    7  # default PAT window when neither the register nor the BAST gives an end
+)
 CAB_NOTICE_DAYS = 14  # a Closed row older than this is history, not a missed notice
 NOTICES = LOGBOOK.parent / "cab-notices.json"
 
@@ -1468,7 +1470,11 @@ def cmd_cab_notify(args: argparse.Namespace) -> None:
     notices = load_notices()
     if args.mark:
         register, note = load_register_for_run(load_config())
-        row = (register or {"by_ticket": {}})["by_ticket"].get(args.mark, {}).get("current")
+        row = (
+            (register or {"by_ticket": {}})["by_ticket"]
+            .get(args.mark, {})
+            .get("current")
+        )
         if row is None:
             sys.exit(f"{args.mark}: no current register row; nothing recorded")
         notices[args.mark] = {
@@ -1485,7 +1491,9 @@ def cmd_cab_notify(args: argparse.Namespace) -> None:
         return
     now, sessions = now_wib(), cab_sessions(cfg)
     if not register_fresh(register, now, sessions):
-        print(f"note: {stale_banner(now, sessions, register)} Dates below may be old.\n")
+        print(
+            f"note: {stale_banner(now, sessions, register)} Dates below may be old.\n"
+        )
     found, cache = 0, load_cache()
     for ticket in sorted(register["by_ticket"]):
         row = register["by_ticket"][ticket]["current"]
@@ -1497,28 +1505,39 @@ def cmd_cab_notify(args: argparse.Namespace) -> None:
             # Catch-up: deployed, but the requester was never told. Old rows are history.
             if deployed is None or (now.date() - deployed).days > CAB_NOTICE_DAYS:
                 continue
-        elif status != CAB_NOTICE_STATUS or row["pat_status"].lower() in CAB_PAT_CONFIRMED:
+        elif (
+            status != CAB_NOTICE_STATUS
+            or row["pat_status"].lower() in CAB_PAT_CONFIRMED
+        ):
             continue
         plan, pat_end = _iso(deployed), _iso(row["pat_end"])
         seen = notices.get(ticket)
         if seen and (seen["plan"], seen["pat_end"]) == (plan, pat_end) and not args.all:
             continue
         found += 1
-        kind = "REDRAFT (dates changed since " + seen["drafted"] + ")" if seen else "NEW"
+        kind = (
+            "REDRAFT (dates changed since " + seen["drafted"] + ")" if seen else "NEW"
+        )
         if status == "closed":
             kind += ", CLOSED: already deployed"
         src = cache.get(ticket, {}).get("source") or row["srf"] or "-"
         print(f"- {ticket} [{kind}] {row['name']}")
         print(f"  SRF (IN ticket): {src}")
         print(f"  requester (User Requester): {row['user'] or '-'}")
-        print(f"  register: CAB {_iso(row['cab'])} | deploy {plan} {row['plan_time'] or ''} | PAT end {pat_end}")
+        print(
+            f"  register: CAB {_iso(row['cab'])} | deploy {plan} {row['plan_time'] or ''} | PAT end {pat_end}"
+        )
         print(f"  BAST: {row['link'] or '-'}")
         gaps = [n for n, v in (("deploy date", plan), ("PAT end", pat_end)) if v == "-"]
         if gaps:
-            print(f"  missing in register: {', '.join(gaps)} -> read them from the BAST")
+            print(
+                f"  missing in register: {', '.join(gaps)} -> read them from the BAST"
+            )
         if pat_end == "-" and deployed is not None:
             fallback = deployed + dt.timedelta(days=CAB_PAT_DAYS)
-            print(f"  PAT end if the BAST has none either: {_iso(fallback)} (deploy + {CAB_PAT_DAYS} days)")
+            print(
+                f"  PAT end if the BAST has none either: {_iso(fallback)} (deploy + {CAB_PAT_DAYS} days)"
+            )
     if not found:
         print("No new deployment notices to draft.")
 
@@ -2082,8 +2101,12 @@ def main() -> None:
     notify = sub.add_parser(
         "cab-notify", help="Tickets that need a deployment notice email (read-only)"
     )
-    notify.add_argument("--mark", default="", help="record that TICKET's notice was drafted")
-    notify.add_argument("--all", action="store_true", help="include already drafted notices")
+    notify.add_argument(
+        "--mark", default="", help="record that TICKET's notice was drafted"
+    )
+    notify.add_argument(
+        "--all", action="store_true", help="include already drafted notices"
+    )
     notify.set_defaults(func=cmd_cab_notify)
 
     pub = sub.add_parser("publish", help="Render Confluence HTML (does not post it)")
