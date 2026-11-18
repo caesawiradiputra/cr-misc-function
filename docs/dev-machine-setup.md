@@ -444,6 +444,17 @@ For repos that aren't on uv yet, or need a newer Python:
 
 ---
 
+#### Umbrella review skill (optional)
+
+The `umbrella-review` skill needs only the skill folder (install it with the other skills in
+4.3); it uses `git`, `gh` (logged in) and the `logbook`, `template-sync` and `okf-writer`
+skills when they are installed. Run `/umbrella-review` from an umbrella folder that holds
+your repos. It never fetches, never reads `.env*`, keys or package folders (a Python
+collector enforces the allow-lists), and saves a dated report under `<umbrella>/knowledge/`
+(or `~/.claude/umbrella-review/<name>/` when the umbrella is itself a git repo). Those
+folders are never part of any repo. The scripts run on the system `python3` 3.9 and newer.
+The global `CLAUDE.md` carries the "Docs version line" rule the skill checks.
+
 ## 8. Verification Checklist
 
 - [ ] `git`, `gh`, `jq`, `uv` all print versions in a **new** terminal
@@ -456,6 +467,7 @@ For repos that aren't on uv yet, or need a newer Python:
 - [ ] Opening a repo under the umbrella shows the SessionStart repo context
 - [ ] IDE: Claude Code panel opens; on WSL it runs in the WSL window
 - [ ] `uv sync` works in one real project and the IDE picks up its `.venv`
+- [ ] `/umbrella-review` runs in an umbrella folder and saves a report (optional skill)
 
 ---
 
