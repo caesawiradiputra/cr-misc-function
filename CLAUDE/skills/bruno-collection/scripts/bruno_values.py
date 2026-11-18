@@ -696,8 +696,8 @@ def random_request(
                 )
             )
     elif scalars:
-        fields = [
+        fields_plain: list[tuple] = [
             (p.name, p.type_name, p.constraints, False, None, False) for p in scalars
         ]
-        template = _body_vars(gen, fields, name_prefix, lines, names)
+        template = _body_vars(gen, fields_plain, name_prefix, lines, names)
     return RandomResult(_wrap(lines, central), names, gen.incomplete, template)

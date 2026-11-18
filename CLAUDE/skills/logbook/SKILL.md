@@ -1,6 +1,6 @@
 ---
 name: logbook
-description: Track what the user did, for weekly reporting. Adds or updates a row in the personal work logbook CSV (one row per ticket per day), prints a weekly summary, and copies the CSV to the Windows work folder. Use when the user says "/logbook", "log this", "add to my logbook", "catat ke logbook", "weekly report", "what did I do this week", "sync the logbook", or when a task finishes or a PR is opened or merged and a row should be proposed. Also "/logbook check", "recheck the logbook", "reconcile with git/Jira", "is my logbook up to date". Also "draft the deployment email", "buat email jadwal deployment", "inform the requester of the deploy and PAT date", or when the CAB register shows a ticket at `Done CAB And Progress Deployment` and the requester has not been told the deployment and PAT dates yet.
+description: Track what the user did, for weekly reporting. Adds or updates a row in the personal work logbook CSV (one row per ticket per day), prints a weekly summary, and copies the CSV to the Windows work folder. Use when the user says "/logbook", "log this", "add to my logbook", "catat ke logbook", "weekly report", "what did I do this week", "sync the logbook", or when a task finishes or a PR is opened or merged and a row should be proposed. Also "/logbook check", "recheck the logbook", "reconcile with git/Jira", "is my logbook up to date".
 ---
 
 # Logbook
@@ -182,7 +182,7 @@ Each event proposes the next step when it happens and never acts without an OK:
 | BAST generated | Remind to send for UAT; no status change |
 | PR to `dev` merged | Jira to `Ready For Release`; logbook `Ready For Release`; offer the `dev` to `master` PR and the BAST update |
 | PR to `master` opened or merged | No Jira change; remind that CAB approval moves the ticket to `Deployment` |
-| Ticket seen in `Deployment` | Logbook `Deployment`; draft the deployment notice email (see "Deployment notice email") |
+| Ticket seen in `Deployment` | Logbook `Deployment` |
 | Ticket seen in `PAT` | Logbook `PAT`; note the date so day 7 is known |
 | 7 or more days in `PAT` | Jira and logbook to `Done`; offer `/clean-gone` |
 
@@ -210,14 +210,11 @@ deployed (Jira `PAT`, then `Done`); `Rollback` and `Cancel` are exceptions. The 
 ticket is the one with the highest `Column 1`; a ticket whose rows contradict each other is shown
 as ambiguous and gets no flags.
 
-PAT: `Last PAT Date` is the planned end of the 7-day window; when it is blank the helper assumes
-deploy date + 7 days. `Status PAT` is a formula in the register, not a hand-set value: `NA` when
-`Last PAT Date` is blank, `Closed` when today is past it, otherwise `Open`. So `NA` means "no end
-date filled in yet", never "no PAT needed", and `Closed` only says the planned window has passed.
-PAT is **assumed done** on the planned end date (or the default) unless there is an error signal: a
-`Rollback`, `CAB Ulang` or `Cancel` status, or a `Fixing` logbook row between the deploy date and
-the planned end. The board lists those tickets in one batch, "PAT done: propose Done"; the Jira
-transition and the logbook row are written only after the user's OK.
+PAT: `Last PAT Date` is the planned end of the 7-day window. With `Status PAT` `Closed` or `NA`
+the PAT is finished. Otherwise PAT is **assumed done** on the planned end date unless there is an
+error signal: a `Rollback`, `CAB Ulang` or `Cancel` status, or a `Fixing` logbook row between the
+deploy date and the planned end. The board lists those tickets in one batch, "PAT done: propose
+Done"; the Jira transition and the logbook row are written only after the user's OK.
 
 Other flags (live Jira, fresh register): "not registered for CAB" (Jira `Ready For Release` for
 `cab_grace_days` or more with no register row), "register ahead of Jira" (deployed per the
@@ -225,88 +222,6 @@ register, Jira behind), and a `Rollback` or `Cancel` the Jira status does not re
 reports the same flags. `week` adds a "CAB this week" block: items registered, CAB sessions,
 deployments and PAT windows ending. Config keys: `cab_register`, `cab_sessions`,
 `cab_max_lag_days` (at most 26), `cab_grace_days` and `cab_max_age_days`.
-
-## Deployment notice email
-
-The requester should be told the planned deployment date and the PAT period. Claude only **drafts**
-the email in chat (it cannot send mail); the user sends it. Two triggers:
-
-- the register status of a ticket becomes `Done CAB And Progress Deployment` (dates are planned);
-- the status is `Closed` (already deployed) and no notice was ever drafted for that ticket, a
-  catch-up for a notice that was missed. Closed rows deployed more than 14 days ago are history and
-  are not offered.
-
-Run it after the user says the register was updated, at the first logbook touch after a CAB
-session (Monday and Wednesday), or when asked.
-
-1. `python3 ~/.claude/skills/logbook/logbook.py cab-notify` lists each such ticket whose notice is
-   not drafted yet, with the **SRF** (the IN ticket: the Jira cache `source`, else the register's
-   `IN / Project` column), the requester (`User Requester`), the register dates (deploy date and
-   time, PAT end) and the BAST link. A ticket whose dates changed after the notice was drafted
-   shows as `REDRAFT`; a catch-up shows as `CLOSED: already deployed`. The register is the user's
-   own copy and may be stale (the command prints a note); say so when you draft.
-2. **Dates: the register first, the BAST second.** Use the dates from step 1. Read the BAST (its
-   link, `getConfluenceContent` with `content_format: html`; the markdown conversion drops the date
-   elements) in all cases, for two things: dates the register lacks (CAB section: `Deployment
-   Methods` Date and Time, and the PAT `Start` / `End`, filled by the CAB manager), and, for a planned deployment, the CAB
-   notes. If the register and the BAST both have a date and they differ, show both to the user and
-   ask which is right; do not pick one. If neither has a deploy date, say it is missing and do not draft
-   that part. If neither has a PAT end date, use the deploy date plus 7 days (the normal PAT window;
-   `cab-notify` prints it) and say in chat that it is the default. A PAT date that is still the
-   template sample (January 21, 2022 or 2026) counts as empty.
-3. **CAB notes** (planned deployments only; see below) are the checklist under `Notes Change Advisory Board (CAB)` in the BAST. The
-   template text `isi dengan note cab jika ada serta pic` and empty items mean there are no
-   notes. With notes, add a `Catatan CAB` list in plain Bahasa, close to what the CAB manager wrote
-   (keep the PIC they named). CAB notes are conditions to confirm or fix **before** deploying. So for a catch-up (register status `Closed`, already deployed) the blockers are solved: leave the notes out and write only the dates. For a planned deployment (`Done CAB And Progress Deployment`) they may still be open: include them. Without notes, leave the section out completely and write only the
-   deployment and PAT dates; do not write "tidak ada catatan".
-4. **Write the email in Bahasa Indonesia, friendly but still polite, not stiff** (short sentences,
-   no "Dengan hormat" or "Hormat saya"), technical terms (deployment, PAT, CAB, production, BAST)
-   in English as in the Markdown Style rule. **Refer to the request by the SRF (the IN ticket),
-   never the DA ticket**: `SRF IN-3338` plus the title with the `SRF -` prefix and DA key removed. Greet
-   with `Dear @<name>,` (no Bapak/Ibu, so no gender is guessed). `<name>` is the requester's name as
-   the GWS (Google Workspace) display name when a Google directory lookup is available. Without one,
-   take the fullest name from `getPeopleInfo` (`name`, Atlassian account of the BAST `Requester
-   Name` mention) and fall back to the register's `User Requester`. The lookup returns no email, so
-   tell the user the `@` is plain text to turn into the contact chip in Gmail/Chat, and never
-   invent an address or a surname.
-   Content: the SRF status, the two dates, the notes if any, one sentence asking the requester to
-   run the PAT in that window and to report any issue, and a thanks. End the draft at the thanks:
-   the user's mail client adds its own footer (`Best Regards, <name>, <title>`), so write no
-   closing line and no signature. Dates read as `Kamis, 10 September 2026`; the time as `pukul 18:00 WIB` only when
-   the register or the BAST has one. The PAT period is the deploy date up to the PAT end date. For
-   a planned deployment say `dijadwalkan`; for a `Closed` catch-up say `sudah di-deploy` and use the
-   real deploy date.
-5. Show the email as plain text (subject line, then body) in the chat, and mention the BAST link
-   and the To/CC the user may want (the requester; the BAST lists `Email User` and `Email PMO`,
-   which are left to the user because they are often empty). After the user is happy with it, run
-   `cab-notify --mark DA-1234` (the DA key, which is what the register is indexed by) so the ticket
-   is not offered again until its dates change. Nothing is written to the register, the BAST or
-   Jira, and nothing is sent.
-
-Shape of the email (adapt the wording, keep it this short):
-
-```text
-Subjek: Jadwal Deployment dan PAT - SRF IN-3338 <judul>
-
-Dear @<nama requester>,
-
-SRF IN-3338 (<judul>) sudah disetujui di CAB tanggal <tanggal CAB>.
-Ini jadwalnya:
-
-- Deployment: Kamis, 10 September 2026, pukul 18:00 WIB
-- Periode PAT: 10 September 2026 s.d. 17 September 2026
-
-Catatan CAB:            (only when the BAST has notes)
-- <catatan> (PIC: <nama>)
-
-Mohon bantuannya untuk melakukan PAT di periode tersebut, dan kabari kami kalau ada kendala.
-Detail perubahan ada di BAST: <link>
-
-Terima kasih.
-```
-
-Catch-up variant: replace the opening and the first bullet with `SRF IN-3338 (<judul>) sudah
-di-deploy pada <tanggal>.` and keep the PAT line.
 
 ## Recheck (`/logbook check`)
 
@@ -372,7 +287,6 @@ python3 ~/.claude/skills/logbook/logbook.py check --since 2026-10-05   # CSV vs 
 python3 ~/.claude/skills/logbook/logbook.py rename <slug> PROJ-1234   # a slug that later got a Jira key (rows, archive, cache)
 python3 ~/.claude/skills/logbook/logbook.py migrate-statuses --dry-run   # one-off: old git-step words to the Jira stage words (--resolve TICKET=Status for rows it cannot decide)
 python3 ~/.claude/skills/logbook/logbook.py pipeline          # board of open tickets by stage (read-only)
-python3 ~/.claude/skills/logbook/logbook.py cab-notify        # tickets needing a deployment notice email (--mark DA-1234 after drafting, --all to list drafted ones too)
 python3 ~/.claude/skills/logbook/logbook.py week              # current ISO week
 python3 ~/.claude/skills/logbook/logbook.py week --week 2026-W41
 python3 ~/.claude/skills/logbook/logbook.py sync              # copy CSVs if they changed

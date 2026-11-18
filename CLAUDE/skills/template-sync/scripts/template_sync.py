@@ -574,9 +574,8 @@ def cmd_stamp(args: argparse.Namespace) -> int:
     crlf = "\r\n" in text
     line = marker_line(template["id"], int(template["version"]), main["dest"])
     new = put_marker(text, line)
-    target.write_text(
-        new.replace("\n", "\r\n") if crlf else new, encoding="utf-8", newline=""
-    )
+    # write_bytes, not write_text(newline=""): that argument needs Python 3.10, this runs on 3.9
+    target.write_bytes((new.replace("\n", "\r\n") if crlf else new).encode("utf-8"))
     print(f"stamped {main['dest']} with: {line}")
     return 0
 

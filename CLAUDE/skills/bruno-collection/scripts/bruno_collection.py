@@ -150,7 +150,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
         name,
         local_base_url(repo),
         existing,
-        central_helpers="globalThis.__lib = { rnd, pick, chars, ALNUM, fake }" in root_text,
+        central_helpers="globalThis.__lib = { rnd, pick, chars, ALNUM, fake }"
+        in root_text,
     )
     report = write_collection(rendered.files, out_dir)
     if report.refused:

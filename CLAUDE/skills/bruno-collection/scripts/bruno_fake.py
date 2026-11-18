@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Optional
 
 FAKE_JS = r"""const fake = (() => {
   const opts = { spaces: true };
@@ -28,7 +27,7 @@ FAKE_JS = r"""const fake = (() => {
   return {
     opts,
     sp,
-    uuid: () => [chars(8, "0123456789abcdef"), chars(4, "0123456789abcdef"), "4" + chars(3, "0123456789abcdef"), pick(["8", "9", "a", "b"]) + chars(3, "0123456789abcdef"), chars(12, "0123456789abcdef")].join("-"),
+    uuid: () => ["bruno" + chars(3, "0123456789abcdef"), chars(4, "0123456789abcdef"), "4" + chars(3, "0123456789abcdef"), pick(["8", "9", "a", "b"]) + chars(3, "0123456789abcdef"), chars(12, "0123456789abcdef")].join("-"),
     name: () => sp(pick(FIRST) + " " + pick(LAST)),
     company: () => sp("PT " + pick(LAST) + " " + pick(["Sejahtera", "Makmur", "Abadi", "Mandiri", "Jaya"])),
     email: () => (pick(FIRST) + "." + pick(LAST) + rnd(1, 99) + "@example.com").toLowerCase(),
@@ -72,7 +71,7 @@ PLACES = {
 }
 
 
-def fake_expr(path: str, example: object) -> Optional[str]:
+def fake_expr(path: str, example: object) -> str | None:
     """JS expression for a plain string field, or None to keep the `TEST_` fallback.
 
     The declared example decides the shape (uuid, 16 digits, ISO date, e-mail, phone,
@@ -129,7 +128,7 @@ def fake_expr(path: str, example: object) -> Optional[str]:
     return json.dumps(example)
 
 
-def int_expr(path: str, example: object) -> Optional[str]:
+def int_expr(path: str, example: object) -> str | None:
     """JS expression for a plain integer field with a declared example, else None."""
     if not isinstance(example, int) or isinstance(example, bool) or example <= 0:
         return None
@@ -138,11 +137,13 @@ def int_expr(path: str, example: object) -> Optional[str]:
         return "rnd(2012, 2025)"
     low, high = max(1, example // 2), example * 2
     if example >= 100000 and re.search(r"amount|payment|income|price|per_month", key):
-        return f"Math.round(rnd({low}, {high}) / 100000) * 100000"  # a round money value
+        return (
+            f"Math.round(rnd({low}, {high}) / 100000) * 100000"  # a round money value
+        )
     return f"rnd({low}, {high})"
 
 
-def float_expr(path: str) -> Optional[str]:
+def float_expr(path: str) -> str | None:
     """Coordinates must be real ones: a random float gave latitude 662."""
     key = path.rsplit(".", 1)[-1]
     if key in ("latitude", "lat"):

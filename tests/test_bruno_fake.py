@@ -39,7 +39,11 @@ def vals():
     [
         ("request_id", "266ea41d-adf5-480b-af50-15b940c2b846", "fake.uuid()"),
         # a schema typo (11 characters in the last group) is still a uuid
-        ("customer.org.customer_cif_id", "f100a6ee-d2c3-4e26-bff3-d5da4ddc789", "fake.uuid()"),
+        (
+            "customer.org.customer_cif_id",
+            "f100a6ee-d2c3-4e26-bff3-d5da4ddc789",
+            "fake.uuid()",
+        ),
         ("customer.ktp.id", "3509212345678001", "fake.ktp()"),
         ("customer.spouse.id", "3509212345678001", "fake.ktp()"),
         ("customer.ktp.dob", "2006-01-02", "fake.dob()"),
@@ -66,14 +70,19 @@ def vals():
         ("customer.ktp.occupation", "KARYAWAN SWASTA", 'fake.sp("KARYAWAN SWASTA")'),
     ],
 )
-def test_call_is_picked_from_the_example_and_the_field_name(fk, path, example, expected):
+def test_call_is_picked_from_the_example_and_the_field_name(
+    fk, path, example, expected
+):
     assert fk.fake_expr(path, example) == expected
 
 
 def test_a_placeholder_example_never_gives_two_words(fk):
     # A space in a value that the receiver forwards and signs as it is made the HMAC
     # signature fail (tested on a dev service: 'SUDIRMAN KENANGA' failed, 'SUDIRMAN' passed).
-    assert fk.fake_expr("customer.personal.home_ownership", "SAMPLE VALUE") == "fake.word()"
+    assert (
+        fk.fake_expr("customer.personal.home_ownership", "SAMPLE VALUE")
+        == "fake.word()"
+    )
     assert fk.fake_expr("product.product_name", "SOME SAMPLE NAME") == "fake.word()"
     assert fk.fake_expr("application.lead_id", "SOME-IDENTIFIER") == "fake.uuid()"
     assert fk.fake_expr("agent.marketing_id", "MARKETING_ID") == "fake.uuid()"
@@ -117,7 +126,11 @@ def test_generator_uses_the_library_but_keeps_a_field_limit(disc, vals):
 
 def test_inline_script_carries_the_library_only_when_it_uses_it(disc, vals):
     F, M = disc.FieldSpec, disc.ModelSpec
-    used = M("B", [F("id", "str", True, None, {}, "3509212345678001")], disc.Source("a.py", 1))
+    used = M(
+        "B",
+        [F("id", "str", True, None, {}, "3509212345678001")],
+        disc.Source("a.py", 1),
+    )
     plain = M("B", [F("note", "str", True)], disc.Source("a.py", 1))
     assert "const fake = (() => {" in vals.random_js(used, central=False).script
     assert "const fake" not in vals.random_js(plain, central=False).script
@@ -126,9 +139,7 @@ def test_inline_script_carries_the_library_only_when_it_uses_it(disc, vals):
 @needs_node
 def test_library_output_has_the_right_formats(vals, fk):
     script = (
-        vals.PRELUDE
-        + fk.FAKE_JS
-        + "const out = [];\n"
+        vals.PRELUDE + fk.FAKE_JS + "const out = [];\n"
         "for (let i = 0; i < 300; i++) out.push({\n"
         "  uuid: fake.uuid(), ktp: fake.ktp(), name: fake.name(), phone: fake.phone(),\n"
         "  email: fake.email(), dob: fake.dob(), date: fake.date(), dt: fake.datetime(),\n"
@@ -146,7 +157,11 @@ def test_library_output_has_the_right_formats(vals, fk):
     import re
 
     for r in data["out"]:
-        assert re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", r["uuid"])
+        # the first 5 characters are "bruno", so a Bruno call is told apart from a real request
+        assert re.fullmatch(
+            r"bruno[0-9a-f]{3}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+            r["uuid"],
+        )
         assert re.fullmatch(r"\d{16}", r["ktp"])
         assert 1 <= int(r["ktp"][6:8]) % 40 <= 31 and 1 <= int(r["ktp"][8:10]) <= 12
         assert re.fullmatch(r"[A-Z][a-z]+ [A-Z][a-z]+", r["name"])
