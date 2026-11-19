@@ -32,6 +32,7 @@ This guide documents installing and configuring the **Claude Code CLI** inside *
     - [`which claude` returns nothing, or resolves to the wrong path](#which-claude-returns-nothing-or-resolves-to-the-wrong-path)
     - [Repository feels slow (git status, file watching, installs)](#repository-feels-slow-git-status-file-watching-installs)
     - [Claude Code / `npm install` hangs or can't reach the network behind a corporate proxy](#claude-code--npm-install-hangs-or-cant-reach-the-network-behind-a-corporate-proxy)
+    - [`ECONNRESET` when direct HTTPS is blocked and the proxy needs Basic auth](#econnreset-when-direct-https-is-blocked-and-the-proxy-needs-basic-auth)
     - [`uv`/`uvx` not found when Claude Code runs shell commands](#uvuvx-not-found-when-claude-code-runs-shell-commands)
   - [18. Companion CLI Tools for Claude Code's Git/GitHub Workflows](#18-companion-cli-tools-for-claude-codes-gitgithub-workflows)
   - [See Also](#see-also)
@@ -497,6 +498,79 @@ blanket `~/.bashrc` export above — add it to `~/.claude/settings.json` so
 `env` is read once at startup, so restart every running `claude` session
 (including the one that errored) after adding it, and confirm with
 `/status`'s Proxy row.
+
+### `ECONNRESET` when direct HTTPS is blocked and the proxy needs Basic auth
+
+A third cause with the same "cannot reach Anthropic" symptom (seen 2026-11-19, WSL2 on a corporate network): direct HTTPS egress on port 443 is blocked network-wide, so **every** request must go through the corporate proxy, and that proxy requires credentials. The `NO_PROXY` bypass above makes things worse here, because it sends Claude Code to a direct route that does not exist. Claude Code then fails with `ECONNRESET` instead of `ERR_PROXY_TUNNEL`.
+
+Decide which route works first:
+
+```bash
+# 1. Which route works? Any real HTTP code (405/404 from api.anthropic.com) is healthy.
+curl -sS -o /dev/null -w 'direct: %{http_code} %{time_total}s\n' \
+  --noproxy '*' --max-time 10 https://api.anthropic.com/v1/messages
+curl -sS -o /dev/null -w 'proxy:  %{http_code} %{time_total}s\n' \
+  --max-time 15 https://api.anthropic.com/v1/messages
+
+# 2. If the proxy answers 407, find the auth scheme it offers
+curl -sv --max-time 20 https://api.anthropic.com/v1/messages 2>&1 | grep -i proxy-authenticate
+
+# 3. Check the proxy variable without printing the password
+echo "$http_proxy" | sed 's/:[^:@]*@/:***@/'
+
+# 4. All Anthropic hosts (sign-in needs more than api.)
+for h in api.anthropic.com claude.ai claude.com platform.claude.com; do
+  printf '%-24s ' "$h"; curl -sS -o /dev/null -w '%{http_code}\n' --max-time 15 "https://$h/"
+done
+```
+
+Reading the result:
+
+| Result | Meaning |
+| --- | --- |
+| `405` / `404` from `api.anthropic.com` | healthy route |
+| `407` | proxy authentication problem |
+| `000`, reset in under 100 ms | blocked at the TLS handshake by a middlebox, not a timeout |
+| reset mid-stream after seconds | a different problem (idle timeout or TLS inspection) |
+
+If direct fails and the proxy returns `407` with `Proxy-Authenticate: Basic realm="<corp-domain>"` (NTLM may also be offered but is not needed), put the credentials in the proxy URL. Keep them in a separate file with mode `600` that `~/.bashrc` sources, never in a file that is committed:
+
+```bash
+# ~/.proxyenv   (chmod 600; add `source ~/.proxyenv` to ~/.bashrc)
+export http_proxy="http://<user>:<url-encoded-password>@<proxy-host>:<proxy-port>"
+export https_proxy="$http_proxy"
+export HTTP_PROXY="$http_proxy"
+export HTTPS_PROXY="$http_proxy"
+```
+
+In `~/.claude/settings.json`, keep `NO_PROXY` for **internal hosts only** (not the Anthropic hosts), in both cases:
+
+```json
+{
+  "env": {
+    "NO_PROXY": "localhost,127.0.0.1,.<corp-domain>",
+    "no_proxy": "localhost,127.0.0.1,.<corp-domain>"
+  }
+}
+```
+
+Gotchas:
+
+- **Set both `NO_PROXY` and `no_proxy`.** An empty lowercase `no_proxy=` in the shell silently overrides the uppercase one from `settings.json` and looks like a working config (this was the 2026-11-03 cause of `ERR_PROXY_TUNNEL`).
+- **Percent-encode the password:** `@` is `%40`, `#` is `%23`, `%` is `%25`, `\` is `%5C`.
+- **A password rotation breaks `~/.proxyenv`** and shows up as a brand-new network fault (`407`). Update the file, then restart `claude`.
+- **`curl` is a misleading control.** It applies `http_proxy` only to `http://` URLs, while Claude Code falls back to `http_proxy` for HTTPS, so "curl works but claude does not" is expected, not a clue. Test with `curl -x "$http_proxy"` to take the same route.
+- **`claude.ai` returning `403` to bare `curl`** is Cloudflare bot protection (`server: cloudflare` and a `cf-ray` header), not a proxy block.
+- **Settings are read once at startup.** Restart `claude` after any change and confirm with `/status`'s Proxy row.
+- **`networkingMode=mirrored` in `.wslconfig`** (used to survive LAN and WiFi switches) is unrelated to proxy auth, but Windows Firewall and the host EDR then see WSL traffic as the host's.
+
+Same symptom, three different causes, so identify the cause before changing anything:
+
+| Error | Actual cause | Fix |
+| --- | --- | --- |
+| `ERR_PROXY_TUNNEL` | proxy refused `CONNECT` while direct worked (405) | `NO_PROXY` bypass for the Anthropic hosts |
+| `ERR_PROXY_TUNNEL` | shell had an empty lowercase `no_proxy=` overriding the uppercase `NO_PROXY` | set both cases |
+| `ECONNRESET` | direct 443 egress blocked network-wide (TLS reset in about 14 ms, all hosts, WSL and Windows) | Basic auth to the proxy |
 
 ### `uv`/`uvx` not found when Claude Code runs shell commands
 
