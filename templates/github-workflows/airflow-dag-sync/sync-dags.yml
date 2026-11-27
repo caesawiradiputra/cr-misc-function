@@ -1,4 +1,4 @@
-# template: airflow-dag-sync@3
+# template: airflow-dag-sync@4
 # Template: Sync DAGs to the Airflow deployment repository
 #
 # The write token is not a stored personal access token: each run asks a GitHub App for a
