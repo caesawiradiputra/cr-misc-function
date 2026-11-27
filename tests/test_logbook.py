@@ -910,7 +910,8 @@ def raw(**kw: str) -> dict[str, str]:
     alias = {"n": "Column 1", "status": "Status", "reg": "Tanggal Register CAB",
              "name": "Nama CAB", "cab": "jadwal CAB", "real": "Deployed Real Date",
              "pat_end": "Last PAT Date", "pat_status": "Status PAT",
-             "plan": "Deploye Plan Date"}  # fmt: skip
+             "plan": "Deploye Plan Date", "user": "User Requester",
+             "srf": "IN / Project", "plan_time": "Deploy Plan Time"}  # fmt: skip
     base.update({alias[k]: v for k, v in kw.items()})
     return base
 
@@ -1082,9 +1083,12 @@ def test_closed_means_deployed_and_pat_decides_the_rest(lb: ModuleType) -> None:
         lb, [raw(real="12/10/26", pat_end="19/10/26", pat_status="Open")]
     )
     assert open_pat["stage"] == "PAT" and not open_pat["pat_assumed"]
-    for pat_status in ("Closed", "NA", "closed"):
+    for pat_status in ("Closed", "closed"):
         done = info_for(lb, [raw(pat_status=pat_status)])
         assert done["stage"] == "Done" and done["pat_confirmed"]
+    # Status PAT is a formula: NA means Last PAT Date is blank, not "no PAT needed".
+    blank = info_for(lb, [raw(real="12/10/26", pat_end="", pat_status="NA")])
+    assert blank["stage"] == "PAT" and not blank["pat_confirmed"]
 
 
 @pytest.mark.parametrize(
@@ -1761,3 +1765,55 @@ def test_not_registered_applies_only_to_da_keys(lb: ModuleType) -> None:
 
 def test_cancelled_tickets_are_never_aged(lb: ModuleType) -> None:
     assert "CANCELLED" in lb.NO_AGING
+
+
+def notify(lb, monkeypatch, rows, capsys, tmp_path, mark: str = "") -> str:
+    """Run cab-notify against a built register and a throwaway notices file."""
+    import argparse
+
+    register = build(lb, rows, today=dt.date(2026, 10, 20))
+    now = dt.datetime(2026, 10, 20, 9, 0, tzinfo=lb.WIB)
+    monkeypatch.setattr(lb, "NOTICES", tmp_path / "cab-notices.json")
+    monkeypatch.setattr(lb, "load_register_for_run", lambda cfg: (register, ""))
+    monkeypatch.setattr(lb, "load_config", dict)
+    monkeypatch.setattr(lb, "load_cache", dict)
+    monkeypatch.setattr(lb, "register_fresh", lambda *a, **k: True)
+    monkeypatch.setattr(lb, "now_wib", lambda: now)
+    lb.cmd_cab_notify(argparse.Namespace(mark=mark, all=False))
+    out: str = capsys.readouterr().out
+    return out
+
+
+def test_cab_notify_offers_the_planned_deployment_once(
+    lb, monkeypatch, capsys, tmp_path
+) -> None:
+    rows = [
+        raw(
+            status="Done CAB And Progress Deployment",
+            plan="21/10/26",
+            pat_end="",
+            pat_status="NA",
+            user="Siti",
+            srf="IN-3301",
+        )
+    ]
+    out = notify(lb, monkeypatch, rows, capsys, tmp_path)
+    assert "[NEW]" in out and "IN-3301" in out and "Siti" in out
+    assert (
+        "2026-10-28 (deploy + 7 days)" in out
+    )  # the email default, never written back
+    notify(lb, monkeypatch, rows, capsys, tmp_path, mark="DA-1234")
+    assert "No new deployment notices" in notify(
+        lb, monkeypatch, rows, capsys, tmp_path
+    )
+
+
+def test_cab_notify_skips_old_closed_rows_but_catches_up_recent_ones(
+    lb, monkeypatch, capsys, tmp_path
+) -> None:
+    recent = [raw(status="Closed", real="18/10/26", pat_end="25/10/26")]
+    assert "CLOSED: already deployed" in notify(
+        lb, monkeypatch, recent, capsys, tmp_path
+    )
+    old = [raw(status="Closed", real="01/09/26", pat_end="08/09/26")]
+    assert "No new deployment notices" in notify(lb, monkeypatch, old, capsys, tmp_path)
