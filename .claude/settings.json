@@ -10,6 +10,12 @@
       "Edit(**/.env.prod)",
       "Read(**/token.json)",
       "Edit(**/token.json)",
+      "Read(**/.env.production)",
+      "Edit(**/.env.production)",
+      "Read(**/*.key)",
+      "Edit(**/*.key)",
+      "Read(**/*service-account*.json)",
+      "Edit(**/*service-account*.json)",
       "Edit(legacy/**)",
       "Write(legacy/**)"
     ]

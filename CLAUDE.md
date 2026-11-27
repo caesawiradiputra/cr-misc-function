@@ -108,7 +108,7 @@ When adding or updating the AI assistant config in this repo, use branch
 
 - **`.claude/settings.json`** — shared Claude Code config:
   - `permissions.deny` blocks reading/editing `.env`, `.env.dev`, `.env.prod`,
-    `token.json`, and editing/writing anything under `legacy/**` (rollback/
+    `.env.production`, `token.json`, `*.key`, `*service-account*.json`, and editing/writing anything under `legacy/**` (rollback/
     reference snapshots — see AGENTS.md)
   - No hooks: the `ruff format` + `ruff check --fix` run after Claude edits or
     writes a `.py` file is a `PostToolUse` hook in the user's global
